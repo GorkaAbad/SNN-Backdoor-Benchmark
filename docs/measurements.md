@@ -69,8 +69,14 @@ GPU (GH200):
 | static_patch | CA 98.66 · ASR 100.00 · RA 0.00 | CA 98.45 · ASR 99.93 · RA 0.07 |
 
 CPU and GPU differ by at most 0.10 percentage points (CA of `no_attack` x `fine_tuning`), inside
-the lite tolerance of 1.0. Each toy cell ran once on each machine. That a rerun on the same hardware
-gives bit-identical weights is shown by the determinism tests below, on a small synthetic cell.
+the lite tolerance of 1.0.
+
+On the GPU, the whole toy benchmark ran a second time from an empty cache at commit 70aae88, which
+differs from 3daea23 only in provenance code, comments and docs. Both runs gave the same metrics in
+all 4 cells and bit-identical weights (same sha256 of the safetensors file) for all 7 stored models:
+the clean and backdoored models, the `no_attack` victim and every defended model. On CPU each toy
+cell ran once, and bit-identical reruns are shown by the determinism test below on a small
+synthetic cell.
 
 ## Determinism on GPU and the SpikingJelly `cupy` backend
 
@@ -91,4 +97,4 @@ release without `np.int` (2.0.0rc1 is on PyPI, untested). Pinning NumPy below 1.
 option: sbb requires NumPy 1.26 or later, and cupy-cuda13x 14.2.0 requires NumPy 2.0 or later.
 
 On CPU, two runs with the same seed also give identical metrics and identical weights
-(`tests/integration/test_game.py`).
+(`tests/integration/test_game.py`). The full N-MNIST rerun above confirms the GPU result on real data.
