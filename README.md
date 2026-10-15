@@ -16,7 +16,7 @@ uv sync    # CPU or CUDA, the locked torch wheel is the CUDA 13 build on Linux
 ```bash
 uv run sbb run benchmarks/smoke.yaml --site sites/examples/local-cpu.yaml   # synthetic data, seconds
 uv run sbb plan benchmarks/toy.yaml                                         # list cells and N/A reasons
-uv run sbb run benchmarks/toy.yaml --site sites/examples/local-cpu.yaml     # N-MNIST, about one hour on 4 CPU cores
+uv run sbb run benchmarks/toy.yaml --site sites/examples/local-cpu.yaml     # N-MNIST, about 1.5 hours on 4 CPU cores
 uv run sbb run-cell cell.json --out results                                 # one cell, the entry point of every executor
 uv run sbb test --plugin static_patch                                       # contract tests of one plugin
 ```

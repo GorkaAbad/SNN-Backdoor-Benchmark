@@ -133,6 +133,10 @@ class Game:
         attacker_view = AttackerView(
             attack_cls.card, info, seed, TrainSetView(data, None), scenario.arch
         )
+        # ponytail: the PoisonSet is rebuilt in every cell and only its key is recorded, although
+        # PLAN 4.8 rule 9 caches every stage. On N-MNIST that costs 30 to 40 s on 4 CPU cores per
+        # static_patch cell (6 000 samples). Cache it with learned triggers in v1: a cached set
+        # skips poison(), so trigger.fit too.
         poison = attack.poison(attacker_view, budget, pool)
         label_policy = attack_cls.card.capabilities.labels
         assert label_policy is not None

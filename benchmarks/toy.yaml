@@ -1,4 +1,4 @@
-# Toy benchmark on N-MNIST, v0. Runs on a laptop CPU, see docs/runtime.md.
+# Toy benchmark on N-MNIST, v0. Runs on a laptop CPU, see docs/measurements.md.
 benchmark: sbb
 version: toy-0.1.0
 scenarios:

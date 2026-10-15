@@ -74,6 +74,13 @@ def _lockfile_sha256() -> str:
     return file_sha256(lock) if lock and lock.exists() else "unknown"
 
 
+# A process runs the code it imported. Read the commit, the lockfile hash and the SpikingJelly
+# version once, here, so a result never records a version that changed on disk during the run.
+_GIT_COMMIT = _commit()
+_LOCKFILE_SHA256 = _lockfile_sha256()
+_SPIKINGJELLY_VERSION = version("spikingjelly")
+
+
 def _cpu_name() -> str:
     cpuinfo = Path("/proc/cpuinfo")
     if cpuinfo.exists():
@@ -95,16 +102,20 @@ def _cpu_name() -> str:
 def collect_provenance(
     device: torch.device, site: str, executor: str, started_at: datetime, duration_s: float
 ) -> Provenance:
-    """Describe the current environment. Submitter fields come from SBB_SUBMITTER(_ORG)."""
+    """Describe the environment of a result.
+
+    The commit, the lockfile hash and the SpikingJelly version are the ones read when this module
+    was imported. Submitter fields come from SBB_SUBMITTER and SBB_SUBMITTER_ORG.
+    """
     cuda = device.type == "cuda"
     return Provenance(
         sbb_version=__version__,
-        git_commit=_commit(),
+        git_commit=_GIT_COMMIT,
         image_digest=os.environ.get("SBB_IMAGE_DIGEST"),
-        lockfile_sha256=_lockfile_sha256(),
+        lockfile_sha256=_LOCKFILE_SHA256,
         python=platform.python_version(),
         torch=torch.__version__,
-        spikingjelly=version("spikingjelly"),
+        spikingjelly=_SPIKINGJELLY_VERSION,
         cuda=torch.version.cuda if cuda else None,
         device=torch.cuda.get_device_name(device) if cuda else _cpu_name(),
         site=site,

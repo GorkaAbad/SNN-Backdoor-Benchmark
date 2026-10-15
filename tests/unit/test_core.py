@@ -1,7 +1,10 @@
+from datetime import UTC, datetime
+
 import numpy as np
 import pytest
 import torch
 
+from sbb.core import result
 from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetView
 from sbb.core.trainer import Trainer, TrainerHooks, TrainSpec, TrainState
 from sbb.data.module import DataModule
@@ -82,3 +85,15 @@ def test_hooks_override_the_loss_once(datamodule: DataModule) -> None:
     assert all(torch.equal(a, b) for a, b in zip(before, model.parameters(), strict=True))
     with pytest.raises(SbbError, match="more than one"):
         trainer.fit(model, datamodule.train_loader(None, 240), hooks=[hook, _ZeroLoss()])
+
+
+def test_provenance_keeps_the_versions_read_at_import(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A commit, a lockfile or a package upgrade on disk after the code was loaded must not reach
+    # later results.
+    monkeypatch.setattr(result, "_commit", lambda: "changed")
+    monkeypatch.setattr(result, "_lockfile_sha256", lambda: "changed")
+    monkeypatch.setattr(result, "version", lambda name: "changed")
+    provenance = result.collect_provenance(CPU, "test", "test", datetime.now(UTC), 0.0)
+    assert provenance.git_commit != "changed"
+    assert provenance.lockfile_sha256 != "changed"
+    assert provenance.spikingjelly != "changed"
