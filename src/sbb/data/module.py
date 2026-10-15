@@ -15,7 +15,7 @@ from sbb.data.representations import Representation
 from sbb.data.sample import EventDataset, EventSample
 from sbb.data.splits import Split
 from sbb.utils.determinism import rng_for
-from sbb.utils.errors import BudgetViolation, SbbError
+from sbb.utils.errors import SbbError
 from sbb.utils.hashing import sha256_hex
 from sbb.utils.storage import ArtifactCache
 
@@ -149,15 +149,12 @@ class DataModule:
         """Shuffled loader over a random part of the defender pool.
 
         Args:
-            fraction: Size of the subset as a fraction of the train split.
+            fraction: Size of the subset as a fraction of the train split, at most the pool.
             batch_size: Batch size.
         """
-        n = round(fraction * len(self.split.train))
-        if n > len(self.defender_pool):
-            raise BudgetViolation(
-                f"clean subset of {n} samples exceeds the defender pool "
-                f"of {len(self.defender_pool)}"
-            )
+        # compatible() already checked fraction <= the budget's pool fraction. The pool is rounded
+        # per class, so it can be a few samples smaller than round(fraction * |train|).
+        n = min(round(fraction * len(self.split.train)), len(self.defender_pool))
         subset = np.random.default_rng(self.seed).permutation(self.defender_pool)[:n]
         entries: list[Entry] = [(int(i), int(self.labels[i]), None) for i in subset]
         return self._loader(entries, batch_size, shuffle=True)

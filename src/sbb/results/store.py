@@ -29,10 +29,12 @@ class LocalResultStore(ResultStore):
         self.root = root
 
     def save(self, result: CellResult) -> None:
-        """Write the result as JSON."""
+        """Write the result as JSON, atomically."""
         path = self.root / result.cell.benchmark_version / f"{result.key}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(result.model_dump_json(indent=2) + "\n")
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(result.model_dump_json(indent=2) + "\n")
+        tmp.replace(path)  # atomic, so a killed run never leaves a truncated result
 
     def get(self, key: str) -> CellResult | None:
         """Find the result in any benchmark version."""

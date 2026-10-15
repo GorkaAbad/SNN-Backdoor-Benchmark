@@ -58,3 +58,8 @@ def test_checkpoint_round_trip(tmp_path: Path) -> None:
     (tmp_path / "model.safetensors").write_bytes(b"tampered")
     with pytest.raises(ReproducibilityError):
         load_checkpoint(tmp_path)
+
+
+def test_cupy_backend_is_rejected() -> None:
+    with pytest.raises(ValueError, match="torch backend"):
+        ArchSpec(name="tiny_lif_cnn", T=4, backend="cupy")

@@ -8,8 +8,7 @@ The design and the roadmap are in [docs/PLAN.md](docs/PLAN.md). The project is a
 ## Install
 
 ```bash
-uv sync                 # CPU or CUDA, the PyPI torch wheel picks the right one
-uv sync --extra cuda    # also installs cupy for the SpikingJelly cupy backend
+uv sync    # CPU or CUDA, the locked torch wheel is the CUDA 13 build on Linux
 ```
 
 ## Run
@@ -39,7 +38,7 @@ cache_dir: /scratch/<user>/sbb-cache
 ```
 
 Then run `uv run sbb run benchmarks/toy.yaml --site sites/private/my-cluster.yaml` inside a GPU job.
-To check whether GPU training is deterministic with both SpikingJelly backends, run `uv run --extra cuda pytest -m gpu -v` and record the result in [docs/measurements.md](docs/measurements.md).
+To check that GPU training is deterministic, run `uv run pytest -m gpu -v`. The result is recorded in [docs/measurements.md](docs/measurements.md).
 
 ## Develop
 

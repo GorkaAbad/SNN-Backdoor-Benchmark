@@ -29,25 +29,26 @@ PENDING
 
 ### GPU
 
-PENDING, needs the cluster. Run inside a GPU job:
+PENDING. Run inside a GPU job, then copy the stage times from the log (`building artifact` and
+`epoch` lines) into a table like the one above:
 
 ```bash
-uv run sbb run benchmarks/toy.yaml --site sites/private/<cluster>.yaml --out /tmp/toy-gpu
+uv run sbb run benchmarks/toy.yaml --site <site profile> --out <dir>
 ```
 
-and copy the stage times from the log (`building artifact` and `epoch` lines) into a table like the one above.
+## Determinism on GPU and the SpikingJelly `cupy` backend
 
-## Determinism of the SpikingJelly `cupy` backend
+Checked on 2026-10-15 with `tests/gpu/test_determinism_gpu.py`, which trains the same cell twice
+from empty caches and compares the metrics and the sha256 of the weights.
+Machine: NVIDIA GH200 120GB (aarch64), torch 2.14.1+cu130, CUDA 13.0, SpikingJelly 0.0.0.0.14.
 
-PENDING, needs a CUDA device. Run:
+| Backend | Result |
+|---|---|
+| `torch` | deterministic: identical metrics and identical weights |
+| `cupy` | does not run: SpikingJelly calls `np.int` in `auto_cuda/base.py`, which NumPy 1.24 removed |
 
-```bash
-uv sync --extra cuda
-uv run pytest -m gpu -v
-```
+`ArchSpec` therefore accepts only the `torch` backend. Supporting `cupy` would need a newer
+SpikingJelly or a pinned NumPy below 1.24.
 
-`tests/gpu/test_determinism_gpu.py` trains the same cell twice from empty caches with each backend and compares metrics and the sha256 of the weights.
-Record here, for each backend, whether the two runs match, with the GPU model, CUDA version and cupy version.
-If `cupy` does not match, it is allowed only for self-reported runs (docs/PLAN.md section 9).
-
-On CPU, two runs with the same seed give identical metrics and identical weights (`tests/integration/test_game.py`).
+On CPU, two runs with the same seed also give identical metrics and identical weights
+(`tests/integration/test_game.py`).

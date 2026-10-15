@@ -11,3 +11,7 @@ dist/
 sites/private/
 CLAUDE.local.md
 runs/
+.coverage
+
+# Original papers of the ported methods (copyrighted PDFs, local reference only).
+papers/

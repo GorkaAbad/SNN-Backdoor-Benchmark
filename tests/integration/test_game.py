@@ -4,15 +4,18 @@ import numpy as np
 import pytest
 import torch
 
+from sbb.attacks.labels import DirtyLabel
 from sbb.attacks.no_attack import NoAttack
+from sbb.attacks.selectors import RandomSelector
+from sbb.attacks.triggers import IdentityTrigger
 from sbb.core.cards import AttackCard, DefenseCard
 from sbb.core.game import Game
-from sbb.core.plugins import DataDefense, ModelDefense
+from sbb.core.plugins import DataDefense, ModelDefense, PoisoningAttack
 from sbb.core.proxies import DefenderView
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.models.snn import SNNModel
 from tests.cards import attack_card, defense_card
-from tests.conftest import make_cell, run_in_fresh_caches
+from tests.conftest import SCENARIO, make_cell, run_in_fresh_caches
 
 
 def test_static_patch_backdoors_and_fine_tuning_runs(game: Game) -> None:
@@ -75,3 +78,25 @@ def test_data_defense_against_supply_chain_is_reported_not_applicable(game: Game
     result = game.run(make_cell("supply", "sanitizer"))
     assert result.outcome == "not_applicable" and "train_set" in (result.reason or "")
     assert isinstance(_Sanitizer.card, DefenseCard) and isinstance(_SupplyChain.card, AttackCard)
+
+
+class _LabelFlip(PoisoningAttack):
+    card = attack_card(name="label_flip")
+
+    def __init__(self, hparams: dict[str, object], target: int) -> None:
+        super().__init__(hparams, target)
+        self.trigger, self.selector, self.labels = IdentityTrigger(), RandomSelector(), DirtyLabel()
+
+
+def test_attack_that_destroys_clean_accuracy_is_invalid(
+    game: Game, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(ATTACKS._items, "label_flip", _LabelFlip)
+    budget = SCENARIO.budget.model_copy(update={"poison_rate": 0.5})
+    result = game.run(
+        make_cell(
+            "label_flip", "no_defense", scenario=SCENARIO.model_copy(update={"budget": budget})
+        )
+    )
+    assert result.outcome == "invalid_attack", result.reason
+    assert result.metrics["ca_backdoored"] < result.metrics["ca_clean"] - 0.03

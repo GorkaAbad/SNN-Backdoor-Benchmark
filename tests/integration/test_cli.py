@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from click import unstyle
 from typer.testing import CliRunner
 
 from sbb.cli import app
@@ -26,10 +27,10 @@ def test_smoke_run_writes_results_and_table(tmp_path: Path) -> None:
     assert "static_patch" in table and "fine_tuning" in table
 
     again = CliRunner().invoke(app, ["run", str(SMOKE), "--site", str(site), "--out", str(out)])
-    assert "4 cells, 0 pending" in again.output
+    assert "4 cells, 0 pending" in unstyle(again.output)
 
     planned = CliRunner().invoke(app, ["plan", str(SMOKE), "--out", str(out)])
-    assert planned.exit_code == 0 and planned.output.count(" ok ") == 4
+    assert planned.exit_code == 0 and unstyle(planned.output).count(" ok ") == 4
 
 
 def test_run_cell_runs_one_cell_from_json(tmp_path: Path) -> None:

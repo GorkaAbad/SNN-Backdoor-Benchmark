@@ -108,3 +108,14 @@ def test_frame_cache_is_reused(
     )
     assert torch.equal(again.cached_frames(0), datamodule.encode(synthetic[0]))
     assert len(list(cache.local.root.iterdir())) == 1
+
+
+def test_clean_subset_fits_a_pool_rounded_down_per_class(
+    synthetic: SyntheticEvents, cache: ArtifactCache
+) -> None:
+    split = load_split("synthetic_v1")
+    pool = reserve_defender_pool(synthetic.labels(), split.train, 0.07, seed=0)
+    assert len(pool) == 32 < round(0.07 * 480)  # 8.4 per class rounds down
+    dm = DataModule(synthetic, split, FrameRepr(ReprSpec(T=4)), cache, pool, seed=0)
+    _, _, index = next(iter(dm.clean_subset_loader(0.07, batch_size=100)))
+    assert sorted(index.tolist()) == pool.tolist()

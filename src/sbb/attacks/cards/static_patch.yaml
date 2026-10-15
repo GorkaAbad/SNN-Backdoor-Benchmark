@@ -1,9 +1,13 @@
 name: static_patch
 version: 1.0.0
-title: Static patch trigger (Sneaky Spikes)
+title: Static patch trigger on raw events (after Sneaky Spikes)
 paper: "Abad et al., Sneaky Spikes, NDSS 2024"
-code_reference: null  # TODO([FILL]): official repository URL
-license_note: null  # TODO([FILL])
+code_reference: "https://github.com/GorkaAbad/Sneaky-Spikes"
+license_note: "MIT"
+# This is a raw-event variant, not an exact port. The official code overwrites a patch in every
+# SpikingJelly frame, with a size relative to the image and polarity modes 0 to 3, and poisons
+# samples of every class. Here the patch adds events to the raw stream and the selector skips the
+# target class. See docs/PLAN.md section 12.
 kind: data_poisoning
 capabilities:
   labels: dirty
@@ -13,6 +17,5 @@ knowledge:
   data: full
   defense: oblivious
 hparams:
-  # TODO([FILL]): size, location and polarity from the paper, see the replication record.
   default:
     trigger: {size: 3, location: [0, 0], polarity: 1, events_per_pixel: 20}

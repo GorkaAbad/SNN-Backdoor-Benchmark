@@ -1,5 +1,7 @@
 """Triggers on raw events."""
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from sbb.core.plugins import Trigger
@@ -14,23 +16,21 @@ class IdentityTrigger(Trigger):
         return sample
 
 
+@dataclass(frozen=True)
 class PatchTrigger(Trigger):
     """A static square of events, repeated evenly over the duration of the sample.
 
-    Args:
+    Attributes:
         size: Side of the square in pixels.
         location: (x, y) of the top-left corner of the square.
         polarity: Polarity of the trigger events, 0 or 1.
         events_per_pixel: Number of events each pixel of the square emits.
     """
 
-    def __init__(
-        self, size: int, location: tuple[int, int], polarity: int, events_per_pixel: int
-    ) -> None:
-        self.size = size
-        self.location = location
-        self.polarity = polarity
-        self.events_per_pixel = events_per_pixel
+    size: int
+    location: tuple[int, int]
+    polarity: int
+    events_per_pixel: int
 
     def apply(self, sample: EventSample, rng: np.random.Generator) -> EventSample:
         """Add the patch events between the first and the last event of the sample."""

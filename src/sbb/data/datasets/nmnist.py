@@ -73,7 +73,9 @@ class NMNIST(EventDataset):
         self.root.mkdir(parents=True, exist_ok=True)
         partial = archive.with_suffix(".part")
         try:
-            with urllib.request.urlopen(url) as response, partial.open("wb") as f:
+            # Mendeley Data answers 403 to the default Python-urllib User-Agent.
+            request = urllib.request.Request(url, headers={"User-Agent": "sbb"})
+            with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as f:
                 shutil.copyfileobj(response, f)
         except OSError as error:
             raise SbbError(

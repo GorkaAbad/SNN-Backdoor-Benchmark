@@ -16,9 +16,6 @@ dependencies = [
     "typer>=0.12",
 ]
 
-[project.optional-dependencies]
-cuda = ["cupy-cuda13x>=14.0"]  # matches the CUDA 13 build of torch
-
 [project.scripts]
 sbb = "sbb.cli:app"
 
