@@ -1,0 +1,6 @@
+name: no_defense
+version: 1.0.0
+title: No defense
+stage: post_training
+view:
+  resources: [model]

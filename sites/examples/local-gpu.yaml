@@ -1,0 +1,6 @@
+name: local-gpu
+runtime: none
+scheduler: none
+device: cuda
+cache_dir: ~/.cache/sbb
+max_parallel: 1

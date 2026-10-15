@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+dist/
+
+# Private site profiles (cluster names, accounts, paths). Never pushed.
+sites/private/
+CLAUDE.local.md
+runs/

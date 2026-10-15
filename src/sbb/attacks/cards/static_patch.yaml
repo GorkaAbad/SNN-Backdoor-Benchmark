@@ -1,0 +1,18 @@
+name: static_patch
+version: 1.0.0
+title: Static patch trigger (Sneaky Spikes)
+paper: "Abad et al., Sneaky Spikes, NDSS 2024"
+code_reference: null  # TODO([FILL]): official repository URL
+license_note: null  # TODO([FILL])
+kind: data_poisoning
+capabilities:
+  labels: dirty
+  trigger_domain: raw_events
+knowledge:
+  architecture: unknown
+  data: full
+  defense: oblivious
+hparams:
+  # TODO([FILL]): size, location and polarity from the paper, see the replication record.
+  default:
+    trigger: {size: 3, location: [0, 0], polarity: 1, events_per_pixel: 20}

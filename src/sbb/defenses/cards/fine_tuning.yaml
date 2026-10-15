@@ -1,0 +1,9 @@
+name: fine_tuning
+version: 1.0.0
+title: Fine-tuning on clean data
+stage: post_training
+view:
+  resources: [model, clean_subset]
+  clean_fraction: 0.05
+hparams:
+  default: {epochs: 5, batch_size: 32}

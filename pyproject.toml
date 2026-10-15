@@ -1,0 +1,83 @@
+[project]
+name = "sbb"
+version = "0.1.0"
+description = "A benchmark for backdoor attacks and defenses on spiking neural networks"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "numpy>=1.26",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "safetensors>=0.4",
+    "spikingjelly==0.0.0.0.14",
+    "torch>=2.4",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+cuda = ["cupy-cuda13x>=14.0"]  # matches the CUDA 13 build of torch
+
+[project.scripts]
+sbb = "sbb.cli:app"
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.1",
+    "mypy>=1.11",
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "types-pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "D"]
+ignore = ["D100", "D104", "D105", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+"src/sbb/cli.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["spikingjelly.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore:`torch.jit.script` is deprecated:FutureWarning"]
+markers = [
+    "slow: takes longer than 30 seconds",
+    "gpu: needs a CUDA device",
+]
+
+[tool.importlinter]
+root_package = "sbb"
+
+[[tool.importlinter.contracts]]
+name = "Layers of docs/PLAN.md section 4.1"
+type = "layers"
+layers = [
+    "sbb.cli",
+    "sbb.runner | sbb.results",
+    "sbb.attacks | sbb.defenses | sbb.metrics",
+    "sbb.core",
+    "sbb.data | sbb.models",
+    "sbb.utils",
+]

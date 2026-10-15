@@ -1,0 +1,25 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy src
+      - run: uv run lint-imports
+      - run: uv run pytest -q -m "not gpu"
+      - name: Smoke benchmark
+        timeout-minutes: 5
+        run: uv run sbb run benchmarks/smoke.yaml --site sites/examples/local-cpu.yaml --out ${{ runner.temp }}/results

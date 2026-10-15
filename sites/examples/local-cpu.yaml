@@ -1,0 +1,6 @@
+name: local-cpu
+runtime: none
+scheduler: none
+device: cpu
+cache_dir: ~/.cache/sbb
+max_parallel: 1

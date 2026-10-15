@@ -1,0 +1,10 @@
+# TODO([FILL]): maintainer handles, open decision D14 in docs/PLAN.md.
+/src/sbb/utils/   @GorkaAbad
+/src/sbb/data/    @GorkaAbad
+/src/sbb/models/  @GorkaAbad
+/src/sbb/core/    @GorkaAbad
+/src/sbb/runner/  @GorkaAbad
+/src/sbb/results/ @GorkaAbad
+/.github/         @GorkaAbad
+/benchmarks/      @GorkaAbad
+/tests/golden/    @GorkaAbad

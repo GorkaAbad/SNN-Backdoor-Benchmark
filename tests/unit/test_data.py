@@ -1,0 +1,110 @@
+import numpy as np
+import pytest
+import torch
+
+from sbb.data.datasets.synthetic import SyntheticEvents
+from sbb.data.module import DataModule
+from sbb.data.poison import Budget, PoisonSet
+from sbb.data.representations import FrameRepr, ReprSpec
+from sbb.data.sample import EVENT_DTYPE, EventSample, make_events
+from sbb.data.splits import Split, load_split, reserve_defender_pool
+from sbb.utils.errors import BudgetViolation, ReproducibilityError
+from sbb.utils.storage import ArtifactCache
+
+
+def test_synthetic_samples_are_sorted_and_deterministic(synthetic: SyntheticEvents) -> None:
+    a, b = synthetic[5], synthetic[5]
+    assert a.events.dtype == EVENT_DTYPE and np.all(np.diff(a.events["t"]) >= 0)
+    assert np.array_equal(a.events, b.events) and a.label == synthetic.labels()[5]
+
+
+@pytest.mark.parametrize("split_by", ["number", "time"])
+def test_frames_match_spikingjelly(synthetic: SyntheticEvents, split_by: str) -> None:
+    from spikingjelly.datasets import integrate_events_by_fixed_frames_number
+
+    ev = synthetic[3].events
+    ours = FrameRepr(ReprSpec(T=5, split_by=split_by)).encode(synthetic[3], (16, 16, 2))
+    theirs = integrate_events_by_fixed_frames_number(
+        {k: ev[k].astype(np.int64) for k in "txyp"}, split_by, 5, 16, 16
+    )
+    assert torch.equal(ours, torch.from_numpy(theirs).float())
+
+
+def test_frames_downsample_and_empty() -> None:
+    repr_ = FrameRepr(ReprSpec(T=2, downsample=2))
+    sample = EventSample(make_events([0, 15], [0, 15], [0, 1], [0, 1]), 0, 0)
+    x = repr_.encode(sample, (16, 16, 2))
+    assert x.shape == (2, 2, 8, 8) and x[0, 0, 0, 0] == 1 and x[1, 1, 7, 7] == 1
+    empty = EventSample(make_events([], [], [], []), 0, 0)
+    assert repr_.encode(empty, (16, 16, 2)).sum() == 0
+
+
+def test_split_hash_is_checked() -> None:
+    split = load_split("synthetic_v1")
+    with pytest.raises(ReproducibilityError):
+        Split(**{**split.model_dump(), "test": split.test[:-1]})
+
+
+def test_defender_pool_is_stratified_and_seeded(synthetic: SyntheticEvents) -> None:
+    labels, train = synthetic.labels(), list(range(480))
+    pool = reserve_defender_pool(labels, train, 0.05, seed=0)
+    assert np.array_equal(pool, reserve_defender_pool(labels, train, 0.05, seed=0))
+    assert np.bincount(labels[pool]).tolist() == [6, 6, 6, 6]
+
+
+def _poison(synthetic: SyntheticEvents, indices: list[int], labels: list[int]) -> PoisonSet:
+    return PoisonSet(np.array(indices), tuple(synthetic[i] for i in indices), np.array(labels))
+
+
+def test_poison_set_validation(synthetic: SyntheticEvents, pool: np.ndarray) -> None:
+    budget, labels = Budget(poison_rate=0.01), synthetic.labels()
+    free = [i for i in range(480) if i not in pool][:5]
+    ok = _poison(synthetic, free[:4], [0] * 4)
+    ok.validate(budget, 480, labels, "dirty", pool)
+    cases = {
+        "exceed the budget": _poison(synthetic, free, [0] * 5),
+        "defender pool": _poison(synthetic, [int(pool[0])], [0]),
+        "duplicate": _poison(synthetic, [free[0], free[0]], [0, 0]),
+    }
+    for message, poison in cases.items():
+        with pytest.raises(BudgetViolation, match=message):
+            poison.validate(budget, 480, labels, "dirty", pool)
+    with pytest.raises(BudgetViolation, match="clean-label"):
+        ok.validate(budget, 480, labels, "clean", pool)
+
+
+def test_loaders(datamodule: DataModule, synthetic: SyntheticEvents) -> None:
+    x, y, index = next(iter(datamodule.test_loader(batch_size=8)))
+    assert x.shape == (8, 4, 2, 16, 16) and x.dtype == torch.float32
+    assert y.tolist() == synthetic.labels()[index.numpy()].tolist()
+
+    blank = EventSample(make_events([], [], [], []), 3, 7)
+    overlay = PoisonSet(np.array([7]), (blank,), np.array([0]))
+    batches = list(datamodule.train_loader(overlay, batch_size=480, shuffle=False))
+    x, y, index = batches[0]
+    pos = index.tolist().index(7)
+    assert y[pos] == 0 and x[pos].sum() == 0 and len(index) == 480
+
+    def flip(sample: EventSample, rng: np.random.Generator) -> EventSample:
+        return EventSample(sample.events[:0], sample.label, sample.index)
+
+    x, y, _ = next(iter(datamodule.triggered_loader(flip, target=0, batch_size=200)))
+    assert len(y) == 90 and (y != 0).all() and x.sum() == 0
+
+    _, _, index = next(iter(datamodule.clean_subset_loader(0.05, batch_size=100)))
+    assert set(index.tolist()) == set(datamodule.defender_pool.tolist())
+
+
+def test_frame_cache_is_reused(
+    datamodule: DataModule, synthetic: SyntheticEvents, cache: ArtifactCache
+) -> None:
+    again = DataModule(
+        synthetic,
+        datamodule.split,
+        datamodule.representation,
+        cache,
+        datamodule.defender_pool,
+        seed=0,
+    )
+    assert torch.equal(again.cached_frames(0), datamodule.encode(synthetic[0]))
+    assert len(list(cache.local.root.iterdir())) == 1

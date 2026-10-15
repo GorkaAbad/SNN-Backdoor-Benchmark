@@ -1,0 +1,18 @@
+# Toy benchmark on N-MNIST, v0. Runs on a laptop CPU, see docs/runtime.md.
+benchmark: sbb
+version: toy-0.1.0
+scenarios:
+  nmnist_tiny:
+    name: nmnist_tiny
+    data: {name: nmnist, split: nmnist_official_v1}
+    repr: {kind: frames, T: 10, split_by: number, downsample: 1}
+    arch: {name: tiny_lif_cnn, T: 10, neuron: {model: lif, tau: 2.0, v_threshold: 1.0}}
+    train: {epochs: 10, batch_size: 64, optimizer: adam, lr: 0.001, schedule: cosine}
+    budget: {poison_rate: 0.1, target: 0, defender_clean_fraction: 0.05, delta_pp: 3.0}
+tracks:
+  lite: {scenarios: [nmnist_tiny], seeds: [0]}
+battery:
+  attacks: [no_attack, static_patch]
+  defenses: [no_defense, fine_tuning]
+  dev: [static_patch]
+tolerance: {lite_pp: 1.0, full_pp: 2.0, full_sigma: 2.0}

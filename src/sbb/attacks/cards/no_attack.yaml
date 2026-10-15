@@ -1,0 +1,7 @@
+name: no_attack
+version: 1.0.0
+title: No attack (clean reference and natural ASR)
+kind: data_poisoning
+capabilities:
+  labels: clean
+knowledge: {}
