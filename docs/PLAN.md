@@ -1325,7 +1325,7 @@ hfjobs: {flavor: l4x1, namespace: "<hf-org>", timeout: 6h}
  "train": [0, 1, 2], "test": [9, 19, 29], "sha256": "..."}
 ```
 
-CIFAR10-DVS has no official split: use a class-stratified 9:1 split drawn once with a fixed seed. N-MNIST and DVS128 Gesture use their official splits, still materialized as files.
+CIFAR10-DVS has no official split: use SpikingJelly's ordered class-stratified 9:1 split, the one every ported paper uses (`split_to_train_test_set(0.9)`: in SpikingJelly's index order, the first 900 recordings of each class train and the last 100 test). N-MNIST and DVS128 Gesture use their official splits, still materialized as files. v1 change: the ordered split replaces a seeded random split, so benchmark and replication runs use the same split, and can share the frame cache and the clean models when their representation, architecture and training also match.
 
 ### 7.8 Verification record
 
@@ -1597,10 +1597,12 @@ Definition of done:
 |---|---|---|---|---|---|
 | Synthetic | `SyntheticEvents` | (16, 16, 2) | 4 | generated from a seed | tests and smoke runs only, no download |
 | N-MNIST | `NMNIST` | (34, 34, 2) | 10 | official train and test | lite track |
-| DVS128 Gesture | `DVSGesture` | (128, 128, 2) | 11 | official train and test (by subject) | may need a manual download |
-| CIFAR10-DVS | `CIFAR10DVS` | (128, 128, 2) | 10 | class-stratified 9:1, fixed seed | no official split |
+| DVS128 Gesture | `DVSGesture` | (128, 128, 2) | 11 | official train and test (by subject) | downloaded from IBM Box or a Dropbox mirror, manual fallback |
+| CIFAR10-DVS | `CIFAR10DVS` | (128, 128, 2) | 10 | SpikingJelly's ordered 9:1 | no official split |
 
-Adapters wrap the SpikingJelly dataset classes and read raw events. If a dataset needs a manual download, `prepare()` stops with clear instructions. Dataset licenses decide whether a mirror on the Hub is allowed **[FILL]**.
+Adapters read raw events and reproduce SpikingJelly's dataset conventions exactly, because every ported paper loads its data through SpikingJelly: the index order, the labels and, for CIFAR10-DVS, its coordinate convention. If a dataset needs a manual download, `prepare()` stops with clear instructions. Dataset licenses decide whether a mirror on the Hub is allowed **[FILL]**. DVS128 Gesture and CIFAR10-DVS are CC BY 4.0.
+
+v1 change: adapters decode the raw files themselves instead of wrapping SpikingJelly's classes, and unit tests check them against SpikingJelly. SpikingJelly 0.0.0.0.14 cannot read CIFAR10-DVS with NumPy 2.3 or later (it calls `np.fromstring`), its converters drop failed recordings silently, and its frame loader opens files with `allow_pickle=True`. Two consequences of following SpikingJelly: DVS128 Gesture labels follow its folder order: CSV classes 1 and 2 are labels 0 and 1, CSV class 11 (other gestures) is label 2, and CSV classes 3 to 10 are labels 3 to 10 (the adapter docstring has the table), and CIFAR10-DVS coordinates are jAER's transposed and flipped. Shared download, checksum and unpacking code lives in `sbb.data.datasets.common`.
 
 | Architecture | Use | Source |
 |---|---|---|

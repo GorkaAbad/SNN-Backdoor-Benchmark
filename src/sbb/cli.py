@@ -1,6 +1,7 @@
 """Command line interface. The only module that prints."""
 
 import logging
+import signal
 import warnings
 from pathlib import Path
 from typing import Annotated
@@ -38,13 +39,20 @@ DefenseFilter = Annotated[str | None, typer.Option("--defense", help="Only this 
 
 @app.callback()
 def main(verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False) -> None:
-    """Configure logging."""
+    """Configure logging, and turn SIGTERM into a normal exit."""
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(message)s",
         handlers=[RichHandler(console=console, show_path=False)],
         force=True,
     )
+    # Slurm sends SIGTERM on scancel and at the time limit. Exiting through SystemExit lets the
+    # with blocks remove their staging directories, which can hold gigabytes.
+    signal.signal(signal.SIGTERM, _exit_on_signal)
+
+
+def _exit_on_signal(signum: int, frame: object) -> None:
+    raise SystemExit(128 + signum)
 
 
 def _site(path: Path | None) -> SiteProfile:

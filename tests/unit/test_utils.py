@@ -60,3 +60,15 @@ def test_failed_build_leaves_nothing(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError):
         cache.get_or_build("k", build)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_put_keeps_the_first_writer(tmp_path: Path) -> None:
+    store = LocalStore(tmp_path / "store")
+    for content in ("first", "second"):
+        staged = tmp_path / f"staged-{content}"
+        staged.mkdir()
+        (staged / "file").write_text(content)
+        store.put("key", staged)  # a second writer of the same key must not fail
+        assert not staged.exists()
+    path = store.get("key")
+    assert path is not None and (path / "file").read_text() == "first"

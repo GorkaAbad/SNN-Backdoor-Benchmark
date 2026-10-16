@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 import numpy as np
 import pytest
 import torch
@@ -119,3 +121,24 @@ def test_clean_subset_fits_a_pool_rounded_down_per_class(
     dm = DataModule(synthetic, split, FrameRepr(ReprSpec(T=4)), cache, pool, seed=0)
     _, _, index = next(iter(dm.clean_subset_loader(0.07, batch_size=100)))
     assert sorted(index.tolist()) == pool.tolist()
+
+
+def _ordered_9to1(part: range) -> list[int]:
+    return [1000 * c + j for c in range(10) for j in part]
+
+
+@pytest.mark.parametrize(
+    ("name", "train", "test"),
+    [
+        ("synthetic_v1", range(480), range(480, 600)),
+        ("nmnist_official_v1", range(60_000), range(60_000, 70_000)),
+        ("dvsgesture_official_v1", range(1176), range(1176, 1464)),
+        # SpikingJelly's split_to_train_test_set(0.9): the first 900 files of each class train.
+        ("cifar10dvs_9to1_v1", _ordered_9to1(range(900)), _ordered_9to1(range(900, 1000))),
+    ],
+)
+def test_split_files_follow_their_recipes(
+    name: str, train: Sequence[int], test: Sequence[int]
+) -> None:
+    split = load_split(name)
+    assert split.train == tuple(train) and split.test == tuple(test)

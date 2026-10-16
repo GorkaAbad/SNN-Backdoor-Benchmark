@@ -5,7 +5,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from sbb.data.datasets import nmnist
 from sbb.data.datasets.nmnist import NMNIST, read_atis_bin
 from sbb.utils.errors import SbbError
 
@@ -45,12 +44,10 @@ def _zip(root: Path, part: str) -> str:
 
 def test_prepare_checks_md5_and_extracts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     md5s = {part: _zip(tmp_path, part) for part in ("Train", "Test")}
-    monkeypatch.setattr(
-        nmnist, "_ARCHIVES", {"Train": ("unused", "0" * 32), "Test": ("unused", md5s["Test"])}
-    )
+    monkeypatch.setattr(NMNIST, "_archives", {"Train": ((), "0" * 32), "Test": ((), md5s["Test"])})
     with pytest.raises(SbbError, match="wrong md5"):
         NMNIST(tmp_path).prepare()
-    monkeypatch.setattr(nmnist, "_ARCHIVES", {p: ("unused", m) for p, m in md5s.items()})
+    monkeypatch.setattr(NMNIST, "_archives", {p: ((), m) for p, m in md5s.items()})
     dataset = NMNIST(tmp_path)
     dataset.prepare()
     assert len(dataset) == 2 and dataset[0].label == 4 and not list(tmp_path.glob("tmp*"))
