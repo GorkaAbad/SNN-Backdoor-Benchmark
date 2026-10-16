@@ -20,12 +20,16 @@ T = TypeVar("T")
 
 
 class ScenarioInfo(BaseModel, frozen=True):
-    """Public description of a scenario, always available to every plugin."""
+    """Public description of a scenario, always available to every plugin.
+
+    input_shape is the (P, H, W) of one frame after the representation, the input of the model.
+    """
 
     dataset: str
     sensor_size: tuple[int, int, int]
     num_classes: int
     T: int
+    input_shape: tuple[int, int, int]
 
 
 class TrainSetView:
@@ -74,7 +78,11 @@ def _require(value: T | None, resource: str, owner: str) -> T:
 
 
 class AttackerView:
-    """What an attack may use, derived from its card.
+    """What an attack may use, derived from its card (docs/PLAN.md section 6.5).
+
+    Every attacker sees the clean train split and can build loaders over its own poison set. Model
+    attacks (training_control, supply_chain) also get the scenario architecture and a Trainer,
+    and supply_chain attacks a copy of the clean model, which stands for the zoo model.
 
     Attributes:
         scenario: Public scenario description.
@@ -87,29 +95,50 @@ class AttackerView:
         card: AttackCard,
         scenario: ScenarioInfo,
         seed: int,
-        train_set: TrainSetView,
+        data: DataModule,
         arch: ArchSpec,
+        trainer: Trainer,
+        clean_model: SNNModel,
     ) -> None:
         if card.knowledge.data == "partial":
-            raise NotImplementedError("partial data knowledge lands in v1")
+            raise NotImplementedError("partial data knowledge is not supported yet")
         self.scenario = scenario
         self.seed = seed
         self.rng = np.random.default_rng(seed)
         self._owner = card.name
-        has_data = card.kind in (ScenarioKind.DATA_POISONING, ScenarioKind.TRAINING_CONTROL)
+        self._data = data
+        model_attack = card.kind in (ScenarioKind.TRAINING_CONTROL, ScenarioKind.SUPPLY_CHAIN)
         knows_arch = card.knowledge.architecture == "known"
-        self._train_set = train_set if has_data else None
-        self._arch = arch if knows_arch or card.kind != ScenarioKind.DATA_POISONING else None
+        self._arch = arch if knows_arch or model_attack else None
+        self._trainer = trainer if model_attack else None
+        supply_chain = card.kind == ScenarioKind.SUPPLY_CHAIN
+        self._clean_model = copy.deepcopy(clean_model) if supply_chain else None
 
     @property
     def train_set(self) -> TrainSetView:
         """The clean train split."""
-        return _require(self._train_set, "train_set", self._owner)
+        return TrainSetView(self._data, None)
 
     @property
     def arch(self) -> ArchSpec:
         """The scenario architecture."""
         return _require(self._arch, "arch", self._owner)
+
+    @property
+    def trainer(self) -> Trainer:
+        """A Trainer with the scenario recipe."""
+        return _require(self._trainer, "trainer", self._owner)
+
+    @property
+    def clean_model(self) -> SNNModel:
+        """A copy of the clean model trained on the scenario."""
+        return _require(self._clean_model, "clean_model", self._owner)
+
+    def poisoned_loader(
+        self, poison: PoisonSet, batch_size: int, shuffle: bool = True
+    ) -> DataLoader[Any]:
+        """Loader over the train split with the attacker's own poison set applied."""
+        return self._data.train_loader(poison, batch_size, shuffle=shuffle)
 
 
 class DefenderView:

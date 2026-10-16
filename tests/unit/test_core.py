@@ -9,12 +9,14 @@ from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetV
 from sbb.core.trainer import Loss, Trainer, TrainerHooks, TrainSpec, TrainState, per_sample_loss
 from sbb.data.module import DataModule
 from sbb.data.poison import PoisonSet
-from sbb.models.snn import build_model
+from sbb.models.snn import SNNModel, build_model
 from sbb.models.spec import ArchSpec
 from sbb.utils.errors import SbbError, ThreatModelViolation
 from tests.cards import attack_card, defense_card
 
-INFO = ScenarioInfo(dataset="synthetic", sensor_size=(16, 16, 2), num_classes=4, T=4)
+INFO = ScenarioInfo(
+    dataset="synthetic", sensor_size=(16, 16, 2), num_classes=4, T=4, input_shape=(2, 16, 16)
+)
 ARCH = ArchSpec(name="tiny_lif_cnn", T=4)
 CPU = torch.device("cpu")
 
@@ -40,14 +42,57 @@ def test_defender_gets_a_copy_of_the_model(datamodule: DataModule) -> None:
     assert view.model is view.model and len(view.clean_loader(8).dataset) == 24  # type: ignore[arg-type]
 
 
+def _attacker_view(datamodule: DataModule, clean: SNNModel, **card: object) -> AttackerView:
+    trainer = Trainer(TrainSpec(epochs=1, batch_size=8), CPU)
+    return AttackerView(attack_card(**card), INFO, 0, datamodule, ARCH, trainer, clean)
+
+
 def test_attacker_without_architecture_knowledge_cannot_read_it(datamodule: DataModule) -> None:
-    train = TrainSetView(datamodule, None)
-    view = AttackerView(attack_card(), INFO, 0, train, ARCH)
+    clean = build_model(ARCH, (2, 16, 16), 4)
+    view = _attacker_view(datamodule, clean)
     assert len(view.train_set) == 480
     with pytest.raises(ThreatModelViolation, match="arch"):
         view.arch  # noqa: B018
-    known = attack_card(knowledge={"architecture": "known"})
-    assert AttackerView(known, INFO, 0, train, ARCH).arch == ARCH
+    assert _attacker_view(datamodule, clean, knowledge={"architecture": "known"}).arch == ARCH
+
+
+@pytest.mark.parametrize(
+    ("kind", "readable", "hidden"),
+    [
+        ("data_poisoning", [], ["trainer", "clean_model"]),
+        ("training_control", ["arch", "trainer"], ["clean_model"]),
+        ("supply_chain", ["arch", "trainer", "clean_model"], []),
+    ],
+)
+def test_attacker_view_follows_the_scenario_kind(
+    datamodule: DataModule, kind: str, readable: list[str], hidden: list[str]
+) -> None:
+    clean = build_model(ARCH, (2, 16, 16), 4)
+    labels = {"labels": "dirty"} if kind == "data_poisoning" else {}
+    view = _attacker_view(datamodule, clean, kind=kind, capabilities=labels)
+    assert len(view.train_set) == 480  # every attacker knows the clean train split
+    for name in readable:
+        assert getattr(view, name) is not None
+    for name in hidden:
+        with pytest.raises(ThreatModelViolation, match=name):
+            getattr(view, name)
+    if kind == "supply_chain":  # a deep copy: changing it does not change the clean model
+        before = [p.clone() for p in clean.parameters()]
+        copy = view.clean_model
+        assert copy is not clean
+        assert all(torch.equal(a, b) for a, b in zip(copy.parameters(), before, strict=True))
+        with torch.no_grad():
+            next(copy.parameters()).add_(1.0)
+        assert all(torch.equal(a, b) for a, b in zip(clean.parameters(), before, strict=True))
+
+
+def test_attacker_trains_on_its_own_poison_set(datamodule: DataModule) -> None:
+    view = _attacker_view(
+        datamodule, build_model(ARCH, (2, 16, 16), 4), kind="training_control", capabilities={}
+    )
+    overlay = PoisonSet(np.array([1]), (datamodule.dataset[1],), np.array([3]))
+    _, y, index = next(iter(view.poisoned_loader(overlay, batch_size=480, shuffle=False)))
+    assert y[index.tolist().index(1)] == 3
 
 
 def test_train_set_view_shows_the_poisoned_split(datamodule: DataModule) -> None:

@@ -68,7 +68,7 @@ Scenario kinds:
 
 - `data_poisoning`: modifies up to `poison_rate x |train|` samples outside the defender pool. Labels may change (dirty-label) or not (clean-label). The victim trains.
 - `training_control`: controls training (loss, schedule, neuron hyperparameters) for the scenario architecture and returns weights.
-- `supply_chain`: receives a clean trained model from the zoo, modifies weights or neuron parameters, returns weights.
+- `supply_chain`: receives a clean trained model from the zoo, modifies its weights, returns weights. Neuron parameters can change only where they are weights, such as the trainable time constant of PLIF neurons (v1 clarification: the victim is stored as a state dict and rebuilt from the scenario's `ArchSpec`).
 - `federated` (v3): controls k of n clients.
 
 Other capability fields:
@@ -843,13 +843,14 @@ class ArtifactCache:
 ```python
 class AttackerView:
     """Proxy built from the attack card and the scenario. Undeclared access raises ThreatModelViolation."""
-    scenario: ScenarioInfo                 # always: dataset name, sensor size, classes, T
+    scenario: ScenarioInfo                 # always: dataset name, sensor size, classes, T, input shape
     seed: int                              # always, for rng_for
     rng: np.random.Generator               # always
-    train_set: TrainSetView                # data_poisoning, training_control. Subset if knowledge.data == "partial"
+    train_set: TrainSetView                # always, the clean split. Subset if knowledge.data == "partial"
     arch: ArchSpec                         # only if knowledge.architecture == "known" or kind needs it
     trainer: Trainer                       # training_control, supply_chain
     clean_model: SNNModel                  # supply_chain (a copy of the zoo model)
+    def poisoned_loader(self, poison: PoisonSet, batch_size: int, shuffle: bool = True) -> DataLoader: ...  # v1
 
 class Attack(ABC):
     card: ClassVar[AttackCard]
@@ -883,6 +884,8 @@ class ModelAttack(Attack):
     @abstractmethod
     def make_model(self, view: AttackerView) -> SNNModel: ...
 ```
+
+v1 change: every attacker sees the clean train split, because a supply-chain attacker also needs data, for example to fine-tune the zoo model on poisoned samples, and `poisoned_loader` gives a loader over the attacker's own poison set for training. Model attacks always get the scenario architecture, because they must return it: the Game raises `ThreatModelViolation` when `make_model` returns a model whose `ArchSpec`, input shape or number of classes differ from the scenario's, whose state dict does not load strictly into a fresh model of that architecture, or whose `repr` differs from that fresh model with the returned weights (a neuron parameter changed in place, which a checkpoint would lose). The Game skips `make_model` when the victim is already cached, so a model attack's `trigger_test` may depend only on what `__init__` sets, and the attack contract test checks this. A model attack with a learned trigger (BadSNN) will store its trigger next to the victim, with the first such port. `ScenarioInfo` gains `input_shape`, the (P, H, W) of one frame after the representation, so an attacker can build the scenario network. Until the zoo of task 7 exists, the clean model of a supply-chain cell is the clean model of the local cache.
 
 A typical attack is configuration only:
 
@@ -1316,7 +1319,7 @@ hfjobs: {flavor: l4x1, namespace: "<hf-org>", timeout: 6h}
 - Artifact keys exclude the benchmark version and the track, so artifacts are reused across versions. `sbb_minor` is the package `major.minor`.
   - `clean_model_key = H(data, repr, arch, train, seed, sbb_minor)`
   - `poison_key = H(data, budget, attack, attack_version, attack hparams, seed, sbb_minor)`
-  - `model_key = H(poison_key, repr, arch, train, seed, sbb_minor)` for poisoning attacks, `H(attack, attack_version, attack hparams, data, arch, seed, sbb_minor)` for model attacks
+  - `model_key = H(poison_key, repr, arch, train, seed, sbb_minor)` for poisoning attacks, `H(clean_model_key, budget, attack, attack_version, attack hparams, seed, sbb_minor)` for model attacks (v1 change: the representation, the recipe and the budget, which holds the target, also determine the attacker's weights, and the clean model key covers the first two)
   - `defense_key = H(model_key, defense, defense_version, defense hparams, seed, sbb_minor)`
 - Patch releases must not change any number. Golden tests enforce this.
 
