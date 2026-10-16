@@ -85,6 +85,7 @@ def test_dataset_declares_its_metadata(name: str) -> None:
 
 @pytest.mark.parametrize("name", ARCHITECTURES.names())
 def test_architecture(name: str) -> None:
-    model = build_model(ArchSpec(name=name, T=4), (2, 16, 16), 4)
-    assert model(torch.rand(2, 4, 2, 16, 16)).shape == (2, 4)
+    # 32x32 is the smallest input every architecture accepts (dvsgesture_net pools five times).
+    model = build_model(ArchSpec(name=name, T=2), (2, 32, 32), 4)
+    assert model(torch.rand(2, 2, 2, 32, 32)).shape == (2, 4)
     assert len(list(model.named_neurons())) > 0

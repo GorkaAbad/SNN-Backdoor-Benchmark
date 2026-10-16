@@ -6,7 +6,7 @@ import torch
 
 from sbb.core import result
 from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetView
-from sbb.core.trainer import Trainer, TrainerHooks, TrainSpec, TrainState
+from sbb.core.trainer import Loss, Trainer, TrainerHooks, TrainSpec, TrainState, per_sample_loss
 from sbb.data.module import DataModule
 from sbb.data.poison import PoisonSet
 from sbb.models.snn import build_model
@@ -57,11 +57,27 @@ def test_train_set_view_shows_the_poisoned_split(datamodule: DataModule) -> None
     assert view.labels()[1] == 0 and view[1].label == 0 and view[2].label == 2
 
 
-def test_trainer_learns_synthetic(datamodule: DataModule) -> None:
+class _LossCheck(TrainerHooks):
+    """Checks that the Trainer computes the per-sample loss its TrainSpec names."""
+
+    def __init__(self, kind: Loss) -> None:
+        self.kind = kind
+        self.batches = 0
+
+    def loss(self, state: TrainState, logits: torch.Tensor, targets: torch.Tensor) -> None:
+        assert state.per_sample_loss is not None
+        assert torch.equal(state.per_sample_loss, per_sample_loss(self.kind, logits, targets))
+        self.batches += 1
+
+
+@pytest.mark.parametrize("loss", ["cross_entropy", "mse"])
+def test_trainer_learns_synthetic(datamodule: DataModule, loss: Loss) -> None:
     torch.manual_seed(0)
     model = build_model(ARCH, (2, 16, 16), 4)
-    trainer = Trainer(TrainSpec(epochs=2, batch_size=32, lr=1e-2), CPU)
-    trainer.fit(model, datamodule.train_loader(None, 32))
+    trainer = Trainer(TrainSpec(epochs=2, batch_size=32, lr=1e-2, loss=loss), CPU)
+    check = _LossCheck(loss)
+    trainer.fit(model, datamodule.train_loader(None, 32), hooks=[check])
+    assert check.batches == 30  # 2 epochs of 15 batches
     assert trainer.evaluate(model, datamodule.test_loader(64))["accuracy"] > 0.9
 
 
@@ -97,3 +113,16 @@ def test_provenance_keeps_the_versions_read_at_import(monkeypatch: pytest.Monkey
     assert provenance.git_commit != "changed"
     assert provenance.lockfile_sha256 != "changed"
     assert provenance.spikingjelly != "changed"
+
+
+def test_per_sample_losses() -> None:
+    output, targets = torch.rand(5, 4), torch.tensor([0, 3, 1, 1, 2])
+    mse = per_sample_loss("mse", output, targets)
+    # The papers' training loss is F.mse_loss(firing_rate, one_hot), the mean of these.
+    one_hot = torch.nn.functional.one_hot(targets, 4).float()
+    assert torch.allclose(mse.mean(), torch.nn.functional.mse_loss(output, one_hot))
+    assert mse.shape == (5,)
+    cross_entropy = per_sample_loss("cross_entropy", output, targets)
+    assert torch.allclose(
+        cross_entropy, torch.nn.functional.cross_entropy(output, targets, reduction="none")
+    )

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from sbb.core.trainer import per_sample_loss
 from sbb.models.checkpoint import load_checkpoint, save_checkpoint
 from sbb.models.snn import SNNModel, build_model
 from sbb.models.spec import ArchSpec, NeuronSpec
@@ -63,3 +64,68 @@ def test_checkpoint_round_trip(tmp_path: Path) -> None:
 def test_cupy_backend_is_rejected() -> None:
     with pytest.raises(ValueError, match="torch backend"):
         ArchSpec(name="tiny_lif_cnn", T=4, backend="cupy")
+
+
+@pytest.mark.parametrize(
+    ("name", "spikingjelly_class", "num_classes"),
+    [("dvsgesture_net", "DVSGestureNet", 11), ("cifar10dvs_net", "CIFAR10DVSNet", 10)],
+)
+def test_papers_networks_equal_spikingjelly(
+    name: str, spikingjelly_class: str, num_classes: int
+) -> None:
+    from spikingjelly.activation_based import functional, neuron, surrogate
+    from spikingjelly.activation_based.model import parametric_lif_net
+
+    # Built exactly as Sneaky Spikes, Flashy Backdoor and TMPBD build them (models.py, get_model).
+    theirs = getattr(parametric_lif_net, spikingjelly_class)(
+        spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True
+    )
+    functional.set_step_mode(theirs, "m")
+    ours = build_model(ArchSpec(name=name, T=2), (2, 128, 128), num_classes)
+    assert [type(m) for m in ours.net] == [type(m) for m in theirs.conv_fc]
+    weights = {k.removeprefix("conv_fc."): v for k, v in theirs.state_dict().items()}
+    ours.net.load_state_dict(weights)  # same parameter names and shapes, layer by layer
+    x = torch.rand(2, 2, 2, 128, 128) * 4  # [B, T, P, H, W]
+
+    # Eval mode. The untrained output layer is silent, so compare every layer, not the output only.
+    outputs: dict[str, list[torch.Tensor]] = {"ours": [], "theirs": []}
+    hooks = [
+        module.register_forward_hook(lambda m, i, o, key=key: outputs[key].append(o))
+        for key, net in (("ours", ours.net), ("theirs", theirs.conv_fc))
+        for module in net
+    ]
+    ours.eval()
+    theirs.eval()
+    with torch.no_grad():
+        expected = theirs(x.transpose(0, 1)).mean(0)  # the papers' firing-rate readout
+        assert torch.equal(ours(x), expected)
+    for hook in hooks:
+        hook.remove()
+    assert len(outputs["ours"]) == len(outputs["theirs"]) == len(theirs.conv_fc)
+    for a, b in zip(outputs["ours"], outputs["theirs"], strict=True):
+        assert torch.equal(a, b)
+    first_spikes = next(
+        o
+        for m, o in zip(theirs.conv_fc, outputs["theirs"], strict=True)
+        if isinstance(m, neuron.LIFNode)
+    )
+    assert first_spikes.sum() > 0  # in eval mode only the first block spikes
+
+    # Train mode, one MSE step as the papers take it. The same seed gives the same dropout masks,
+    # so outputs, every gradient and the batch-norm buffers must match. This also covers dropout,
+    # batch-norm momentum, the surrogate and detach_reset, which an eval forward cannot see.
+    ours.train()
+    theirs.train()
+    targets = torch.arange(2) % num_classes
+    functional.reset_net(theirs)
+    torch.manual_seed(0)
+    theirs_out = theirs(x.transpose(0, 1)).mean(0)
+    per_sample_loss("mse", theirs_out, targets).mean().backward()
+    torch.manual_seed(0)
+    ours_out = ours(x)
+    per_sample_loss("mse", ours_out, targets).mean().backward()
+    assert torch.equal(ours_out, theirs_out)
+    for a, b in zip(ours.net.parameters(), theirs.parameters(), strict=True):
+        assert a.grad is not None and b.grad is not None and torch.equal(a.grad, b.grad)
+    for a, b in zip(ours.net.buffers(), theirs.buffers(), strict=True):
+        assert torch.equal(a, b)

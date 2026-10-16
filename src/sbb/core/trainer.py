@@ -18,11 +18,27 @@ log = logging.getLogger(__name__)
 Loader = DataLoader[Any]
 
 
+Loss = Literal["cross_entropy", "mse"]
+
+
+def per_sample_loss(kind: Loss, output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    """Return the loss of each sample [B] for the model output [B, K] and class targets [B].
+
+    "mse" compares the output with one-hot targets, averaged over classes. Its batch mean is the
+    papers' F.mse_loss(firing_rate, one_hot).
+    """
+    if kind == "mse":
+        one_hot = F.one_hot(targets, output.shape[1]).to(output.dtype)
+        return ((output - one_hot) ** 2).mean(1)
+    return F.cross_entropy(output, targets, reduction="none")
+
+
 class TrainSpec(BaseModel, frozen=True):
     """Training recipe of a scenario. SGD uses momentum 0.9."""
 
     epochs: int
     batch_size: int
+    loss: Loss = "cross_entropy"
     optimizer: Literal["adam", "sgd"] = "adam"
     lr: float = 1e-3
     weight_decay: float = 0.0
@@ -52,7 +68,7 @@ class TrainerHooks:
     def loss(
         self, state: TrainState, logits: torch.Tensor, targets: torch.Tensor
     ) -> torch.Tensor | None:
-        """Return a loss to replace the mean cross-entropy, or None."""
+        """Return a loss to replace the mean of state.per_sample_loss, or None."""
         return None
 
     def on_batch_end(self, state: TrainState) -> None:
@@ -109,7 +125,7 @@ class Trainer:
                 x, y = x.to(self.device), y.to(self.device)
                 logits = model(x)
                 state.batch_indices = index
-                state.per_sample_loss = F.cross_entropy(logits, y, reduction="none")
+                state.per_sample_loss = per_sample_loss(self.spec.loss, logits, y)
                 loss = self._loss(hooks, state, logits, y)
                 optimizer.zero_grad()
                 loss.backward()  # type: ignore[no-untyped-call]

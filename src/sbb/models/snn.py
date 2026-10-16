@@ -38,8 +38,9 @@ class SNNModel(nn.Module):
     """Uniform surface over every architecture.
 
     forward takes x [B, T, P, H, W], resets neuron states, runs the wrapped network in
-    multi-step mode on [T, B, P, H, W], and returns logits [B, K] as the mean over T of
-    the network's non-spiking linear readout.
+    multi-step mode on [T, B, P, H, W], and returns the mean over T of its output [B, K]. That
+    output is a non-spiking linear readout (logits) or, in the papers' networks, voted spikes, so
+    the mean is a firing rate per class.
 
     Args:
         spec: The architecture spec the model was built from.
@@ -63,7 +64,7 @@ class SNNModel(nn.Module):
         return self._spec
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Return logits [B, K] for x [B, T, P, H, W]."""
+        """Return the mean over T of the network output [B, K] for x [B, T, P, H, W]."""
         self.reset()
         out: torch.Tensor = self.net(x.transpose(0, 1))
         return out.mean(0)

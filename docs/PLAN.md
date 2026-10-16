@@ -789,7 +789,7 @@ class ArchSpec(BaseModel, frozen=True):
 class SNNModel(nn.Module):           # v0: one concrete wrapper around a net mapping [T, B, P, H, W] to [T, B, K]
     """Uniform surface over every architecture.
     forward takes x [B, T, P, H, W], resets neuron states first, runs in multi-step mode,
-    and returns logits [B, K] as the mean over T of a non-spiking linear readout."""
+    and returns logits [B, K] as the mean over T of a non-spiking linear readout."""   # v1: or of voted spikes, see 13.6
     def forward(self, x: torch.Tensor) -> torch.Tensor: ...
     def reset(self) -> None: ...
     def named_neurons(self) -> Iterator[tuple[str, nn.Module]]: ...
@@ -998,6 +998,8 @@ class Trainer:
 ```
 
 v0 change: the Trainer takes no seed. The Game seeds before building each cached artifact, so a stage gives the same weights whether the stages before it were trained or loaded from the cache. Loaders are seeded by the `DataModule`. `SGD` uses momentum 0.9. `amp` raises `NotImplementedError` until it is needed.
+
+v1 change: `TrainSpec.loss` is `cross_entropy` (default) or `mse`. `mse` compares the model output with one-hot targets, which is how the ported papers train their networks on firing rates. `SNNModel` returns the mean over T of the network output, which for the papers' networks is a firing rate per class, not logits of a linear readout.
 
 ### 6.8 Scenario, cell, results and game (`sbb.core`)
 
@@ -1488,7 +1490,7 @@ Order: group A first (methods the maintainers authored, where fidelity is easies
 | Area | v0 toy | v1 public alpha | v2 verified | v3 extensions |
 |---|---|---|---|---|
 | Datasets | SyntheticEvents, N-MNIST | + DVS128 Gesture, CIFAR10-DVS | same | + static images with encoders |
-| Architectures | tiny_lif_cnn | + spiking_vgg11, sew_resnet18 | same | as needed |
+| Architectures | tiny_lif_cnn | + dvsgesture_net, cifar10dvs_net (the papers' networks) | same | as needed |
 | Scenario kinds | data_poisoning | + training_control, supply_chain | same | + federated, ANN-to-SNN conversion |
 | Defense stages | post_training | all five | same | + raw-event input defenses |
 | Methods | static_patch, fine_tuning, baselines | group A ports, group B during v1.x | group B finished, adaptive track | community |
@@ -1536,7 +1538,7 @@ Goal: external contributors can add methods without touching the core. Lite resu
 Tasks, in order:
 
 1. DVSGesture and CIFAR10DVS adapters with split files and manual-download handling (13.6).
-2. spiking_vgg11 and sew_resnet18 wrappers **[DECIDE]**.
+2. The standard full-track networks `dvsgesture_net` and `cifar10dvs_net`, the networks of the ported papers (v1 change, see 13.6).
 3. Scenario kinds `training_control` and `supply_chain`: ModelAttack, AttackerView for both kinds, clean models taken from the zoo.
 4. All defense stages in the Game: DataDefense (retrain on kept indices), TrainingDefense (retrain with hooks), InputDefense (rejection and threshold), DetectionDefense (model AUROC).
 5. Shared parts: patch, moving, smart, flash and temporal triggers, random and target-class selectors, label policies, `sbb.defenses.utils` (spike-rate and membrane helpers, neuron masks, event superposition).
@@ -1607,10 +1609,12 @@ v1 change: adapters decode the raw files themselves instead of wrapping SpikingJ
 | Architecture | Use | Source |
 |---|---|---|
 | `tiny_lif_cnn` | lite track, tests | in-house: two conv blocks (16 and 32 channels) with LIF neurons and pooling, flatten size computed from the input, linear readout |
-| `spiking_vgg11` | full track | SpikingJelly builder, first layer adapted to 2 input channels **[DECIDE]** |
-| `sew_resnet18` | full track | SpikingJelly builder, first layer adapted to 2 input channels **[DECIDE]** |
+| `dvsgesture_net` | full track, DVS128 Gesture | SpikingJelly's `parametric_lif_net.DVSGestureNet`: five conv blocks of 128 channels and a voting readout |
+| `cifar10dvs_net` | full track, CIFAR10-DVS | SpikingJelly's `parametric_lif_net.CIFAR10DVSNet`: four conv blocks of 128 channels and a voting readout |
 
-Full-track defaults: DVS128 Gesture with T = 16, CIFAR10-DVS with T = 10, spatial downsampling 2 for both **[DECIDE]**, aligned with the replication targets where possible.
+Full-track defaults: T = 16 at 128x128, no downsampling, for both datasets. This is the setting of the ported papers (Sneaky Spikes, Flashy Backdoor, TMPBD), which train these two networks with LIF neurons, the ATan surrogate and `detach_reset=True`, and an MSE loss between the firing rate and the one-hot label.
+
+v1 change (user decision of 2026-10-16): the benchmark runs every attack and defense on a small fixed set of standard networks, `tiny_lif_cnn` for the lite track and the papers' two networks for the full track, so results compare with the literature. Replication records use the papers' networks exactly. `sbb.models.architectures.voting_cnn` rebuilds SpikingJelly's layout layer for layer, and only the first conv's input channels, the flatten layer and the output layer follow the input and the number of classes. A unit test checks it against SpikingJelly's classes at the papers' shapes: the output of every layer in eval mode, and the outputs, every gradient and the batch-norm buffers after one MSE training step. `spiking_vgg11` and `sew_resnet18` are dropped, and are added only if a replication target needs them.
 
 ## 14. Tooling, CLI and CI/CD
 
@@ -1683,8 +1687,8 @@ Limits to design for: a job on a GitHub-hosted runner runs at most 6 hours, the 
 | D3 | License | MIT |
 | D4 | SNN framework | SpikingJelly on PyTorch, versions pinned in v0 |
 | D5 | Python version | 3.11 |
-| D6 | Full-track architectures | `spiking_vgg11`, `sew_resnet18` |
-| D7 | Full-track T and downsampling | DVS128 Gesture T = 16, CIFAR10-DVS T = 10, downsampling 2 |
+| D6 | Full-track architectures | `dvsgesture_net`, `cifar10dvs_net`, the papers' networks (decided 2026-10-16) |
+| D7 | Full-track T and downsampling | T = 16 at 128x128, no downsampling, the papers' setting (decided 2026-10-16) |
 | D8 | Poison rates | 10% lite, 5% full |
 | D9 | Validity delta | 3 percentage points |
 | D10 | Tolerances | lite 1.0 pp, full max(2.0 pp, 2 x seed std) |
