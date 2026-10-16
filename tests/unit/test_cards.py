@@ -53,3 +53,16 @@ def test_hparams_override_is_deep_merged() -> None:
 def test_invalid_attack_cards_are_rejected(bad: dict[str, object]) -> None:
     with pytest.raises(pydantic.ValidationError):
         attack_card(**bad)
+
+
+@pytest.mark.parametrize(
+    ("stage", "resources"),
+    [
+        ("pre_training", ["model"]),  # sanitize needs the train set
+        ("in_training", ["train_set"]),  # hooks need the training loop too
+        ("in_training", ["training_loop"]),
+    ],
+)
+def test_defense_cards_declare_what_their_stage_needs(stage: str, resources: list[str]) -> None:
+    with pytest.raises(pydantic.ValidationError, match="must declare"):
+        defense_card(stage=stage, view={"resources": resources})

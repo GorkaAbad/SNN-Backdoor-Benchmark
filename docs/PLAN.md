@@ -951,6 +951,8 @@ class DetectionDefense(Defense):
     def verdict(self, view: DefenderView) -> float: ...             # higher means more likely backdoored
 ```
 
+v1 notes on how the Game plays each stage. The card's stage decides, and the class must subclass the matching base. A card must declare the resources its stage needs (the "Required resources" column of 3.3), which the card validation enforces, so a pre-training or in-training defense is N/A against model attacks. A pre-training defense returns unique positions of the train set (checked), and the victim is retrained on the poisoned split restricted to them. An in-training defense's hooks are passed to a fresh training run. Both retrained models and post-training repairs are cached under the defense key, so `sanitize`, `hooks` and `repair` run only on a cache miss. An input defense is fitted in every cell (its fitted state is not cached), and it rejects an input when its score is above `threshold`. A detection defense's verdict is cached under the defense key as `verdict.json` and reported in the cell's metrics as `verdict`. Input and detection defenses leave the model unchanged, so their cells have no `defended_model` artifact.
+
 `no_defense` is a `ModelDefense` with view `{model}` that returns the model unchanged. A typical defense:
 
 ```python
@@ -1055,6 +1057,7 @@ class CellResult(BaseModel):
 
 class Metric(ABC):
     name: ClassVar[str]
+    stages: ClassVar[frozenset[Stage]] = frozenset(Stage)   # v1: defense stages whose cells report it
     @abstractmethod
     def compute(self, ctx: "EvalContext") -> float: ...
 
@@ -1064,7 +1067,7 @@ class Game:
     def run(self, cell: Cell) -> CellResult: ...   # template method following section 4.7
 ```
 
-v0 notes. `data_root` holds one directory per dataset. `site` and `executor` go into the provenance. `EvalContext` holds the predictions and true labels on the clean and triggered test sets and the target. A poisoning attack with an empty PoisonSet (`no_attack`) stores the clean weights under its own `model_key`, because its victim run would train exactly the same weights. Keys still follow 7.6. `collect_provenance` reads `SBB_SUBMITTER`, `SBB_SUBMITTER_ORG` and `SBB_IMAGE_DIGEST` from the environment. It records the git commit, the `uv.lock` hash and the SpikingJelly version read once, when `sbb.core.result` is imported, so a long run never records code that changed on disk after it started. The PoisonSet is rebuilt in every cell and only its key is recorded, a deviation from rule 9 of 4.8: caching it must wait for learned triggers (v1), because a cached set would skip `Trigger.fit`.
+v0 notes. `data_root` holds one directory per dataset. `site` and `executor` go into the provenance. `EvalContext` holds the predictions and true labels on the clean and triggered test sets and the target, and, in v1, the accepted masks and scores of an input defense. A poisoning attack with an empty PoisonSet (`no_attack`) stores the clean weights under its own `model_key`, because its victim run would train exactly the same weights. Keys still follow 7.6. `collect_provenance` reads `SBB_SUBMITTER`, `SBB_SUBMITTER_ORG` and `SBB_IMAGE_DIGEST` from the environment. It records the git commit, the `uv.lock` hash and the SpikingJelly version read once, when `sbb.core.result` is imported, so a long run never records code that changed on disk after it started. The PoisonSet is rebuilt in every cell and only its key is recorded, a deviation from rule 9 of 4.8: caching it must wait for learned triggers (v1), because a cached set would skip `Trigger.fit`.
 
 ### 6.9 Runner (`sbb.runner`)
 
@@ -1365,6 +1368,8 @@ If a paper used an architecture that is not in the registry, register it under i
 ## 8. Metrics
 
 All metrics are fractions in [0, 1]. The triggered test set contains only test samples whose true label is not the target.
+
+v1 notes. Registry names: `ca`, `asr`, `ra`, `frr`, `tpr` and `auroc` (input). A metric lists the defense stages it applies to (`Metric.stages`), so `frr`, `tpr` and `auroc` appear only in inference cells. `EvalContext` carries the accepted masks and scores of an input defense, and CA, ASR and RA count only accepted samples. AUROC counts ties as half. A detection cell also reports its raw `verdict`, which is not a fraction. The LeaderboardBuilder turns verdicts into the model AUROC.
 
 | Metric | Definition | Applies to |
 |---|---|---|

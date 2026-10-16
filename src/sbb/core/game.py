@@ -1,6 +1,8 @@
 """The security game that evaluates one cell (docs/PLAN.md sections 3.1 and 4.7)."""
 
+import json
 import logging
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -8,10 +10,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
 from sbb.core.cards import ScenarioKind, Stage, compatible
-from sbb.core.plugins import EvalContext, ModelAttack, ModelDefense, PoisoningAttack
+from sbb.core.plugins import (
+    STAGE_BASES,
+    DataDefense,
+    Defense,
+    DetectionDefense,
+    EvalContext,
+    InputDefense,
+    ModelAttack,
+    ModelDefense,
+    PoisoningAttack,
+    TrainingDefense,
+)
 from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetView
 from sbb.core.registry import ATTACKS, DEFENSES, METRICS
 from sbb.core.result import CellResult, Outcome, collect_provenance
@@ -103,9 +118,12 @@ class Game:
         base = PoisoningAttack if poisoning else ModelAttack
         if not issubclass(attack_cls, base):
             raise SbbError(f"{cell.attack} is a {kind} attack, so it must subclass {base.__name__}")
-        if defense_cls.card.stage != Stage.POST_TRAINING:
-            raise NotImplementedError(f"defense stage {defense_cls.card.stage} lands in v1")
-        assert issubclass(defense_cls, ModelDefense)
+        stage = defense_cls.card.stage
+        if not issubclass(defense_cls, STAGE_BASES[stage]):
+            raise SbbError(
+                f"{cell.defense} is a {stage} defense, so it must subclass "
+                f"{STAGE_BASES[stage].__name__}"
+            )
 
         # 2. Data and defender pool
         seed_everything(seed)
@@ -180,15 +198,36 @@ class Game:
             hparams=defense_hparams,
             seed=seed,
         )
-        defended = self._model(defense_key, seed, lambda: defense.repair(defender_view))
-        artifacts["defended_model"] = defense_key
+        defended = self._defend(setting, defense, defender_view, victim, poison, defense_key)
+        artifacts.update(defended.artifacts)
 
-        # 8. Metrics
+        # 8. Metrics on the clean and triggered test sets
         triggered = data.triggered_loader(attack.trigger_test, budget.target, bs)
+        clean_pred, clean_true = trainer.predict(defended.model, test)
+        triggered_pred, triggered_true = trainer.predict(defended.model, triggered)
+        rejection: dict[str, np.ndarray] = {}
+        if defended.detector is not None:
+            # ponytail: scoring runs the loaders a second time. Merge it into predict if it is slow.
+            detector = defended.detector
+            clean_scores, triggered_scores = (
+                self._scores(detector, test),
+                self._scores(detector, triggered),
+            )
+            rejection = {
+                "clean_scores": clean_scores,
+                "triggered_scores": triggered_scores,
+                "clean_accepted": clean_scores <= detector.threshold,
+                "triggered_accepted": triggered_scores <= detector.threshold,
+            }
         ctx = EvalContext(
-            *trainer.predict(defended, test), *trainer.predict(defended, triggered), budget.target
+            clean_pred, clean_true, triggered_pred, triggered_true, budget.target, **rejection
         )
-        metrics = {name: METRICS.get(name)().compute(ctx) for name in METRICS.names()}
+        metrics = {
+            name: metric().compute(ctx)
+            for name in METRICS.names()
+            if stage in (metric := METRICS.get(name)).stages
+        }
+        metrics.update(defended.metrics)
         return _Report("ok", None, metrics, artifacts)
 
     def _poisoned_victim(
@@ -276,6 +315,73 @@ class Game:
         )
         return self._model(model_key, cell.seed, make_victim), {"model": model_key}
 
+    def _defend(
+        self,
+        setting: "_Setting",
+        defense: Defense,
+        view: DefenderView,
+        victim: SNNModel,
+        poison: PoisonSet | None,
+        key: str,
+    ) -> "_Defended":
+        """Apply the defense as its stage says (docs/PLAN.md 4.7). Model outputs are cached."""
+        cell, data, trainer = setting.cell, setting.data, setting.trainer
+        seed, batch_size = cell.seed, cell.scenario.train.batch_size
+        stage = defense.card.stage
+        if stage == Stage.POST_TRAINING:
+            assert isinstance(defense, ModelDefense)
+            model = self._model(key, seed, lambda: defense.repair(view))
+            return _Defended(model, artifacts={"defended_model": key})
+        if stage == Stage.PRE_TRAINING:
+            assert isinstance(defense, DataDefense)
+
+            def retrain_on_kept() -> SNNModel:
+                keep = _positions(defense.sanitize(view), len(data.split.train), cell.defense)
+                loader = data.train_loader(poison, batch_size, keep=keep)
+                return trainer.fit(_fresh_model(cell.scenario, data), loader)
+
+            model = self._model(key, seed, retrain_on_kept)
+            return _Defended(model, artifacts={"defended_model": key})
+        if stage == Stage.IN_TRAINING:
+            assert isinstance(defense, TrainingDefense)
+
+            def retrain_with_hooks() -> SNNModel:
+                loader = data.train_loader(poison, batch_size)
+                hooks = [defense.hooks(view)]
+                return trainer.fit(_fresh_model(cell.scenario, data), loader, hooks=hooks)
+
+            model = self._model(key, seed, retrain_with_hooks)
+            return _Defended(model, artifacts={"defended_model": key})
+        if stage == Stage.INFERENCE:
+            assert isinstance(defense, InputDefense)
+            # ponytail: the fitted detector is not cached, fit runs in every cell. Cache it when
+            # a fit becomes slow.
+            seed_everything(seed)
+            defense.fit(view)
+            return _Defended(victim, detector=defense)
+        assert isinstance(defense, DetectionDefense)
+        verdict = self._verdict(key, seed, lambda: defense.verdict(view))
+        return _Defended(victim, metrics={"verdict": verdict}, artifacts={"verdict": key})
+
+    def _verdict(self, key: str, seed: int, compute: Callable[[], float]) -> float:
+        """Load the verdict cached under key, or seed, compute and cache it."""
+
+        def build(directory: Path) -> None:
+            seed_everything(seed)
+            verdict = float(compute())
+            if not math.isfinite(verdict):  # NaN would make the result unreadable
+                raise SbbError(f"the verdict must be a finite number, got {verdict}")
+            (directory / "verdict.json").write_text(json.dumps({"verdict": verdict}))
+
+        path = self.cache.get_or_build(key, build)
+        return float(json.loads((path / "verdict.json").read_text())["verdict"])
+
+    @torch.no_grad()
+    def _scores(self, detector: InputDefense, loader: DataLoader[Any]) -> np.ndarray:
+        """The input defense's score of every sample, in loader order."""
+        parts = [detector.score(x.to(self.device)).cpu() for x, _, _ in loader]
+        return torch.cat(parts).numpy() if parts else np.empty(0)
+
     def _prepare_data(self, scenario: Scenario, seed: int) -> DataModule:
         """Prepare the dataset, load the split, reserve the defender pool and build the loaders."""
         dataset = DATASETS.get(scenario.data.name)(self.data_root / scenario.data.name)
@@ -306,6 +412,27 @@ class _Setting:
     trainer: Trainer
     clean: SNNModel
     clean_key: str
+
+
+@dataclass
+class _Defended:
+    """What a defense leaves for the metrics step."""
+
+    model: SNNModel  # the model to evaluate
+    detector: InputDefense | None = None  # an input defense that rejects inputs
+    metrics: dict[str, float] = field(default_factory=dict)
+    artifacts: dict[str, str] = field(default_factory=dict)
+
+
+def _positions(keep: np.ndarray, n_train: int, defense: str) -> np.ndarray:
+    """Check the positions a data defense keeps: unique integers in [0, n_train)."""
+    keep = np.asarray(keep)
+    valid = keep.ndim == 1 and np.issubdtype(keep.dtype, np.integer)
+    valid = valid and len(np.unique(keep)) == len(keep)
+    valid = valid and (len(keep) == 0 or (keep.min() >= 0 and keep.max() < n_train))
+    if not valid:
+        raise SbbError(f"{defense} must keep unique positions of the train set, 0 to {n_train - 1}")
+    return keep
 
 
 def _recipe(cell: Cell) -> dict[str, Any]:

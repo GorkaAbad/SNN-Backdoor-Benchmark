@@ -8,21 +8,21 @@ from sbb.core.registry import METRICS
 
 @METRICS.register("asr")
 class AttackSuccessRate(Metric):
-    """Triggered samples classified as the target."""
+    """Triggered samples accepted and classified as the target."""
 
     name = "asr"
 
     def compute(self, ctx: EvalContext) -> float:
-        """Fraction of triggered predictions equal to the target."""
-        return float(np.mean(ctx.triggered_pred == ctx.target))
+        """Fraction of triggered samples accepted and predicted as the target."""
+        return float(np.mean(ctx.triggered_ok & (ctx.triggered_pred == ctx.target)))
 
 
 @METRICS.register("ra")
 class RobustAccuracy(Metric):
-    """Triggered samples classified as their true label."""
+    """Triggered samples accepted and classified as their true label."""
 
     name = "ra"
 
     def compute(self, ctx: EvalContext) -> float:
-        """Fraction of triggered predictions equal to the true label."""
-        return float(np.mean(ctx.triggered_pred == ctx.triggered_true))
+        """Fraction of triggered samples accepted and predicted as their true label."""
+        return float(np.mean(ctx.triggered_ok & (ctx.triggered_pred == ctx.triggered_true)))

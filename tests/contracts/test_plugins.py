@@ -4,18 +4,23 @@ import numpy as np
 import pytest
 import torch
 
-from sbb.core.cards import ScenarioKind
+from sbb.core.cards import ScenarioKind, Stage
 from sbb.core.plugins import (
     STAGE_BASES,
     Attack,
+    DataDefense,
+    Defense,
+    DetectionDefense,
     EvalContext,
+    InputDefense,
     ModelAttack,
     ModelDefense,
     PoisoningAttack,
+    TrainingDefense,
 )
 from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetView
 from sbb.core.registry import ATTACKS, DEFENSES, METRICS
-from sbb.core.trainer import Trainer, TrainSpec
+from sbb.core.trainer import Trainer, TrainerHooks, TrainSpec
 from sbb.data.module import DataModule
 from sbb.data.poison import Budget
 from sbb.data.sample import DATASETS, EVENT_DTYPE, EventSample
@@ -77,30 +82,56 @@ def test_attack(name: str, datamodule: DataModule) -> None:
     check_attack(cls, datamodule)
 
 
-@pytest.mark.parametrize("name", DEFENSES.names())
-def test_defense(name: str, datamodule: DataModule) -> None:
-    cls = DEFENSES.get(name)
-    assert cls.card.name == name
+def check_defense(cls: type[Defense], datamodule: DataModule) -> None:
+    """The contract of every defense plugin. Also run on test-only defenses by the Game tests."""
     assert issubclass(cls, STAGE_BASES[cls.card.stage])
     defense = cls(cls.card.hparams_for("synthetic", "tiny_lif_cnn"))
     model = build_model(ARCH, (2, 16, 16), 4)
     trainer = Trainer(TrainSpec(epochs=1, batch_size=8), torch.device("cpu"))
-    view = DefenderView(
-        cls.card, INFO, 0, trainer, model, TrainSetView(datamodule, None), datamodule
-    )
+    train_set = TrainSetView(datamodule, None)
+    view = DefenderView(cls.card, INFO, 0, trainer, model, train_set, datamodule)
+    x = torch.rand(3, 4, 2, 16, 16)
     if isinstance(defense, ModelDefense):
         repaired = defense.repair(view)
         assert isinstance(repaired, SNNModel) and repaired is not model
         assert repaired.spec == ARCH
-        assert repaired(torch.rand(2, 4, 2, 16, 16)).shape == (2, 4)
+        assert repaired(x).shape == (3, 4)
+    elif isinstance(defense, DataDefense):
+        keep = defense.sanitize(view)
+        assert keep.ndim == 1 and np.issubdtype(keep.dtype, np.integer)
+        assert len(np.unique(keep)) == len(keep) and ((keep >= 0) & (keep < len(train_set))).all()
+    elif isinstance(defense, TrainingDefense):
+        assert isinstance(defense.hooks(view), TrainerHooks)
+    elif isinstance(defense, InputDefense):
+        defense.fit(view)
+        assert isinstance(defense.threshold, float)
+        scores = defense.score(x)
+        assert scores.shape == (3,) and torch.isfinite(scores).all()
+    else:
+        assert isinstance(defense, DetectionDefense)
+        assert np.isfinite(defense.verdict(view))
+
+
+@pytest.mark.parametrize("name", DEFENSES.names())
+def test_defense(name: str, datamodule: DataModule) -> None:
+    cls = DEFENSES.get(name)
+    assert cls.card.name == name
+    check_defense(cls, datamodule)
 
 
 @pytest.mark.parametrize("name", METRICS.names())
 def test_metric(name: str) -> None:
     cls = METRICS.get(name)
-    assert cls.name == name
+    assert cls.name == name and cls.stages <= frozenset(Stage)
     rng = np.random.default_rng(0)
-    ctx = EvalContext(*rng.integers(0, 4, (4, 50)), target=0)
+    ctx = EvalContext(
+        *rng.integers(0, 4, (4, 50)),
+        target=0,
+        clean_accepted=rng.random(50) < 0.9,
+        triggered_accepted=rng.random(50) < 0.5,
+        clean_scores=rng.random(50),
+        triggered_scores=rng.random(50) + 0.5,
+    )
     assert 0.0 <= cls().compute(ctx) <= 1.0
 
 

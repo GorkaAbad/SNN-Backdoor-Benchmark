@@ -143,13 +143,31 @@ class AttackCard(CardBase, frozen=True):
         return View(resources=_AVAIL[self.kind], clean_fraction=budget.defender_clean_fraction)
 
 
+# Resources a stage cannot work without (docs/PLAN.md section 3.3, "Required resources").
+_STAGE_NEEDS = {
+    Stage.PRE_TRAINING: frozenset({Resource.TRAIN_SET}),
+    Stage.IN_TRAINING: frozenset({Resource.TRAIN_SET, Resource.TRAINING_LOOP}),
+}
+
+
 class DefenseCard(CardBase, frozen=True):
-    """Stage, view and hyperparameters of a defense."""
+    """Stage, view and hyperparameters of a defense.
+
+    A pre-training defense must declare train_set and an in-training defense also training_loop,
+    because the Game retrains the victim on the train split for them.
+    """
 
     stage: Stage
     view: View
     input_repr: Literal["frames"] = "frames"
     adaptation_note: str | None = None
+
+    @model_validator(mode="after")
+    def _declares_what_its_stage_needs(self) -> Self:
+        missing = _STAGE_NEEDS.get(self.stage, frozenset()) - self.view.resources
+        if missing:
+            raise ValueError(f"a {self.stage} defense must declare {sorted(missing)}")
+        return self
 
 
 def compatible(attack: AttackCard, defense: DefenseCard, budget: Budget) -> tuple[bool, list[str]]:

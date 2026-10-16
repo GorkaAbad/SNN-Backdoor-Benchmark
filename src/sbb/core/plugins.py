@@ -168,19 +168,47 @@ STAGE_BASES: dict[Stage, type[Defense]] = {
 
 @dataclass(frozen=True)
 class EvalContext:
-    """Predictions on the clean and triggered test sets."""
+    """Predictions on the clean and triggered test sets.
+
+    With an input defense, scores are its per-sample scores (higher is more suspicious) and the
+    accepted masks mark the samples at or below its threshold. Without one, every sample is
+    accepted and the scores are None.
+    """
 
     clean_pred: np.ndarray
     clean_true: np.ndarray
     triggered_pred: np.ndarray
     triggered_true: np.ndarray
     target: int
+    clean_accepted: np.ndarray | None = None
+    triggered_accepted: np.ndarray | None = None
+    clean_scores: np.ndarray | None = None
+    triggered_scores: np.ndarray | None = None
+
+    @property
+    def clean_ok(self) -> np.ndarray:
+        """Mask of the accepted clean samples."""
+        return _all(self.clean_pred) if self.clean_accepted is None else self.clean_accepted
+
+    @property
+    def triggered_ok(self) -> np.ndarray:
+        """Mask of the accepted triggered samples."""
+        accepted = self.triggered_accepted
+        return _all(self.triggered_pred) if accepted is None else accepted
+
+
+def _all(predictions: np.ndarray) -> np.ndarray:
+    return np.ones(len(predictions), dtype=bool)
 
 
 class Metric(ABC):
-    """A metric computed from an EvalContext. name equals the registry name."""
+    """A metric computed from an EvalContext. name equals the registry name.
+
+    stages lists the defense stages whose cells report the metric.
+    """
 
     name: ClassVar[str]
+    stages: ClassVar[frozenset[Stage]] = frozenset(Stage)
 
     @abstractmethod
     def compute(self, ctx: EvalContext) -> float:

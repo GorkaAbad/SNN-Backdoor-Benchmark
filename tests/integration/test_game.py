@@ -14,9 +14,19 @@ from sbb.attacks.static_patch import StaticPatch
 from sbb.attacks.triggers import IdentityTrigger
 from sbb.core.cards import AttackCard, DefenseCard
 from sbb.core.game import Game
-from sbb.core.plugins import DataDefense, ModelAttack, ModelDefense, PoisoningAttack
+from sbb.core.plugins import (
+    DataDefense,
+    Defense,
+    DetectionDefense,
+    InputDefense,
+    ModelAttack,
+    ModelDefense,
+    PoisoningAttack,
+    TrainingDefense,
+)
 from sbb.core.proxies import AttackerView, DefenderView
 from sbb.core.registry import ATTACKS, DEFENSES
+from sbb.core.trainer import TrainerHooks, TrainState
 from sbb.data.module import DataModule
 from sbb.data.poison import Budget
 from sbb.data.sample import EventSample
@@ -24,7 +34,7 @@ from sbb.models.checkpoint import load_checkpoint
 from sbb.models.snn import SNNModel, build_model
 from tests.cards import attack_card, defense_card
 from tests.conftest import SCENARIO, make_cell, run_in_fresh_caches
-from tests.contracts.test_plugins import check_attack
+from tests.contracts.test_plugins import check_attack, check_defense
 
 
 def test_static_patch_backdoors_and_fine_tuning_runs(game: Game) -> None:
@@ -269,3 +279,173 @@ def test_game_plays_the_card_kind_not_the_class(game: Game) -> None:
     result = game.run(make_cell("hybrid", "no_defense"))
     assert result.outcome == "ok", result.reason
     assert _Hybrid.made == 1 and "poison_set" not in result.artifacts
+
+
+class _DropLabel0(DataDefense):
+    """Keeps the training samples not labelled 0, which drops every dirty-label poison."""
+
+    card = defense_card(
+        name="drop_label_0", stage="pre_training", view={"resources": ["train_set"]}
+    )
+
+    def sanitize(self, view: DefenderView) -> np.ndarray:
+        return np.flatnonzero(view.train_set.labels() != 0)
+
+
+class _MaskLabel0(TrainerHooks):
+    def loss(self, state: TrainState, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        assert state.per_sample_loss is not None
+        keep = (targets != 0).float()
+        return (state.per_sample_loss * keep).sum() / keep.sum().clamp(min=1.0)
+
+
+class _IgnoreLabel0(TrainingDefense):
+    """Leaves label 0 out of the training loss, so the poison never trains."""
+
+    card = defense_card(
+        name="ignore_label_0",
+        stage="in_training",
+        view={"resources": ["train_set", "training_loop"]},
+    )
+
+    def hooks(self, view: DefenderView) -> TrainerHooks:
+        return _MaskLabel0()
+
+
+class _PatchDetector(InputDefense):
+    """Scores the events in the 3x3 corner where static_patch puts its square."""
+
+    card = defense_card(
+        name="patch_detector",
+        stage="inference",
+        view={"resources": ["model", "clean_subset"], "clean_fraction": 0.05},
+    )
+
+    def fit(self, view: DefenderView) -> None:
+        x, _, _ = next(iter(view.clean_loader(batch_size=1000)))
+        self.threshold = float(self.score(x).max())
+
+    def score(self, x: torch.Tensor) -> torch.Tensor:
+        return x[:, :, :, :3, :3].sum(dim=(1, 2, 3, 4))
+
+
+class _WeightNorm(DetectionDefense):
+    card = defense_card(name="weight_norm", stage="model_detection", view={"resources": ["model"]})
+    calls = 0
+
+    def verdict(self, view: DefenderView) -> float:
+        _WeightNorm.calls += 1
+        return float(sum(p.detach().abs().sum() for p in view.model.parameters()))
+
+
+STAGE_DEFENSES = (_DropLabel0, _IgnoreLabel0, _PatchDetector, _WeightNorm)
+
+
+@pytest.fixture
+def stage_defenses(monkeypatch: pytest.MonkeyPatch) -> None:
+    for cls in STAGE_DEFENSES:
+        monkeypatch.setitem(DEFENSES._items, cls.card.name, cls)
+
+
+@pytest.mark.parametrize("cls", STAGE_DEFENSES)
+def test_test_defenses_meet_the_defense_contract(
+    cls: type[Defense], datamodule: DataModule
+) -> None:
+    check_defense(cls, datamodule)
+
+
+@pytest.mark.usefixtures("stage_defenses")
+@pytest.mark.parametrize("defense", ["drop_label_0", "ignore_label_0"])
+def test_retraining_defenses_retrain_the_victim(game: Game, defense: str) -> None:
+    undefended = game.run(make_cell("static_patch", "no_defense"))
+    defended = game.run(make_cell("static_patch", defense))
+    assert defended.outcome == "ok", defended.reason
+    assert undefended.metrics["asr"] > 0.9 and defended.metrics["asr"] < 0.1
+    assert defended.artifacts["model"] == undefended.artifacts["model"]
+    assert defended.artifacts["defended_model"] != defended.artifacts["model"]
+    assert set(defended.metrics) == {"ca", "asr", "ra"}
+
+
+@pytest.mark.usefixtures("stage_defenses")
+def test_input_defense_rejects_triggered_inputs(game: Game) -> None:
+    result = game.run(make_cell("static_patch", "patch_detector"))
+    assert result.outcome == "ok", result.reason
+    metrics = result.metrics
+    assert set(metrics) == {"ca", "asr", "ra", "frr", "tpr", "auroc"}
+    assert metrics["tpr"] > 0.9 and metrics["auroc"] > 0.9 and metrics["frr"] < 0.2
+    assert metrics["asr"] < 0.1  # rejected triggered inputs do not count as successes
+    assert "defended_model" not in result.artifacts  # the model itself is unchanged
+
+
+@pytest.mark.usefixtures("stage_defenses")
+def test_detection_defense_records_a_cached_verdict(game: Game) -> None:
+    _WeightNorm.calls = 0
+    first = game.run(make_cell("static_patch", "weight_norm"))
+    again = game.run(make_cell("static_patch", "weight_norm"))
+    undefended = game.run(make_cell("static_patch", "no_defense"))
+    assert first.outcome == "ok", first.reason
+    assert first.metrics == again.metrics and _WeightNorm.calls == 1
+    assert first.metrics["verdict"] > 0
+    assert {k: first.metrics[k] for k in ("ca", "asr", "ra")} == undefended.metrics
+
+
+class _KeepAll(DataDefense):
+    """Keeps every sample, so the retrained victim is the undefended one."""
+
+    card = defense_card(name="keep_all", stage="pre_training", view={"resources": ["train_set"]})
+
+    def sanitize(self, view: DefenderView) -> np.ndarray:
+        return np.arange(len(view.train_set))
+
+
+class _NoHooks(TrainingDefense):
+    """Hooks that change nothing, so the retrained victim is the undefended one."""
+
+    card = defense_card(
+        name="no_hooks", stage="in_training", view={"resources": ["train_set", "training_loop"]}
+    )
+
+    def hooks(self, view: DefenderView) -> TrainerHooks:
+        return TrainerHooks()
+
+
+class _Duplicates(DataDefense):
+    card = defense_card(name="duplicates", stage="pre_training", view={"resources": ["train_set"]})
+
+    def sanitize(self, view: DefenderView) -> np.ndarray:
+        return np.array([0, 0, 1])
+
+
+class _NaNVerdict(DetectionDefense):
+    card = defense_card(name="nan_verdict", stage="model_detection", view={"resources": ["model"]})
+
+    def verdict(self, view: DefenderView) -> float:
+        return float("nan")
+
+
+@pytest.fixture
+def neutral_defenses(monkeypatch: pytest.MonkeyPatch) -> None:
+    for cls in (_KeepAll, _NoHooks, _Duplicates, _NaNVerdict):
+        monkeypatch.setitem(DEFENSES._items, cls.card.name, cls)
+
+
+@pytest.mark.usefixtures("neutral_defenses")
+@pytest.mark.parametrize("defense", ["keep_all", "no_hooks"])
+def test_retraining_uses_the_poisoned_split(game: Game, defense: str) -> None:
+    # Retraining on what the victim received, with nothing removed, gives back the backdoor.
+    result = game.run(make_cell("static_patch", defense))
+    assert result.outcome == "ok", result.reason
+    assert result.metrics["asr"] > 0.9
+
+
+@pytest.mark.usefixtures("neutral_defenses")
+def test_data_defense_positions_are_checked(game: Game) -> None:
+    result = game.run(make_cell("static_patch", "duplicates"))
+    assert result.outcome == "failed" and "unique positions" in (result.reason or "")
+
+
+@pytest.mark.usefixtures("neutral_defenses")
+def test_a_verdict_must_be_finite(game: Game) -> None:
+    result = game.run(make_cell("static_patch", "nan_verdict"))
+    assert result.outcome == "failed" and "finite" in (result.reason or "")
+    assert not list(game.cache.local.root.rglob("verdict.json"))
