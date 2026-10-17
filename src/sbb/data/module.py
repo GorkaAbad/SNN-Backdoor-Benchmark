@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from sbb import SBB_MINOR
-from sbb.data.poison import PoisonSet
+from sbb.data.poison import FrameTriggerFn, PoisonSet
 from sbb.data.representations import Representation
 from sbb.data.sample import EventDataset, EventSample
 from sbb.data.splits import Split
@@ -21,10 +21,10 @@ from sbb.utils.storage import ArtifactCache
 
 log = logging.getLogger(__name__)
 
-Trigger = Callable[[EventSample, np.random.Generator], EventSample]
-# One loader item: full-dataset index, label, and its raw events. None means "use the frame cache",
-# a callable makes the sample lazily (triggered test samples).
-Entry = tuple[int, int, EventSample | Callable[[], EventSample] | None]
+# A trigger that acts on the raw events of one sample, with the sample's RNG.
+EventTriggerFn = Callable[[EventSample, np.random.Generator], EventSample]
+# One loader entry: full-dataset index, label, and how to make its frames. None reads the cache.
+Entry = tuple[int, int, Callable[[], torch.Tensor] | None]
 Item = tuple[torch.Tensor, int, int]
 
 
@@ -37,18 +37,17 @@ class _Items(Dataset[Item]):
         return len(self.entries)
 
     def __getitem__(self, i: int) -> Item:
-        index, label, source = self.entries[i]
-        if source is None:
-            return self.module.cached_frames(index), label, index
-        sample = source if isinstance(source, EventSample) else source()
-        return self.module.encode(sample), label, index
+        index, label, make = self.entries[i]
+        frames = self.module.cached_frames(index) if make is None else make()
+        return frames, label, index
 
 
 class DataModule:
     """Builds every loader of a scenario. Batches are (x [B, T, P, H, W], y [B], index [B]).
 
-    Frames of clean samples are cached by (dataset, split, representation).
-    Overlay and triggered samples are encoded on the fly.
+    Frames of clean samples are cached by (dataset, split, representation). Overlay samples and
+    test samples with a raw-event trigger are encoded on the fly. Frame triggers act on encoded
+    frames, which come from the cache for test samples.
 
     Args:
         dataset: The prepared dataset.
@@ -119,11 +118,14 @@ class DataModule:
         if keep is not None:
             train = train[keep]
         poisoned = {} if overlay is None else overlay.by_index()
+        frame_trigger = None if overlay is None else overlay.frame_trigger
         entries: list[Entry] = []
         for index in train.tolist():
             if index in poisoned:
                 sample, label = poisoned[index]
-                entries.append((index, label, sample))
+                entries.append(
+                    (index, label, partial(self._poisoned, index, sample, frame_trigger))
+                )
             else:
                 entries.append((index, int(self.labels[index]), None))
         return self._loader(entries, batch_size, shuffle)
@@ -133,13 +135,20 @@ class DataModule:
         entries: list[Entry] = [(i, int(self.labels[i]), None) for i in self.split.test]
         return self._loader(entries, batch_size, shuffle=False)
 
-    def triggered_loader(self, trigger: Trigger, target: int, batch_size: int) -> DataLoader[Item]:
+    def triggered_loader(
+        self,
+        target: int,
+        batch_size: int,
+        events: EventTriggerFn | None = None,
+        frames: FrameTriggerFn | None = None,
+    ) -> DataLoader[Item]:
         """Loader over triggered test samples whose true label is not target.
 
-        Labels stay the true labels. Each sample gets the RNG rng_for(seed, index).
+        The trigger acts on the raw events (events) or on the encoded frames (frames) of each
+        sample, with the RNG rng_for(seed, index). Labels stay the true labels.
         """
         entries: list[Entry] = [
-            (i, int(self.labels[i]), partial(self._triggered, trigger, i))
+            (i, int(self.labels[i]), partial(self._triggered, i, events, frames))
             for i in self.split.test
             if self.labels[i] != target
         ]
@@ -159,8 +168,20 @@ class DataModule:
         entries: list[Entry] = [(int(i), int(self.labels[i]), None) for i in subset]
         return self._loader(entries, batch_size, shuffle=True)
 
-    def _triggered(self, trigger: Trigger, index: int) -> EventSample:
-        return trigger(self.dataset[index], rng_for(self.seed, index))
+    def _poisoned(
+        self, index: int, sample: EventSample, frame_trigger: FrameTriggerFn | None
+    ) -> torch.Tensor:
+        x = self.encode(sample)
+        return x if frame_trigger is None else frame_trigger(x, rng_for(self.seed, index))
+
+    def _triggered(
+        self, index: int, events: EventTriggerFn | None, frames: FrameTriggerFn | None
+    ) -> torch.Tensor:
+        if events is None:
+            x = self.cached_frames(index)
+        else:
+            x = self.encode(events(self.dataset[index], rng_for(self.seed, index)))
+        return x if frames is None else frames(x, rng_for(self.seed, index))
 
     def _loader(self, entries: Sequence[Entry], batch_size: int, shuffle: bool) -> DataLoader[Item]:
         generator = torch.Generator().manual_seed(self.seed)

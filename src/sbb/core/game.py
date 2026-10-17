@@ -17,10 +17,12 @@ from torch.utils.data import DataLoader
 from sbb.core.cards import ScenarioKind, Stage, compatible
 from sbb.core.plugins import (
     STAGE_BASES,
+    Attack,
     DataDefense,
     Defense,
     DetectionDefense,
     EvalContext,
+    FrameTrigger,
     InputDefense,
     ModelAttack,
     ModelDefense,
@@ -149,6 +151,7 @@ class Game:
         # 4 and 5. Attack and victim
         attack_hparams = attack_cls.card.hparams_for(dataset.name, scenario.arch.name)
         attack = attack_cls(attack_hparams, budget.target)
+        _check_domain(cell.attack, attack)
         attacker_view = AttackerView(
             attack_cls.card,
             info,
@@ -202,7 +205,11 @@ class Game:
         artifacts.update(defended.artifacts)
 
         # 8. Metrics on the clean and triggered test sets
-        triggered = data.triggered_loader(attack.trigger_test, budget.target, bs)
+        _check_domain(cell.attack, attack)  # again, the attack may have replaced its trigger
+        if isinstance(attack.trigger, FrameTrigger):
+            triggered = data.triggered_loader(budget.target, bs, frames=attack.trigger.apply)
+        else:
+            triggered = data.triggered_loader(budget.target, bs, events=attack.trigger.apply)
         clean_pred, clean_true = trainer.predict(defended.model, test)
         triggered_pred, triggered_true = trainer.predict(defended.model, triggered)
         rejection: dict[str, np.ndarray] = {}
@@ -245,6 +252,10 @@ class Game:
         # static_patch cell (6 000 samples). Cache it with learned triggers in v1: a cached set
         # skips poison(), so trigger.fit too.
         poison = attack.poison(view, budget, data.defender_pool)
+        if poison.frame_trigger is not None and attack.card.capabilities.trigger_domain != "frames":
+            raise ThreatModelViolation(
+                f"{cell.attack} edits frames, but its card declares trigger_domain raw_events"
+            )
         label_policy = attack.card.capabilities.labels
         assert label_policy is not None
         poison.validate(
@@ -422,6 +433,16 @@ class _Defended:
     detector: InputDefense | None = None  # an input defense that rejects inputs
     metrics: dict[str, float] = field(default_factory=dict)
     artifacts: dict[str, str] = field(default_factory=dict)
+
+
+def _check_domain(name: str, attack: Attack) -> None:
+    """Refuse a trigger that acts in another domain than the card's trigger_domain."""
+    domain = attack.card.capabilities.trigger_domain
+    if isinstance(attack.trigger, FrameTrigger) != (domain == "frames"):
+        raise ThreatModelViolation(
+            f"{name} declares trigger_domain {domain}, "
+            f"but its trigger is a {type(attack.trigger).__name__}"
+        )
 
 
 def _positions(keep: np.ndarray, n_train: int, defense: str) -> np.ndarray:

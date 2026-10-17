@@ -102,6 +102,21 @@ def test_train_set_view_shows_the_poisoned_split(datamodule: DataModule) -> None
     assert view.labels()[1] == 0 and view[1].label == 0 and view[2].label == 2
 
 
+def test_train_set_poisoned_after_the_representation_has_no_raw_events(
+    datamodule: DataModule,
+) -> None:
+    # Re-encoding the clean events of a sample and comparing them with its frames would reveal
+    # every sample a frame trigger poisoned.
+    sample = datamodule.dataset[1]
+    overlay = PoisonSet(np.array([1]), (sample,), np.array([0]), frame_trigger=lambda x, rng: x)
+    view = TrainSetView(datamodule, overlay)
+    assert view.labels()[1] == 0
+    assert len(view.loader(batch_size=480).dataset) == 480  # type: ignore[arg-type]
+    for position in (1, 2):
+        with pytest.raises(ThreatModelViolation, match="frames"):
+            view[position]
+
+
 class _LossCheck(TrainerHooks):
     """Checks that the Trainer computes the per-sample loss its TrainSpec names."""
 

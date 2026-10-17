@@ -1,14 +1,19 @@
 """Attack budget and the PoisonSet overlay."""
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
+import torch
 from pydantic import BaseModel
 
 from sbb.data.sample import EventSample
 from sbb.utils.errors import BudgetViolation
+
+# A trigger that acts on the frames [T, P, H, W] of one encoded sample, with the sample's RNG.
+FrameTriggerFn = Callable[[torch.Tensor, np.random.Generator], torch.Tensor]
 
 
 class Budget(BaseModel, frozen=True):
@@ -39,11 +44,14 @@ class PoisonSet:
         indices: Full-dataset indices, unique, disjoint from the defender pool.
         samples: The modified samples, in the order of indices.
         labels: Labels used for training.
+        frame_trigger: Set by attacks whose trigger acts on frames. The DataModule applies it to the
+            frames of every sample of the overlay, with the RNG rng_for(seed, index).
     """
 
     indices: np.ndarray
     samples: tuple[EventSample, ...]
     labels: np.ndarray
+    frame_trigger: FrameTriggerFn | None = None
 
     def by_index(self) -> dict[int, tuple[EventSample, int]]:
         """Map each poisoned index to its (sample, training label)."""

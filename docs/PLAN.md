@@ -38,7 +38,7 @@ Out of scope until v3: federated learning, ANN-to-SNN conversion, static-image d
 | View | The resources a defense needs to see. |
 | Avail(c) | The resources still in the defender's hands when the attacker holds capabilities c. |
 | DefenderView, AttackerView | Proxy objects that give a plugin only the resources its card declares. |
-| Trigger | Transformation of raw events that activates the backdoor. |
+| Trigger | Transformation of raw events that activates the backdoor. A `FrameTrigger` (v1) transforms the encoded frames instead. |
 | PoisonSet | Overlay of modified training samples: indices, new samples, new labels. |
 | Defender pool | Clean training samples reserved before the attack. The attacker cannot modify them. |
 | Zoo | Cached clean and backdoored models, published on Hugging Face. |
@@ -74,7 +74,7 @@ Scenario kinds:
 Other capability fields:
 
 - `labels`: `clean` or `dirty`. The harness checks it automatically against the PoisonSet.
-- `trigger_domain`: `raw_events` (default) or `frames`. Frame-level injection is a stronger capability because it assumes access after preprocessing.
+- `trigger_domain`: `raw_events` (default) or `frames`. Frame-level injection is a stronger capability because it assumes access after preprocessing. v1: a `frames` attack has a `FrameTrigger`, which acts on the encoded frames [T, P, H, W] of the poisoned training samples and of the triggered test inputs. The Game refuses a trigger of the other domain, and a poison set that edits frames under a `raw_events` card (`ThreatModelViolation`). A train split poisoned in frames exists only as frames: `TrainSetView` refuses raw-event access there, because re-encoding the clean events and comparing them with the frames would reveal every poisoned sample. A defense that reads raw events of such a split fails the cell.
 
 Knowledge fields:
 
@@ -183,7 +183,7 @@ class AttackerView {
 class Attack {
   <<abstract>>
   +AttackCard card
-  +trigger_test(sample, rng) EventSample
+  +Trigger | FrameTrigger trigger
 }
 class AttackCard {
   +kind
@@ -198,7 +198,6 @@ class View {
   +issubset(other) bool
 }
 class PoisoningAttack {
-  +Trigger trigger
   +Selector selector
   +LabelPolicy labels
   +poison(view, budget, pool) PoisonSet
@@ -211,6 +210,11 @@ class Trigger {
   <<abstract>>
   +fit(view)
   +apply(sample, rng) EventSample
+}
+class FrameTrigger {
+  <<abstract>>
+  +fit(view)
+  +apply(frames, rng) Tensor
 }
 class Selector {
   <<abstract>>
@@ -255,7 +259,8 @@ Attack *-- AttackCard
 Attack ..> AttackerView : reads
 Attack <|-- PoisoningAttack
 Attack <|-- ModelAttack
-PoisoningAttack *-- Trigger
+Attack *-- Trigger
+Attack *-- FrameTrigger
 PoisoningAttack *-- Selector
 PoisoningAttack *-- LabelPolicy
 AttackCard ..> View : avail
@@ -324,13 +329,14 @@ class FrameRepr {
 class DataModule {
   +train_loader(overlay, batch_size, keep) DataLoader
   +test_loader(batch_size) DataLoader
-  +triggered_loader(trigger, target, batch_size) DataLoader
+  +triggered_loader(target, batch_size, events, frames) DataLoader
   +clean_subset_loader(fraction, batch_size) DataLoader
 }
 class PoisonSet {
   +indices
   +samples
   +labels
+  +frame_trigger
   +validate(budget, labels, pool)
 }
 Scenario *-- DatasetSpec
@@ -563,7 +569,7 @@ flowchart TD
 2. **Composition over inheritance for attacks.** A poisoning attack combines a `Trigger`, a `Selector` and a `LabelPolicy`. Most new attacks are only a new trigger.
 3. **One training loop.** Everything trains through `Trainer`. In-training defenses and training-control attacks provide `TrainerHooks`.
 4. **Proxies enforce threat models.** `DefenderView` and `AttackerView` expose only what the card declares. Any other access raises `ThreatModelViolation`.
-5. **Raw events first.** Triggers and PoisonSets act on raw `EventSample`s. Representations run afterwards.
+5. **Raw events first.** Triggers and PoisonSets act on raw `EventSample`s. Representations run afterwards. Only an attack whose card declares `trigger_domain: frames` uses a `FrameTrigger`, which the DataModule applies to the encoded frames (v1).
 6. **One data pipeline.** Only `DataModule` builds loaders. Attacks return overlays, never dataset copies.
 7. **Uniform model surface.** Every architecture is wrapped in `SNNModel`. Defenses reach internal activity only through probes and `named_neurons()`, so an SNN adaptation (for example "activation = spike rate over T") is defined once and reused by every port.
 8. **Configs are data.** Scenarios, budgets and hyperparameters live in YAML validated by pydantic. There are no per-experiment scripts.
@@ -746,6 +752,7 @@ class PoisonSet:
     indices: np.ndarray       # dataset indices, unique, disjoint from the defender pool
     samples: tuple[EventSample, ...]
     labels: np.ndarray        # labels used for training
+    frame_trigger: Callable[[torch.Tensor, np.random.Generator], torch.Tensor] | None = None  # v1
     def validate(self, budget: Budget, n_train: int, original_labels: np.ndarray,
                  label_policy: Literal["clean", "dirty"], pool: np.ndarray) -> None: ...  # raises BudgetViolation
 
@@ -756,8 +763,10 @@ class DataModule:
     def train_loader(self, overlay: PoisonSet | None, batch_size: int,
                      keep: np.ndarray | None = None, shuffle: bool = True) -> DataLoader: ...
     def test_loader(self, batch_size: int) -> DataLoader: ...
-    def triggered_loader(self, trigger: Callable[[EventSample, np.random.Generator], EventSample],
-                         target: int, batch_size: int) -> DataLoader: ...   # only samples with label != target
+    def triggered_loader(self, target: int, batch_size: int,
+                         events: Callable[[EventSample, np.random.Generator], EventSample] | None = None,
+                         frames: Callable[[torch.Tensor, np.random.Generator], torch.Tensor] | None = None,
+                         ) -> DataLoader: ...   # only samples with label != target
     def clean_subset_loader(self, fraction: float, batch_size: int) -> DataLoader: ...  # from the defender pool
 
 def reserve_defender_pool(labels: np.ndarray, train: Sequence[int], fraction: float, seed: int) -> np.ndarray: ...
@@ -765,6 +774,8 @@ def rng_for(seed: int, index: int) -> np.random.Generator: ...   # per-sample RN
 ```
 
 Frames of clean samples are cached by (dataset, split, representation). Overlay samples are encoded on the fly.
+
+v1 change: the `PoisonSet` of a `frames` attack carries its frame trigger, and every loader over the poisoned split applies it to the encoded frames of the poisoned samples with `rng_for(seed, index)`. `triggered_loader` takes the trigger of the test inputs as `events` (raw events, before the representation) or `frames` (after it).
 
 v0 notes. `rng_for` lives in `sbb.utils.determinism` and `DatasetSpec` in `sbb.data.splits`. The frame cache is one uint16 `.npy` file read with `mmap_mode="r"` and `allow_pickle=False`, so N-MNIST frames do not have to fit in memory. `DataModule` also exposes `input_shape` (P, H, W), `encode(sample)` and `labels` (all dataset labels). `Budget.max_poison(n_train)` is the single place that rounds the poison budget. `PoisonSet.by_index()` maps each poisoned index to its (sample, label). A `Representation` takes its `ReprSpec` in the constructor (`FrameRepr(spec)`), and the frame cache key uses that spec. `FrameRepr` follows the frame boundaries of SpikingJelly's `integrate_events_by_fixed_frames_number` and rejects events outside the sensor.
 
@@ -854,14 +865,18 @@ class AttackerView:
 
 class Attack(ABC):
     card: ClassVar[AttackCard]
+    trigger: Trigger | FrameTrigger        # v1: the trigger of the test inputs, set in __init__
     def __init__(self, hparams: dict[str, Any], target: int) -> None: ...
-    @abstractmethod
-    def trigger_test(self, sample: EventSample, rng: np.random.Generator) -> EventSample: ...
 
-class Trigger(ABC):
+class Trigger(ABC):                        # trigger_domain raw_events
     def fit(self, view: AttackerView) -> None: ...          # optional, learned triggers only
     @abstractmethod
     def apply(self, sample: EventSample, rng: np.random.Generator) -> EventSample: ...
+
+class FrameTrigger(ABC):                   # v1, trigger_domain frames
+    def fit(self, view: AttackerView) -> None: ...          # optional, learned or data-dependent
+    @abstractmethod
+    def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor: ...  # [T, P, H, W]
 
 class Selector(ABC):
     @abstractmethod
@@ -874,18 +889,16 @@ class LabelPolicy(ABC):
     def relabel(self, label: int, target: int) -> int: ...
 
 class PoisoningAttack(Attack):
-    trigger: Trigger
     selector: Selector
     labels: LabelPolicy
     def poison(self, view: AttackerView, budget: Budget, pool: np.ndarray) -> PoisonSet: ...  # generic
-    def trigger_test(self, sample: EventSample, rng: np.random.Generator) -> EventSample: ...  # trigger.apply
 
 class ModelAttack(Attack):
     @abstractmethod
     def make_model(self, view: AttackerView) -> SNNModel: ...
 ```
 
-v1 change: every attacker sees the clean train split, because a supply-chain attacker also needs data, for example to fine-tune the zoo model on poisoned samples, and `poisoned_loader` gives a loader over the attacker's own poison set for training. Model attacks always get the scenario architecture, because they must return it: the Game raises `ThreatModelViolation` when `make_model` returns a model whose `ArchSpec`, input shape or number of classes differ from the scenario's, whose state dict does not load strictly into a fresh model of that architecture, or whose `repr` differs from that fresh model with the returned weights (a neuron parameter changed in place, which a checkpoint would lose). The Game skips `make_model` when the victim is already cached, so a model attack's `trigger_test` may depend only on what `__init__` sets, and the attack contract test checks this. A model attack with a learned trigger (BadSNN) will store its trigger next to the victim, with the first such port. `ScenarioInfo` gains `input_shape`, the (P, H, W) of one frame after the representation, so an attacker can build the scenario network. Until the zoo of task 7 exists, the clean model of a supply-chain cell is the clean model of the local cache.
+v1 change: every attacker sees the clean train split, because a supply-chain attacker also needs data, for example to fine-tune the zoo model on poisoned samples, and `poisoned_loader` gives a loader over the attacker's own poison set for training. Model attacks always get the scenario architecture, because they must return it: the Game raises `ThreatModelViolation` when `make_model` returns a model whose `ArchSpec`, input shape or number of classes differ from the scenario's, whose state dict does not load strictly into a fresh model of that architecture, or whose `repr` differs from that fresh model with the returned weights (a neuron parameter changed in place, which a checkpoint would lose). The Game skips `make_model` when the victim is already cached, so a model attack's trigger may depend only on what `__init__` sets, and the attack contract test checks this. A model attack with a learned trigger (BadSNN) will store its trigger next to the victim, with the first such port. `ScenarioInfo` gains `input_shape`, the (P, H, W) of one frame after the representation, so an attacker can build the scenario network. Until the zoo of task 7 exists, the clean model of a supply-chain cell is the clean model of the local cache.
 
 A typical attack is configuration only:
 
@@ -902,6 +915,15 @@ class StaticPatch(PoisoningAttack):
 ```
 
 `no_attack` is a `PoisoningAttack` that selects nothing and whose trigger is the identity. Its cells give the clean reference and the natural ASR.
+
+v1 change: `Attack.trigger_test` is replaced by the attribute `trigger`, a `Trigger` or a `FrameTrigger` as the card's `trigger_domain` says, and the Game builds the triggered test set from it. `PoisoningAttack.poison` selects the samples before it calls `trigger.fit`, so fitting a trigger does not change which samples are poisoned. It applies a raw-event trigger itself and attaches a frame trigger to the `PoisonSet`. A model attack's trigger must not change in `make_model`, which the contract test checks. The shared parts (task 5) are:
+
+- Raw-event triggers in `sbb.attacks.triggers`: `IdentityTrigger`, `PatchTrigger`.
+- Frame triggers in `sbb.attacks.frame_triggers`, ports of the official code: `FramePatchTrigger`, `MovingPatchTrigger` and `SmartPatchTrigger` (Sneaky Spikes), `FlashTrigger` (Flashy Backdoor). `SmartPatchTrigger.fit` picks its cell, polarity mode and random walk once from the train split, and the test inputs get the same trigger. The official code draws them again from the test set. The walk comes from a child of the view's generator, so like the official walk it depends on the seed and not on the poison rate.
+- Temporal triggers in `sbb.attacks.temporal_triggers`, from the T-Backdoor paper's equations: `RateTrigger`, `LatencyTrigger`, `JitterTrigger`.
+- Selectors: `RandomSelector(include_target=False)`, which skips the target class unless replications of the papers ask otherwise, and `TargetClassSelector` for clean-label attacks. Label policies: `CleanLabel`, `DirtyLabel`.
+
+A local parity check compared every trigger with the official functions on random count frames. The smart trigger ran its own `fit` and `apply` with the official random stream, so its cell, mode and walk matched too. The only differences are refusals: sbb rejects a moving square that would leave the frame. The official code clips a square that leaves on the right, and paints nothing, or wraps around, for one that starts left of the frame.
 
 ### 6.6 Defenses (`sbb.core.plugins`, implementations in `sbb.defenses`)
 
@@ -1465,13 +1487,13 @@ Protocol for every port:
 6. For ANN defenses, describe the SNN adaptation in the card's `adaptation_note` and implement it with the shared utilities in `sbb.defenses.utils`, never inline.
 7. Ask the original authors to review the port and the adaptation note.
 
-v0 decision: `static_patch` stays a raw-event variant of the Sneaky Spikes static trigger, not an exact port. The official code overwrites a patch in every SpikingJelly frame (size relative to the image, polarity modes 0 to 3) and poisons samples of every class. `static_patch` adds patch events to the raw stream and never poisons the target class. The card states this. An exact port needs frame-domain triggers (`trigger_domain: frames`).
+v0 decision: `static_patch` stays a raw-event variant of the Sneaky Spikes static trigger, not an exact port. The official code overwrites a patch in every SpikingJelly frame (size relative to the image, polarity modes 0 to 3) and poisons samples of every class. `static_patch` adds patch events to the raw stream and never poisons the target class. The card states this. An exact port needs frame-domain triggers (`trigger_domain: frames`), which v1 adds (6.5). The exact ports use them, and replications draw poisoned samples from every class (`RandomSelector(include_target=True)`), as the papers do. Benchmark cells keep the target class out.
 
 Order: group A first (methods the maintainers authored, where fidelity is easiest to judge, plus the defenses needed to exercise every stage), then group B.
 
 | Group | Method | Kind or stage | Implementation on shared parts | Replication target | Official code |
 |---|---|---|---|---|---|
-| A | Sneaky Spikes, static | data_poisoning | `PoisoningAttack` with `PatchTrigger`, `RandomSelector`, `DirtyLabel` | [FILL] | github.com/GorkaAbad/Sneaky-Spikes (MIT) |
+| A | Sneaky Spikes, static | data_poisoning | `PoisoningAttack` with `FramePatchTrigger`, `RandomSelector`, `DirtyLabel` | [FILL] | github.com/GorkaAbad/Sneaky-Spikes (MIT) |
 | A | Sneaky Spikes, moving | data_poisoning | same, with `MovingPatchTrigger` | [FILL] | [FILL] |
 | A | Sneaky Spikes, smart | data_poisoning | same, with `SmartPatchTrigger` | [FILL] | [FILL] |
 | A | Sneaky Spikes, dynamic | data_poisoning | same, with a learned trigger that implements `Trigger.fit` | [FILL] | [FILL] |

@@ -16,22 +16,8 @@ from sbb.models.snn import SNNModel
 from sbb.utils.determinism import rng_for
 
 
-class Attack(ABC):
-    """Base of every attack. Hyperparameters come from the card."""
-
-    card: ClassVar[AttackCard]
-
-    def __init__(self, hparams: dict[str, Any], target: int) -> None:
-        self.hparams = hparams
-        self.target = target
-
-    @abstractmethod
-    def trigger_test(self, sample: EventSample, rng: np.random.Generator) -> EventSample:
-        """Apply the trigger to a test sample."""
-
-
 class Trigger(ABC):
-    """A transformation of raw events that activates the backdoor."""
+    """A transformation of raw events that activates the backdoor (trigger_domain raw_events)."""
 
     def fit(self, view: AttackerView) -> None:  # noqa: B027  optional hook
         """Learn the trigger. Only learned triggers override this."""
@@ -39,6 +25,37 @@ class Trigger(ABC):
     @abstractmethod
     def apply(self, sample: EventSample, rng: np.random.Generator) -> EventSample:
         """Return the triggered sample with the same label and index."""
+
+
+class FrameTrigger(ABC):
+    """A transformation of the frames of one encoded sample (trigger_domain frames).
+
+    It acts after the representation, so it assumes access to the input after preprocessing
+    (docs/PLAN.md section 3.2).
+    """
+
+    def fit(self, view: AttackerView) -> None:  # noqa: B027  optional hook
+        """Learn the trigger. Only learned or data-dependent triggers override this."""
+
+    @abstractmethod
+    def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:
+        """Return triggered frames [T, P, H, W] and leave frames unchanged."""
+
+
+class Attack(ABC):
+    """Base of every attack. Hyperparameters come from the card.
+
+    Attributes:
+        trigger: The trigger of the test inputs, set in __init__. A Trigger or a FrameTrigger, as
+            the card's trigger_domain says.
+    """
+
+    card: ClassVar[AttackCard]
+    trigger: Trigger | FrameTrigger
+
+    def __init__(self, hparams: dict[str, Any], target: int) -> None:
+        self.hparams = hparams
+        self.target = target
 
 
 class Selector(ABC):
@@ -69,29 +86,34 @@ class LabelPolicy(ABC):
 class PoisoningAttack(Attack):
     """A data-poisoning attack composed of a trigger, a selector and a label policy."""
 
-    trigger: Trigger
     selector: Selector
     labels: LabelPolicy
 
     def poison(self, view: AttackerView, budget: Budget, pool: np.ndarray) -> PoisonSet:
-        """Select samples outside the defender pool, trigger them and relabel them."""
+        """Select samples outside the defender pool, relabel them and trigger them.
+
+        The selection comes before Trigger.fit, so fitting a trigger does not change which samples
+        are poisoned. A raw-event trigger is applied here. A frame trigger travels with the poison
+        set, and the DataModule applies it to the frames of the poisoned samples.
+        """
         train = view.train_set
-        self.trigger.fit(view)
         labels = train.labels()
         excluded = np.flatnonzero(np.isin(train.indices, pool))
         n = budget.max_poison(len(train))
         positions = self.selector.select(labels, n, self.target, excluded, view.rng)
+        self.trigger.fit(view)
         indices = train.indices[positions]
+        new_labels = np.array(
+            [self.labels.relabel(int(labels[p]), self.target) for p in positions], dtype=np.int64
+        )
+        if isinstance(self.trigger, FrameTrigger):
+            samples = tuple(train[int(p)] for p in positions)
+            return PoisonSet(indices, samples, new_labels, frame_trigger=self.trigger.apply)
         samples = tuple(
             self.trigger.apply(train[int(p)], rng_for(view.seed, int(i)))
             for p, i in zip(positions, indices, strict=True)
         )
-        new_labels = [self.labels.relabel(int(labels[p]), self.target) for p in positions]
-        return PoisonSet(indices, samples, np.array(new_labels, dtype=np.int64))
-
-    def trigger_test(self, sample: EventSample, rng: np.random.Generator) -> EventSample:
-        """Apply the trigger."""
-        return self.trigger.apply(sample, rng)
+        return PoisonSet(indices, samples, new_labels)
 
 
 class ModelAttack(Attack):

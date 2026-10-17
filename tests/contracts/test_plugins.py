@@ -12,11 +12,13 @@ from sbb.core.plugins import (
     Defense,
     DetectionDefense,
     EvalContext,
+    FrameTrigger,
     InputDefense,
     ModelAttack,
     ModelDefense,
     PoisoningAttack,
     TrainingDefense,
+    Trigger,
 )
 from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetView
 from sbb.core.registry import ATTACKS, DEFENSES, METRICS
@@ -41,15 +43,36 @@ def _check_sample(sample: EventSample, original: EventSample, dm: DataModule) ->
     assert dm.encode(sample).shape == dm.encode(original).shape
 
 
+def _triggered(trigger: Trigger | FrameTrigger, dm: DataModule) -> np.ndarray:
+    """The triggered events, or frames, of one sample."""
+    sample = dm.dataset[1]
+    if isinstance(trigger, FrameTrigger):
+        return trigger.apply(dm.encode(sample), rng_for(0, 1)).numpy()
+    return trigger.apply(sample, rng_for(0, 1)).events
+
+
+def check_trigger(trigger: Trigger | FrameTrigger, datamodule: DataModule) -> None:
+    """The contract of every trigger, raw-event or frame. Learned triggers are fitted first."""
+    sample = datamodule.dataset[1]
+    if isinstance(trigger, FrameTrigger):
+        frames = datamodule.encode(sample)
+        original = frames.clone()
+        out = trigger.apply(frames, rng_for(0, 1))
+        assert out.shape == frames.shape and out.dtype == frames.dtype
+        assert torch.equal(frames, original), "a frame trigger must not change its input"
+    else:
+        _check_sample(trigger.apply(sample, rng_for(0, 1)), sample, datamodule)
+    first, again = _triggered(trigger, datamodule), _triggered(trigger, datamodule)
+    assert np.array_equal(first, again), "triggers must be deterministic for a given RNG"
+
+
 def check_attack(cls: type[Attack], datamodule: DataModule) -> None:
     """The contract of every attack plugin. Also run on test-only attacks by the Game tests."""
     hparams = cls.card.hparams_for("synthetic", "tiny_lif_cnn")
     attack = cls(hparams, target=0)
-    sample = datamodule.dataset[1]
-    triggered = attack.trigger_test(sample, rng_for(0, 1))
-    _check_sample(triggered, sample, datamodule)
-    again = attack.trigger_test(sample, rng_for(0, 1))
-    assert np.array_equal(triggered.events, again.events), "triggers must be deterministic"
+    # The card's trigger domain decides where the Game applies the trigger.
+    frames = cls.card.capabilities.trigger_domain == "frames"
+    assert isinstance(attack.trigger, FrameTrigger if frames else Trigger)
 
     # The scenario kind decides the base class: the Game plays the two kinds differently.
     assert isinstance(attack, PoisoningAttack) == (cls.card.kind == ScenarioKind.DATA_POISONING)
@@ -60,19 +83,23 @@ def check_attack(cls: type[Attack], datamodule: DataModule) -> None:
     view = AttackerView(cls.card, INFO, 0, datamodule, ARCH, trainer, clean)
     if isinstance(attack, PoisoningAttack):
         budget, pool = Budget(), datamodule.defender_pool
-        poison = attack.poison(view, budget, pool)
+        poison = attack.poison(view, budget, pool)  # also fits a learned trigger
         labels = cls.card.capabilities.labels
         assert labels is not None
         poison.validate(budget, 480, datamodule.labels, labels, pool)
+        assert (poison.frame_trigger is not None) == frames
         for s in poison.samples:
             _check_sample(s, datamodule.dataset[s.index], datamodule)
     else:
         assert isinstance(attack, ModelAttack)
+        before = _triggered(attack.trigger, datamodule)
         model = attack.make_model(view)
         assert (model.spec, model.input_shape, model.num_classes) == (ARCH, (2, 16, 16), 4)
         # A cached victim skips make_model, so the trigger must not depend on it.
-        after = attack.trigger_test(sample, rng_for(0, 1))
-        assert np.array_equal(after.events, triggered.events), "make_model changed the trigger"
+        after = _triggered(attack.trigger, datamodule)
+        assert np.array_equal(after, before), "make_model changed the trigger"
+    assert isinstance(attack.trigger, FrameTrigger if frames else Trigger), "the trigger changed"
+    check_trigger(attack.trigger, datamodule)
 
 
 @pytest.mark.parametrize("name", ATTACKS.names())

@@ -7,6 +7,7 @@ import torch
 import torch.nn.utils.prune
 from torch.utils.data import DataLoader
 
+from sbb.attacks.frame_triggers import FlashTrigger
 from sbb.attacks.labels import DirtyLabel
 from sbb.attacks.no_attack import NoAttack
 from sbb.attacks.selectors import RandomSelector
@@ -28,8 +29,7 @@ from sbb.core.proxies import AttackerView, DefenderView
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.trainer import TrainerHooks, TrainState
 from sbb.data.module import DataModule
-from sbb.data.poison import Budget
-from sbb.data.sample import EventSample
+from sbb.data.poison import Budget, PoisonSet
 from sbb.models.checkpoint import load_checkpoint
 from sbb.models.snn import SNNModel, build_model
 from tests.cards import attack_card, defense_card
@@ -131,6 +131,7 @@ class _Injection(ModelAttack):
         super().__init__(hparams, target)
         hparams = StaticPatch.card.hparams_for("synthetic", "tiny_lif_cnn")
         self.poisoner = StaticPatch(hparams, target)
+        self.trigger = self.poisoner.trigger
 
     def _poisoned(self, view: AttackerView) -> DataLoader[Any]:
         budget = Budget(poison_rate=0.1, target=self.target)
@@ -141,9 +142,6 @@ class _Injection(ModelAttack):
         model = view.clean_model
         _Injection.received = {k: v.clone() for k, v in model.state_dict().items()}
         return view.trainer.fit(model, self._poisoned(view), epochs=3)
-
-    def trigger_test(self, sample: EventSample, rng: np.random.Generator) -> EventSample:
-        return self.poisoner.trigger_test(sample, rng)
 
 
 class _TrainingControl(_Injection):
@@ -449,3 +447,96 @@ def test_a_verdict_must_be_finite(game: Game) -> None:
     result = game.run(make_cell("static_patch", "nan_verdict"))
     assert result.outcome == "failed" and "finite" in (result.reason or "")
     assert not list(game.cache.local.root.rglob("verdict.json"))
+
+
+class _Flash(PoisoningAttack):
+    """Dirty-label poisoning with a flash of ON events in the first frame (test-only attack)."""
+
+    card = attack_card(name="flash", capabilities={"labels": "dirty", "trigger_domain": "frames"})
+
+    def __init__(self, hparams: dict[str, object], target: int) -> None:
+        super().__init__(hparams, target)
+        self.trigger = FlashTrigger(polarity=1, length=1)
+        self.selector, self.labels = RandomSelector(), DirtyLabel()
+
+
+class _FlashCalledRaw(_Flash):
+    """Declares raw_events, but its trigger acts on frames."""
+
+    card = attack_card(name="flash_called_raw")
+
+
+class _RawTriggerCalledFrames(_Flash):
+    """Declares frames, but its trigger acts on raw events."""
+
+    card = attack_card(
+        name="raw_called_frames", capabilities={"labels": "dirty", "trigger_domain": "frames"}
+    )
+
+    def __init__(self, hparams: dict[str, object], target: int) -> None:
+        super().__init__(hparams, target)
+        self.trigger = IdentityTrigger()
+
+
+class _SwapsItsTrigger(StaticPatch):
+    """Declares raw_events and passes the first check, then swaps in a frame trigger."""
+
+    card = attack_card(name="swaps_its_trigger", hparams=StaticPatch.card.hparams)
+
+    def poison(self, view: AttackerView, budget: Budget, pool: np.ndarray) -> PoisonSet:
+        poison = super().poison(view, budget, pool)
+        self.trigger = FlashTrigger(polarity=1, length=1)
+        return poison
+
+
+class _FramesBehindARawCard(PoisoningAttack):
+    """Declares raw_events, but its poison set edits frames anyway."""
+
+    card = attack_card(name="frames_behind_a_raw_card")
+
+    def __init__(self, hparams: dict[str, object], target: int) -> None:
+        super().__init__(hparams, target)
+        self.trigger, self.selector, self.labels = IdentityTrigger(), RandomSelector(), DirtyLabel()
+
+    def poison(self, view: AttackerView, budget: Budget, pool: np.ndarray) -> PoisonSet:
+        poison = super().poison(view, budget, pool)
+        return PoisonSet(poison.indices, poison.samples, poison.labels, lambda x, rng: x + 1)
+
+
+@pytest.fixture
+def frame_attacks(monkeypatch: pytest.MonkeyPatch) -> None:
+    for cls in (
+        _Flash,
+        _FlashCalledRaw,
+        _RawTriggerCalledFrames,
+        _SwapsItsTrigger,
+        _FramesBehindARawCard,
+    ):
+        monkeypatch.setitem(ATTACKS._items, cls.card.name, cls)
+
+
+def test_frame_attack_meets_the_attack_contract(datamodule: DataModule) -> None:
+    check_attack(_Flash, datamodule)
+
+
+@pytest.mark.usefixtures("frame_attacks")
+def test_frame_trigger_backdoors_the_victim(game: Game) -> None:
+    result = game.run(make_cell("flash", "no_defense"))
+    assert result.outcome == "ok", result.reason
+    assert result.metrics["ca"] > 0.9 and result.metrics["asr"] > 0.9
+
+
+@pytest.mark.usefixtures("frame_attacks")
+@pytest.mark.parametrize(
+    ("attack", "message"),
+    [
+        ("flash_called_raw", "but its trigger is a FlashTrigger"),
+        ("raw_called_frames", "but its trigger is a IdentityTrigger"),
+        ("swaps_its_trigger", "but its trigger is a FlashTrigger"),  # checked again before step 8
+        ("frames_behind_a_raw_card", "edits frames"),
+    ],
+)
+def test_trigger_must_act_in_the_declared_domain(game: Game, attack: str, message: str) -> None:
+    result = game.run(make_cell(attack, "no_defense"))
+    assert result.outcome == "failed", result.reason
+    assert "ThreatModelViolation" in (result.reason or "") and message in (result.reason or "")

@@ -35,6 +35,9 @@ class ScenarioInfo(BaseModel, frozen=True):
 class TrainSetView:
     """The train split as the victim receives it. Poisoned samples are included, unmarked.
 
+    A split poisoned by a frame trigger exists only as frames. Its raw events would be the clean
+    ones, and comparing them with the frames from loader() would reveal every poisoned sample.
+
     Args:
         data: The scenario's DataModule.
         overlay: The poison set applied to the split, or None for the clean split.
@@ -50,6 +53,11 @@ class TrainSetView:
         return len(self.indices)
 
     def __getitem__(self, position: int) -> EventSample:
+        if self._overlay is not None and self._overlay.frame_trigger is not None:
+            raise ThreatModelViolation(
+                "this train split was poisoned after the representation and exists only as "
+                "frames, read it through loader()"
+            )
         index = int(self.indices[position])
         if index in self._poisoned:
             sample, label = self._poisoned[index]

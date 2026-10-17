@@ -14,7 +14,7 @@ The full design and roadmap is in `docs/PLAN.md`. Before writing code, read sect
 2. **Threat models are enforced by code.** Defenses receive a `DefenderView`, attacks an `AttackerView`. Never pass raw datasets, models or loaders to plugins.
 3. **One training loop.** All training goes through `sbb.core.trainer.Trainer`. Plugins that change training provide `TrainerHooks`.
 4. **One data pipeline.** Only `DataModule` builds DataLoaders. Attacks return a `PoisonSet` overlay, never a copy of a dataset.
-5. **Raw events first.** Triggers act on `EventSample` objects. Representations run afterwards.
+5. **Raw events first.** Triggers act on `EventSample` objects. Representations run afterwards. Only an attack whose card declares `trigger_domain: frames` uses a `FrameTrigger`, which the DataModule applies to the encoded frames.
 6. **Cards hold the configuration.** Every plugin has a YAML card validated by pydantic. Hyperparameters live in the card, not in code.
 7. **Provenance everywhere.** Every result is a `CellResult` with a full `Provenance`. No metric is ever written by hand.
 8. **Determinism.** Only the Game calls `seed_everything`. Randomized triggers use `rng_for(seed, sample.index)`.

@@ -10,6 +10,7 @@ from sbb.data.poison import Budget, PoisonSet
 from sbb.data.representations import FrameRepr, ReprSpec
 from sbb.data.sample import EVENT_DTYPE, EventSample, make_events
 from sbb.data.splits import Split, load_split, reserve_defender_pool
+from sbb.utils.determinism import rng_for
 from sbb.utils.errors import BudgetViolation, ReproducibilityError
 from sbb.utils.storage import ArtifactCache
 
@@ -90,11 +91,33 @@ def test_loaders(datamodule: DataModule, synthetic: SyntheticEvents) -> None:
     def flip(sample: EventSample, rng: np.random.Generator) -> EventSample:
         return EventSample(sample.events[:0], sample.label, sample.index)
 
-    x, y, _ = next(iter(datamodule.triggered_loader(flip, target=0, batch_size=200)))
+    x, y, _ = next(iter(datamodule.triggered_loader(0, 200, events=flip)))
     assert len(y) == 90 and (y != 0).all() and x.sum() == 0
 
     _, _, index = next(iter(datamodule.clean_subset_loader(0.05, batch_size=100)))
     assert set(index.tolist()) == set(datamodule.defender_pool.tolist())
+
+
+def _plus_seed(frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:
+    """A frame trigger that adds a number drawn from the sample's RNG."""
+    return frames + float(rng.integers(1, 100))
+
+
+def test_frame_triggers_act_after_the_representation(datamodule: DataModule) -> None:
+    sample = datamodule.dataset[7]
+    overlay = PoisonSet(np.array([7]), (sample,), np.array([0]), frame_trigger=_plus_seed)
+    x, y, index = next(iter(datamodule.train_loader(overlay, batch_size=480, shuffle=False)))
+    shift = float(rng_for(0, 7).integers(1, 100))
+    for position, i in enumerate(index.tolist()):
+        expected = datamodule.cached_frames(i) + (shift if i == 7 else 0)
+        assert torch.equal(x[position], expected), "only the poisoned sample changes"
+    assert y[index.tolist().index(7)] == 0
+
+    x, y, index = next(iter(datamodule.triggered_loader(0, 200, frames=_plus_seed)))
+    assert len(y) == 90 and (y != 0).all()
+    for frames, i in zip(x, index.tolist(), strict=True):
+        shift = float(rng_for(0, i).integers(1, 100))
+        assert torch.equal(frames, datamodule.cached_frames(i) + shift)
 
 
 def test_frame_cache_is_reused(
