@@ -15,3 +15,6 @@ runs/
 
 # Original papers of the ported methods (copyrighted PDFs, local reference only).
 papers/
+
+# The built leaderboard site (sbb site build), deployed by the publish workflow.
+_site/

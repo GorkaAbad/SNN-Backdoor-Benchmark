@@ -32,6 +32,7 @@ from sbb.runner.executors import executor_for
 from sbb.runner.planner import Planner
 from sbb.runner.site import SiteProfile
 from sbb.runner.spec import BenchmarkSpec, Tolerance
+from sbb.site.builder import LeaderboardBuilder
 from sbb.utils.errors import SbbError
 from sbb.utils.storage import ArtifactCache, HubStore, LocalStore
 
@@ -288,6 +289,23 @@ def reproduce(
     deltas = " ".join(f"{k}={v:+.4f}" for k, v in check.delta.items())
     console.print(f"{check.verdict} {deltas} {check.notes or ''}")
     console.print(f"record written to {path}")
+
+
+site_app = typer.Typer(no_args_is_help=True, help="The leaderboard site.")
+app.add_typer(site_app, name="site")
+
+
+@site_app.command("build")
+def site_build(
+    out: Annotated[Path, typer.Option(help="Directory of the site.")] = Path("_site"),
+    results: Annotated[Path, typer.Option(help="Results directory.")] = Path("results"),
+    replications: Annotated[Path, typer.Option(help="Replication records.")] = Path("replications"),
+) -> None:
+    """Build the static, interactive leaderboard into OUT, for GitHub Pages."""
+    records = [ReplicationRecord.load(p) for p in sorted(replications.glob("*.yaml"))]
+    builder = LeaderboardBuilder(LocalResultStore(results).query(), records)
+    builder.build(out)
+    console.print(f"{len(builder.results)} results and {len(records)} records in {out}/index.html")
 
 
 @app.command()

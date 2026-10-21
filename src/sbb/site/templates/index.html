@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SNN Backdoor Benchmark</title>
+  <meta name="description" content="Backdoor attacks and defenses on spiking neural networks with neuromorphic data, evaluated under typed threat models.">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <h1>SNN Backdoor Benchmark</h1>
+      <p class="lede">Backdoor attacks and defenses on spiking neural networks with neuromorphic data. Every number is a cell of the same harness, with its seeds, site and device.</p>
+      <nav class="tabs" role="tablist" aria-label="Views">
+        <button role="tab" data-tab="matrix" aria-selected="true">Matrix</button>
+        <button role="tab" data-tab="compare" aria-selected="false">Compare</button>
+        <button role="tab" data-tab="table" aria-selected="false">Table</button>
+        <button role="tab" data-tab="replications" aria-selected="false">Replications</button>
+        <button role="tab" data-tab="methods" aria-selected="false">Methods</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="controls" aria-label="Filters">
+      <label data-scope="cells">Version <select id="version"></select></label>
+      <label data-scope="cells">Track <select id="track"></select></label>
+      <label data-scope="cells">Dataset <select id="dataset"></select></label>
+      <label data-scope="cells">Model <select id="model"></select></label>
+      <label data-scope="cells" id="scenario-label" hidden>Scenario <select id="scenario"></select></label>
+      <label data-scope="metric">Metric <select id="metric"></select></label>
+      <details class="pick" data-scope="cells">
+        <summary>Attacks <span id="attack-count"></span></summary>
+        <div id="attacks" class="checks"></div>
+      </details>
+      <details class="pick" data-scope="cells">
+        <summary>Defenses <span id="defense-count"></span></summary>
+        <div id="defenses" class="checks"></div>
+      </details>
+    </section>
+
+    <section data-view="matrix">
+      <div id="matrix" class="plot"></div>
+      <p class="note">Rows are attacks, grouped by scenario kind. Columns are defenses, grouped by stage. Each cell is the mean over seeds, with the standard deviation and the number of seeds. A grey cell is not applicable, invalid or failed: hover for the reason.</p>
+      <div id="model-auroc"></div>
+    </section>
+
+    <section data-view="compare" hidden>
+      <div class="inline">
+        <label>For one <select id="compare-by"><option value="attack">attack, across defenses</option><option value="defense">defense, across attacks</option></select></label>
+        <label><select id="compare-item"></select></label>
+      </div>
+      <div id="compare" class="plot"></div>
+    </section>
+
+    <section data-view="table" hidden>
+      <div id="table" class="scroll"></div>
+    </section>
+
+    <section data-view="replications" hidden>
+      <p class="note">Each ported attack reruns the setting of its paper with three seeds. The papers report ASR over every test sample, the target class included, so replications compare ASR (target class included).</p>
+      <div id="replication-plot" class="plot"></div>
+      <div id="replication-table" class="scroll"></div>
+    </section>
+
+    <section data-view="methods" hidden>
+      <div id="methods" class="cards"></div>
+    </section>
+  </main>
+
+  <footer class="wrap" id="footer"></footer>
+</body>
+</html>

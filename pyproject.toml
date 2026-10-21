@@ -74,6 +74,7 @@ name = "Layers of docs/PLAN.md section 4.1"
 type = "layers"
 layers = [
     "sbb.cli",
+    "sbb.site",
     "sbb.runner | sbb.results",
     "sbb.attacks | sbb.defenses | sbb.metrics",
     "sbb.core",
