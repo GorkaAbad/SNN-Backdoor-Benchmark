@@ -19,6 +19,7 @@ from sbb.core.plugins import (
     DataDefense,
     Defense,
     DetectionDefense,
+    FrameTrigger,
     InputDefense,
     ModelAttack,
     ModelDefense,
@@ -585,3 +586,62 @@ def test_finetune_injection_backdoors_the_supplied_model(game: Game) -> None:
     assert result.outcome == "ok", result.reason
     assert result.metrics["ca"] > 0.9 and result.metrics["asr"] > 0.9
     assert result.artifacts["model"] != result.artifacts["clean_model"]
+
+
+class _LearnedLevel(FrameTrigger):
+    """A frame trigger whose level make_model learns."""
+
+    def __init__(self) -> None:
+        level = torch.nn.Parameter(torch.zeros(()), requires_grad=False)
+        self.state = torch.nn.ParameterDict({"level": level})
+
+    def learned(self) -> torch.nn.Module:
+        return self.state
+
+    def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:
+        out = frames.clone()
+        out[0] = self.state["level"]
+        return out
+
+
+class _LearnsItsTrigger(ModelAttack):
+    card = attack_card(
+        name="learns_its_trigger",
+        kind="training_control",
+        capabilities={"trigger_domain": "frames"},
+    )
+    made = 0
+    last: "_LearnsItsTrigger | None" = None
+
+    def __init__(self, hparams: dict[str, Any], target: int) -> None:
+        super().__init__(hparams, target)
+        self.trigger = _LearnedLevel()
+        _LearnsItsTrigger.last = self
+
+    def make_model(self, view: AttackerView) -> SNNModel:
+        _LearnsItsTrigger.made += 1
+        with torch.no_grad():
+            self.trigger.state["level"].fill_(3.0)
+        model = build_model(view.arch, view.scenario.input_shape, view.scenario.num_classes)
+        return view.trainer.fit(model, view.train_set.loader(32, shuffle=True), epochs=1)
+
+
+def test_learned_trigger_is_stored_with_the_victim(
+    game: Game, monkeypatch: pytest.MonkeyPatch, datamodule: DataModule
+) -> None:
+    monkeypatch.setitem(ATTACKS._items, "learns_its_trigger", _LearnsItsTrigger)
+    check_attack(_LearnsItsTrigger, datamodule)  # the contract allows a learned trigger
+    _LearnsItsTrigger.made = 0
+    first = game.run(make_cell("learns_its_trigger", "no_defense"))
+    again = game.run(make_cell("learns_its_trigger", "no_defense"))  # the victim is cached
+    assert first.outcome == again.outcome == "ok", first.reason
+    assert _LearnsItsTrigger.made == 1
+    last = _LearnsItsTrigger.last
+    assert last is not None and float(last.trigger.state["level"]) == 3
+    assert first.metrics == again.metrics
+
+
+def test_dynamic_attack_runs_and_stores_its_generator(game: Game) -> None:
+    result = game.run(make_cell("sneaky_dynamic", "no_defense"))
+    assert result.outcome == "ok", result.reason
+    assert (game.cache.local.root / result.artifacts["model"] / "trigger.safetensors").exists()

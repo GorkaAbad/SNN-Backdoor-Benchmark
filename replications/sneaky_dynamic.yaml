@@ -1,0 +1,99 @@
+method: sneaky_dynamic
+source: Abad et al., Sneaky Spikes, NDSS 2024, Figure 4, alpha 0.5 and gamma 0.01
+  (the official scripts/dynamic.sh). Values read from the plot, so the tolerance is
+  5 pp. The official code keeps the epoch with the best test accuracies, the port
+  keeps the last epoch.
+confirmed: false
+hparams: {}
+seeds:
+- 0
+- 1
+- 2
+tolerance_pp: 5.0
+targets:
+- setting:
+    name: sneaky_spikes_cifar10dvs
+    data:
+      name: cifar10dvs
+      split: cifar10dvs_9to1_v1
+      revision: null
+    repr:
+      kind: frames
+      T: 16
+      split_by: number
+      downsample: 1
+    arch:
+      name: cifar10dvs_net
+      T: 16
+      neuron:
+        model: lif
+        tau: 2.0
+        v_threshold: 1.0
+        v_reset: 0.0
+        surrogate: atan
+        detach_reset: true
+      backend: torch
+      kwargs: {}
+    train:
+      epochs: 28
+      batch_size: 16
+      loss: mse
+      optimizer: adam
+      lr: 0.001
+      weight_decay: 0.0
+      schedule: cosine
+      augment: none
+      amp: false
+    budget:
+      poison_rate: 0.1
+      target: 0
+      defender_clean_fraction: 0.0
+      delta_pp: 100.0
+  reported:
+    ca: 44.0
+    asr_all: 100.0
+  ours: null
+- setting:
+    name: sneaky_spikes_dvsgesture
+    data:
+      name: dvsgesture
+      split: dvsgesture_official_v1
+      revision: null
+    repr:
+      kind: frames
+      T: 16
+      split_by: number
+      downsample: 1
+    arch:
+      name: dvsgesture_net
+      T: 16
+      neuron:
+        model: lif
+        tau: 2.0
+        v_threshold: 1.0
+        v_reset: 0.0
+        surrogate: atan
+        detach_reset: true
+      backend: torch
+      kwargs: {}
+    train:
+      epochs: 64
+      batch_size: 16
+      loss: mse
+      optimizer: adam
+      lr: 0.001
+      weight_decay: 0.0
+      schedule: cosine
+      augment: none
+      amp: false
+    budget:
+      poison_rate: 0.1
+      target: 0
+      defender_clean_fraction: 0.0
+      delta_pp: 100.0
+  reported:
+    ca: 91.0
+    asr_all: 100.0
+  ours: null
+status: pending
+explanation: null

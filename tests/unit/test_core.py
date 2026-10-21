@@ -186,3 +186,21 @@ def test_per_sample_losses() -> None:
     assert torch.allclose(
         cross_entropy, torch.nn.functional.cross_entropy(output, targets, reduction="none")
     )
+
+
+class _SeesInputs(TrainerHooks):
+    def __init__(self) -> None:
+        self.inputs: list[torch.Tensor] = []
+
+    def on_batch_end(self, state: TrainState) -> None:
+        self.inputs.append(state.inputs)
+
+
+def test_hooks_see_the_batch_inputs(datamodule: DataModule) -> None:
+    # Attacks that train a trigger generator with the model need the batch itself.
+    model = build_model(ARCH, (2, 16, 16), 4)
+    trainer = Trainer(TrainSpec(epochs=1, batch_size=240, schedule="none"), CPU)
+    hook = _SeesInputs()
+    trainer.fit(model, datamodule.train_loader(None, 240, shuffle=False), hooks=[hook])
+    x, _, _ = next(iter(datamodule.train_loader(None, 240, shuffle=False)))
+    assert len(hook.inputs) == 2 and torch.equal(hook.inputs[0], x)

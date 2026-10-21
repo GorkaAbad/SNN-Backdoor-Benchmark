@@ -6,6 +6,7 @@ from typing import Any, ClassVar, Literal
 
 import numpy as np
 import torch
+from torch import nn
 
 from sbb.core.cards import AttackCard, DefenseCard, Stage
 from sbb.core.proxies import AttackerView, DefenderView
@@ -22,6 +23,14 @@ class Trigger(ABC):
     def fit(self, view: AttackerView) -> None:  # noqa: B027  optional hook
         """Learn the trigger. Only learned triggers override this."""
 
+    def learned(self) -> nn.Module | None:
+        """The part of the trigger a model attack learns in make_model, or None.
+
+        The Game stores its state with the victim and restores it when the victim comes from the
+        cache, because make_model is skipped then.
+        """
+        return None
+
     @abstractmethod
     def apply(self, sample: EventSample, rng: np.random.Generator) -> EventSample:
         """Return the triggered sample with the same label and index."""
@@ -36,6 +45,14 @@ class FrameTrigger(ABC):
 
     def fit(self, view: AttackerView) -> None:  # noqa: B027  optional hook
         """Learn the trigger. Only learned or data-dependent triggers override this."""
+
+    def learned(self) -> nn.Module | None:
+        """The part of the trigger a model attack learns in make_model, or None.
+
+        The Game stores its state with the victim and restores it when the victim comes from the
+        cache, because make_model is skipped then.
+        """
+        return None
 
     @abstractmethod
     def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:

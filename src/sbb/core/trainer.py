@@ -57,6 +57,7 @@ class TrainState:
     optimizer: torch.optim.Optimizer
     batch_indices: torch.Tensor
     per_sample_loss: torch.Tensor | None
+    inputs: torch.Tensor  # the batch x [B, T, P, H, W] on the training device
 
 
 class TrainerHooks:
@@ -115,7 +116,7 @@ class Trainer:
             if self.spec.schedule == "cosine"
             else None
         )
-        state = TrainState(0, 0, model, optimizer, torch.empty(0), None)
+        state = TrainState(0, 0, model, optimizer, torch.empty(0), None, torch.empty(0))
         for epoch in range(epochs):
             state.epoch = epoch
             for hook in hooks:
@@ -124,7 +125,7 @@ class Trainer:
             for x, y, index in loader:
                 x, y = x.to(self.device), y.to(self.device)
                 logits = model(x)
-                state.batch_indices = index
+                state.batch_indices, state.inputs = index, x
                 state.per_sample_loss = per_sample_loss(self.spec.loss, logits, y)
                 loss = self._loss(hooks, state, logits, y)
                 optimizer.zero_grad()

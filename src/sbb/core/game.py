@@ -12,6 +12,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from safetensors.torch import load_file, save_file
 from torch.utils.data import DataLoader
 
 from sbb.core.cards import ScenarioKind, Stage, compatible
@@ -326,7 +327,17 @@ class Game:
             hparams=hparams,
             seed=cell.seed,
         )
-        return self._model(model_key, cell.seed, make_victim), {"model": model_key}
+
+        def build(directory: Path) -> None:
+            seed_everything(cell.seed)
+            save_checkpoint(make_victim(), directory, model_key)
+            if (learned := attack.trigger.learned()) is not None:  # stored with the victim
+                save_file(learned.state_dict(), directory / "trigger.safetensors")
+
+        path = self.cache.get_or_build(model_key, build)
+        if (learned := attack.trigger.learned()) is not None:  # make_model is skipped on a hit
+            learned.load_state_dict(load_file(path / "trigger.safetensors"))
+        return load_checkpoint(path, self.device), {"model": model_key}
 
     def _defend(
         self,

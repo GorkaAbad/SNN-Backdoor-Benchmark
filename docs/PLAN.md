@@ -871,11 +871,13 @@ class Attack(ABC):
 
 class Trigger(ABC):                        # trigger_domain raw_events
     def fit(self, view: AttackerView) -> None: ...          # optional, learned triggers only
+    def learned(self) -> nn.Module | None: ...              # v1: a model attack's learned part
     @abstractmethod
     def apply(self, sample: EventSample, rng: np.random.Generator) -> EventSample: ...
 
 class FrameTrigger(ABC):                   # v1, trigger_domain frames
     def fit(self, view: AttackerView) -> None: ...          # optional, learned or data-dependent
+    def learned(self) -> nn.Module | None: ...              # a model attack's learned part
     @abstractmethod
     def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor: ...  # [T, P, H, W]
 
@@ -899,7 +901,7 @@ class ModelAttack(Attack):
     def make_model(self, view: AttackerView) -> SNNModel: ...
 ```
 
-v1 change: every attacker sees the clean train split, because a supply-chain attacker also needs data, for example to fine-tune the zoo model on poisoned samples, and `poisoned_loader` gives a loader over the attacker's own poison set for training. Model attacks always get the scenario architecture, because they must return it: the Game raises `ThreatModelViolation` when `make_model` returns a model whose `ArchSpec`, input shape or number of classes differ from the scenario's, whose state dict does not load strictly into a fresh model of that architecture, or whose `repr` differs from that fresh model with the returned weights (a neuron parameter changed in place, which a checkpoint would lose). The Game skips `make_model` when the victim is already cached, so a model attack's trigger may depend only on what `__init__` sets, and the attack contract test checks this. A model attack with a learned trigger (BadSNN) will store its trigger next to the victim, with the first such port. `ScenarioInfo` gains `input_shape`, the (P, H, W) of one frame after the representation, so an attacker can build the scenario network. Until the zoo of task 7 exists, the clean model of a supply-chain cell is the clean model of the local cache.
+v1 change: every attacker sees the clean train split, because a supply-chain attacker also needs data, for example to fine-tune the zoo model on poisoned samples, and `poisoned_loader` gives a loader over the attacker's own poison set for training. Model attacks always get the scenario architecture, because they must return it: the Game raises `ThreatModelViolation` when `make_model` returns a model whose `ArchSpec`, input shape or number of classes differ from the scenario's, whose state dict does not load strictly into a fresh model of that architecture, or whose `repr` differs from that fresh model with the returned weights (a neuron parameter changed in place, which a checkpoint would lose). The Game skips `make_model` when the victim is already cached, so a model attack's trigger may depend only on what `__init__` sets, and the attack contract test checks this. A model attack with a learned trigger exposes the trained part through `Trigger.learned()` or `FrameTrigger.learned()` (an `nn.Module`, None by default). The Game stores its state as `trigger.safetensors` next to the victim and restores it when the victim comes from the cache, and the contract test checks that this state restores the trigger. The first such port is the Sneaky Spikes dynamic attack. `ScenarioInfo` gains `input_shape`, the (P, H, W) of one frame after the representation, so an attacker can build the scenario network. Until the zoo of task 7 exists, the clean model of a supply-chain cell is the clean model of the local cache.
 
 A typical attack is configuration only:
 
@@ -1019,6 +1021,7 @@ class TrainState:
     optimizer: torch.optim.Optimizer
     batch_indices: torch.Tensor           # dataset indices of the current batch
     per_sample_loss: torch.Tensor | None  # filled before hooks are called
+    inputs: torch.Tensor                  # v1: the batch x, for attacks that train a trigger generator
 
 class TrainerHooks:
     """No-op defaults. Override only what you need. At most one hook set may override the loss."""
@@ -1520,7 +1523,7 @@ Order: group A first (methods the maintainers authored, where fidelity is easies
 | A | Sneaky Spikes, static | data_poisoning | `DirtyLabelPoisoning` with `FramePatchTrigger` (`sneaky_static`) | Table I, static baseline, CIFAR10-DVS and Gesture (proposed) | github.com/GorkaAbad/Sneaky-Spikes (MIT) |
 | A | Sneaky Spikes, moving | data_poisoning | same, with `MovingPatchTrigger` (`sneaky_moving`) | Table I, moving baseline, CIFAR10-DVS and Gesture (proposed) | same |
 | A | Sneaky Spikes, smart | data_poisoning | same, with `SmartPatchTrigger` (`sneaky_smart`) | Figure 3a, size 0.1, poison rate 0.1 (proposed, read from the plot) | same |
-| A | Sneaky Spikes, dynamic | data_poisoning | same, with a learned trigger that implements `Trigger.fit` | [FILL] | [FILL] |
+| A | Sneaky Spikes, dynamic | training_control | `ModelAttack` that trains the model jointly with a spiking autoencoder through `TrainerHooks`, whose output is the `DynamicTrigger` (`sneaky_dynamic`) | Figure 4, alpha 0.5, gamma 0.01, CIFAR10-DVS and Gesture (proposed, read from the plot) | github.com/GorkaAbad/Sneaky-Spikes (MIT) |
 | A | Flashy Backdoor, digital version | data_poisoning | same, with `FlashTrigger` (`flashy`) | Table 4, 3 frames at the start, Gesture (proposed) | github.com/Yencr0s/Flashy_backdoor (MIT) |
 | A | Fine-tuning injection (baseline) | supply_chain | `ModelAttack` that poisons the train split with the static frame patch and fine-tunes the clean model with the `Trainer` (`finetune_injection`) | none | none |
 | A | No defense, fine-tuning | post_training | `ModelDefense` | none | none |

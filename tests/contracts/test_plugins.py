@@ -59,6 +59,7 @@ def check_trigger(trigger: Trigger | FrameTrigger, datamodule: DataModule) -> No
         original = frames.clone()
         out = trigger.apply(frames, rng_for(0, 1))
         assert out.shape == frames.shape and out.dtype == frames.dtype
+        assert not out.requires_grad, "triggered frames must not carry autograd history"
         assert torch.equal(frames, original), "a frame trigger must not change its input"
     else:
         _check_sample(trigger.apply(sample, rng_for(0, 1)), sample, datamodule)
@@ -95,9 +96,17 @@ def check_attack(cls: type[Attack], datamodule: DataModule) -> None:
         before = _triggered(attack.trigger, datamodule)
         model = attack.make_model(view)
         assert (model.spec, model.input_shape, model.num_classes) == (ARCH, (2, 16, 16), 4)
-        # A cached victim skips make_model, so the trigger must not depend on it.
         after = _triggered(attack.trigger, datamodule)
-        assert np.array_equal(after, before), "make_model changed the trigger"
+        if (learned := attack.trigger.learned()) is not None:
+            # A learned trigger, which the Game stores with the victim: its state must restore it.
+            restored = cls(hparams, target=0).trigger
+            restored_part = restored.learned()
+            assert restored_part is not None
+            restored_part.load_state_dict(learned.state_dict())
+            assert np.array_equal(_triggered(restored, datamodule), after), "state does not restore"
+        else:
+            # A cached victim skips make_model, so the trigger must not depend on it.
+            assert np.array_equal(after, before), "make_model changed the trigger"
     assert isinstance(attack.trigger, FrameTrigger if frames else Trigger), "the trigger changed"
     check_trigger(attack.trigger, datamodule)
 

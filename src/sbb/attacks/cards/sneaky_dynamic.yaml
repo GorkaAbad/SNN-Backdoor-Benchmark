@@ -1,0 +1,20 @@
+name: sneaky_dynamic
+version: 1.0.0
+title: Sneaky Spikes, dynamic trigger
+paper: "Abad, Ersoy, Picek, Urbieta. Sneaky Spikes: Uncovering Stealthy Backdoor Attacks in Spiking Neural Networks with Neuromorphic Data. NDSS 2024"
+code_reference: "https://github.com/GorkaAbad/Sneaky-Spikes (dynamic.py, models.py Autoencoder)"
+license_note: "MIT"
+# The attacker trains the model, jointly with a spiking autoencoder G, and the trigger of an
+# input x is gamma * tanh(G(x)). alpha weighs the clean loss against the backdoor loss over every
+# training sample, so there is no poison rate. gamma is the official beta, 0.01 in the scripts.
+# The model trains with the scenario's recipe for its number of epochs.
+kind: training_control
+capabilities:
+  trigger_domain: frames
+knowledge:
+  architecture: known
+  data: full
+  defense: oblivious
+hparams:
+  default: {alpha: 0.5, gamma: 0.01, channels: 128, generator_lr: 0.001, batch_size: 16}
+  synthetic/tiny_lif_cnn: {channels: 2}
