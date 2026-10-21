@@ -1,0 +1,20 @@
+name: sneaky_static
+version: 1.0.0
+title: Sneaky Spikes, static trigger
+paper: "Abad, Ersoy, Picek, Urbieta. Sneaky Spikes: Uncovering Stealthy Backdoor Attacks in Spiking Neural Networks with Neuromorphic Data. NDSS 2024"
+code_reference: "https://github.com/GorkaAbad/Sneaky-Spikes (create_static_trigger)"
+license_note: "MIT"
+# A square of side size x the frame width, written into every frame with the official polarity
+# modes. The defaults are the setting of the paper's scripts and of Table I. The paper poisons every
+# class, so its replication sets selector.include_target. Benchmark cells keep the target class out.
+kind: data_poisoning
+capabilities:
+  labels: dirty
+  trigger_domain: frames
+knowledge:
+  architecture: unknown
+  data: full
+  defense: oblivious
+hparams:
+  default:
+    trigger: {size: 0.1, position: top-left, polarity: 1}

@@ -31,16 +31,21 @@ class Scenario(BaseModel, frozen=True):
 
 
 class Cell(BaseModel, frozen=True):
-    """One evaluation of (scenario, attack, defense, seed)."""
+    """One evaluation of (scenario, attack, defense, seed).
+
+    attack_hparams are merged over the attack card's hyperparameters. Benchmark cells leave them
+    empty, and replications give the paper's.
+    """
 
     benchmark_version: str
-    track: Literal["lite", "full"]
+    track: Literal["lite", "full", "replication"]
     scenario: Scenario
     attack: str
     attack_version: str
     defense: str
     defense_version: str
     seed: int
+    attack_hparams: dict[str, Any] = {}
 
     def key(self) -> str:
         """Hash of the full cell, benchmark version included."""

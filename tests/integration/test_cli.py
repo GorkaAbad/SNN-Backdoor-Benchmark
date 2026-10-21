@@ -1,12 +1,15 @@
 import json
 from pathlib import Path
 
+import yaml
 from click import unstyle
 from typer.testing import CliRunner
 
 from sbb.cli import app
+from sbb.results.replication import ReplicationRecord
 from sbb.runner.planner import Planner
 from sbb.runner.spec import BenchmarkSpec
+from tests.conftest import SCENARIO
 
 SMOKE = Path(__file__).parents[2] / "benchmarks" / "smoke.yaml"
 
@@ -43,3 +46,27 @@ def test_run_cell_runs_one_cell_from_json(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     saved = json.loads((out / "smoke-0.1.0" / f"{cell.key()}.json").read_text())
     assert saved["outcome"] == "ok" and saved["provenance"]["executor"] == "run-cell"
+
+
+def test_replicate_runs_the_record_and_fills_it(tmp_path: Path) -> None:
+    records, out = tmp_path / "replications", tmp_path / "results"
+    records.mkdir()
+    budget = SCENARIO.budget.model_copy(update={"delta_pp": 100.0})
+    setting = SCENARIO.model_copy(update={"budget": budget}).model_dump(mode="json")
+    record = {
+        "method": "static_patch",
+        "source": "test",
+        "seeds": [0],
+        "targets": [{"setting": setting, "reported": {"ca": 100.0, "asr_all": 100.0}}],
+    }
+    (records / "static_patch.yaml").write_text(yaml.safe_dump(record))
+    args = ["replicate", "static_patch", "--records", str(records), "--site", str(_site(tmp_path))]
+    result = CliRunner().invoke(app, [*args, "--out", str(out)])
+    assert result.exit_code == 0, result.output
+    filled = ReplicationRecord.load(out / "replications" / "static_patch.yaml")
+    assert filled.status == "replicated" and filled.targets[0].ours is not None
+    assert ReplicationRecord.load(records / "static_patch.yaml").status == "pending"
+
+    again = CliRunner().invoke(app, [*args, "--out", str(out), "--update"])
+    assert "1 cells, 0 pending" in unstyle(again.output)
+    assert ReplicationRecord.load(records / "static_patch.yaml").status == "replicated"

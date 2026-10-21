@@ -540,3 +540,26 @@ def test_trigger_must_act_in_the_declared_domain(game: Game, attack: str, messag
     result = game.run(make_cell(attack, "no_defense"))
     assert result.outcome == "failed", result.reason
     assert "ThreatModelViolation" in (result.reason or "") and message in (result.reason or "")
+
+
+class _RecordsHparams(StaticPatch):
+    card = attack_card(name="records_hparams", hparams=StaticPatch.card.hparams)
+    seen: dict[str, Any] = {}
+
+    def __init__(self, hparams: dict[str, Any], target: int) -> None:
+        super().__init__(hparams, target)
+        _RecordsHparams.seen = hparams
+
+
+def test_cell_hparams_override_the_card(game: Game, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Replications run the paper's hyperparameters, given in the cell over the card's.
+    monkeypatch.setitem(ATTACKS._items, "records_hparams", _RecordsHparams)
+    plain = game.run(make_cell("records_hparams", "no_defense"))
+    cell = make_cell("records_hparams", "no_defense").model_copy(
+        update={"attack_hparams": {"trigger": {"size": 2}}}
+    )
+    changed = game.run(cell)
+    card = StaticPatch.card.hparams["default"]["trigger"]
+    assert _RecordsHparams.seen["trigger"] == {**card, "size": 2}
+    assert changed.artifacts["model"] != plain.artifacts["model"]
+    assert changed.key != plain.key

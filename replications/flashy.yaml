@@ -1,0 +1,58 @@
+method: flashy
+source: "Ria\xF1o et al., Flashy Backdoor, arXiv 2411.03022, Table 4 (and Table 3),\
+  \ 3 poisoned frames at the start with a clean frame between two, full frame, polarity\
+  \ 1. Target 0 and 40 epochs as in the official claims."
+confirmed: false
+hparams:
+  selector:
+    include_target: true
+seeds:
+- 0
+- 1
+- 2
+tolerance_pp: 2.0
+targets:
+- setting:
+    name: flashy_dvsgesture
+    data:
+      name: dvsgesture
+      split: dvsgesture_official_v1
+      revision: null
+    repr:
+      kind: frames
+      T: 16
+      split_by: number
+      downsample: 1
+    arch:
+      name: dvsgesture_net
+      T: 16
+      neuron:
+        model: lif
+        tau: 2.0
+        v_threshold: 1.0
+        v_reset: 0.0
+        surrogate: atan
+        detach_reset: true
+      backend: torch
+      kwargs: {}
+    train:
+      epochs: 40
+      batch_size: 16
+      loss: mse
+      optimizer: adam
+      lr: 0.001
+      weight_decay: 0.0
+      schedule: cosine
+      augment: none
+      amp: false
+    budget:
+      poison_rate: 0.1
+      target: 0
+      defender_clean_fraction: 0.0
+      delta_pp: 100.0
+  reported:
+    ca: 91.44
+    asr_all: 100.0
+  ours: null
+status: pending
+explanation: null

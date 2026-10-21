@@ -1,0 +1,20 @@
+name: sneaky_smart
+version: 1.0.0
+title: Sneaky Spikes, smart trigger
+paper: "Abad, Ersoy, Picek, Urbieta. Sneaky Spikes: Uncovering Stealthy Backdoor Attacks in Spiking Neural Networks with Neuromorphic Data. NDSS 2024"
+code_reference: "https://github.com/GorkaAbad/Sneaky-Spikes (create_smart_trigger)"
+license_note: "MIT"
+# A square that wanders in the most active cell of a 3x3 grid (the official n_masks 2) with the
+# rarest polarity mode there. The trigger is fitted once on the train split, and the test inputs
+# get the same one. The official code draws the cell and the walk again from the test set.
+kind: data_poisoning
+capabilities:
+  labels: dirty
+  trigger_domain: frames
+knowledge:
+  architecture: unknown
+  data: full
+  defense: oblivious
+hparams:
+  default:
+    trigger: {size: 0.1, grid: 3}

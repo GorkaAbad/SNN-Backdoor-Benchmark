@@ -1,0 +1,20 @@
+name: flashy
+version: 1.0.0
+title: Flashy Backdoor, digital version
+paper: "Riaño, Abad, Picek, Urbieta. Flashy Backdoor: Real-world Environment Backdoor Attack on SNNs with DVS Cameras. arXiv 2411.03022"
+code_reference: "https://github.com/Yencr0s/Flashy_backdoor (create_flash_trigger, get_attack_frames)"
+license_note: "MIT"
+# Full frames with ON events only (polarity 1), as a strobe: three flashed frames at the start
+# with one clean frame between two flashes (frames 0, 2 and 4), the Flashy Backdoor of the paper's
+# section 6.4 and Table 4. length 6 is the official trigger_length of three flashes with gap 1.
+kind: data_poisoning
+capabilities:
+  labels: dirty
+  trigger_domain: frames
+knowledge:
+  architecture: unknown
+  data: full
+  defense: oblivious
+hparams:
+  default:
+    trigger: {polarity: 1, length: 6, gap: 1, duration: 1}

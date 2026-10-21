@@ -1,0 +1,19 @@
+name: sneaky_moving
+version: 1.0.0
+title: Sneaky Spikes, moving trigger
+paper: "Abad, Ersoy, Picek, Urbieta. Sneaky Spikes: Uncovering Stealthy Backdoor Attacks in Spiking Neural Networks with Neuromorphic Data. NDSS 2024"
+code_reference: "https://github.com/GorkaAbad/Sneaky-Spikes (create_moving_trigger)"
+license_note: "MIT"
+# A square that jumps between three places in a row, one per frame. The last frame stays clean,
+# as in the official code. The defaults are the setting of the paper's scripts and of Table I.
+kind: data_poisoning
+capabilities:
+  labels: dirty
+  trigger_domain: frames
+knowledge:
+  architecture: unknown
+  data: full
+  defense: oblivious
+hparams:
+  default:
+    trigger: {size: 0.1, position: top-left, polarity: 1}

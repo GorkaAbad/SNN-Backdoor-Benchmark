@@ -21,6 +21,7 @@ from sbb.core.cards import compatible
 from sbb.core.game import Game
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.scenario import Cell
+from sbb.results.replication import ReplicationRecord
 from sbb.results.store import LocalResultStore, ResultStore
 from sbb.results.table import markdown_table
 from sbb.runner.planner import Planner
@@ -64,6 +65,14 @@ def _done(store: ResultStore, cell: Cell) -> bool:
     return result is not None and result.outcome != "failed"
 
 
+def _run_pending(cells: list[Cell], store: ResultStore, site: SiteProfile) -> int:
+    """Run the cells without a result in-process, and return the number that failed."""
+    pending = [c for c in cells if not _done(store, c)]
+    console.print(f"{len(cells)} cells, {len(pending)} pending")
+    game = site.game("in-process")
+    return sum(not _run_cell(game, cell, store) for cell in pending)
+
+
 def _run_cell(game: Game, cell: Cell, store: ResultStore) -> bool:
     """Run one cell through the Game, save the result, and return False if it failed."""
     console.print(f"[bold]{cell.scenario.name}[/] {cell.attack} × {cell.defense} seed {cell.seed}")
@@ -94,11 +103,7 @@ def run(
     """Plan the cells of SPEC, run the pending ones in-process, and write table.md."""
     bench = BenchmarkSpec.load(spec)
     store = LocalResultStore(out)
-    cells = Planner(bench).cells(track, attack, defense)
-    pending = [c for c in cells if not _done(store, c)]
-    console.print(f"{len(cells)} cells, {len(pending)} pending")
-    game = _site(site).game("in-process")
-    failures = sum(not _run_cell(game, cell, store) for cell in pending)
+    failures = _run_pending(Planner(bench).cells(track, attack, defense), store, _site(site))
     table = out / bench.version / "table.md"
     table.parent.mkdir(parents=True, exist_ok=True)
     table.write_text(markdown_table(store.query(benchmark_version=bench.version)))
@@ -106,6 +111,45 @@ def run(
     if failures:
         console.print(f"[red]{failures} cells failed[/]")
         raise typer.Exit(1)
+
+
+@app.command()
+def replicate(
+    method: str,
+    records: Annotated[Path, typer.Option(help="Directory of replication records.")] = Path(
+        "replications"
+    ),
+    site: Site = None,
+    out: Out = Path("results"),
+    update: Annotated[
+        bool, typer.Option(help="Also write the filled record into RECORDS.")
+    ] = False,
+) -> None:
+    """Run the replication record of METHOD and compare our numbers with the paper's.
+
+    The filled record goes to OUT/replications. Use --update only in a local checkout, never in
+    a clone that must stay unmodified, such as one on a cluster.
+    """
+    path = records / f"{method}.yaml"
+    record = ReplicationRecord.load(path)
+    store = LocalResultStore(out)
+    cells = record.cells()
+    if _run_pending(cells, store, _site(site)):
+        console.print("[red]some cells failed, the record is not updated[/]")
+        raise typer.Exit(1)
+    filled = record.with_results([store.get(cell.key()) for cell in cells])
+    table = Table("setting", "metric", "paper %", "ours %")
+    for target in filled.targets:
+        assert target.ours is not None
+        for metric, reported in target.reported.items():
+            ours = target.ours[metric]
+            row = (f"{reported:.2f}", f"{ours.mean:.2f} ± {ours.std:.2f}")
+            table.add_row(target.setting.name, metric, *row)
+    console.print(table)
+    filled.save(out / "replications" / f"{method}.yaml")
+    if update:
+        filled.save(path)
+    console.print(f"{method}: {filled.status} (tolerance {filled.tolerance_pp} pp)")
 
 
 @app.command()

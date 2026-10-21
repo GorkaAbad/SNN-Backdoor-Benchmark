@@ -115,9 +115,15 @@ class CardBase(BaseModel, frozen=True):
     license_note: str | None = None
     hparams: dict[str, dict[str, Any]] = {}
 
-    def hparams_for(self, dataset: str, arch: str) -> dict[str, Any]:
-        """Return the default hyperparameters deep-merged with the <dataset>/<arch> override."""
-        return _merge(self.hparams.get("default", {}), self.hparams.get(f"{dataset}/{arch}", {}))
+    def hparams_for(
+        self, dataset: str, arch: str, override: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Return the default hyperparameters deep-merged with the <dataset>/<arch> ones.
+
+        override, for example the paper's hyperparameters in a replication, is merged last.
+        """
+        merged = _merge(self.hparams.get("default", {}), self.hparams.get(f"{dataset}/{arch}", {}))
+        return _merge(merged, override or {})
 
     @classmethod
     def load(cls, path: Path) -> Self:

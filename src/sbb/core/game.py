@@ -149,7 +149,9 @@ class Game:
         )
 
         # 4 and 5. Attack and victim
-        attack_hparams = attack_cls.card.hparams_for(dataset.name, scenario.arch.name)
+        attack_hparams = attack_cls.card.hparams_for(
+            dataset.name, scenario.arch.name, cell.attack_hparams
+        )
         attack = attack_cls(attack_hparams, budget.target)
         _check_domain(cell.attack, attack)
         attacker_view = AttackerView(

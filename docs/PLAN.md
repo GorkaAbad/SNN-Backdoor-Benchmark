@@ -1052,13 +1052,14 @@ class Scenario(BaseModel, frozen=True):
 
 class Cell(BaseModel, frozen=True):
     benchmark_version: str
-    track: Literal["lite", "full"]
+    track: Literal["lite", "full", "replication"]   # v1: replication
     scenario: Scenario
     attack: str
     attack_version: str
     defense: str
     defense_version: str
     seed: int
+    attack_hparams: dict[str, Any] = {}  # v1: merged over the card's, the paper's in a replication
     def key(self) -> str: ...            # see 7.6
 
 class Provenance(BaseModel):
@@ -1380,23 +1381,30 @@ CIFAR10-DVS has no official split: use SpikingJelly's ordered class-stratified 9
 
 ### 7.9 Replication record
 
+v1 format, `replications/<method>.yaml`, the `ReplicationRecord` model in `sbb.results.replication`. A record holds one or more targets, each a scenario with the paper's numbers. `sbb replicate <method>` runs one undefended cell per target and seed (track `replication`, the record's `hparams` merged over the card's), writes the filled record to `<out>/replications/`, and with `--update` back into `replications/`.
+
 ```yaml
-method: static_patch
-source: "Abad et al., Sneaky Spikes, NDSS 2024, [FILL] table and row"
-setting:                      # a Scenario, may differ from the benchmark scenarios
-  name: sneaky_spikes_static_nmnist
-  data: {name: nmnist, split: nmnist_official_v1}
-  repr: {kind: frames, T: "[FILL]", split_by: number}
-  arch: {name: "[FILL]", T: "[FILL]"}
-  train: {epochs: "[FILL]", batch_size: "[FILL]", optimizer: "[FILL]", lr: "[FILL]"}
-  budget: {poison_rate: "[FILL]", target: "[FILL]"}
-hparams: {trigger: {size: "[FILL]", location: "[FILL]", polarity: "[FILL]"}}
-reported: {ca: "[FILL]", asr: "[FILL]"}
-ours: {seeds: [0, 1, 2], ca: {mean: null, std: null}, asr: {mean: null, std: null}}
+method: sneaky_static
+source: "Abad et al., Sneaky Spikes, NDSS 2024, Table I, static trigger, baseline columns"
+confirmed: false              # a maintainer confirmed the targets
+hparams: {selector: {include_target: true}}   # the papers poison every class
+seeds: [0, 1, 2]
 tolerance_pp: 2.0
+targets:
+  - setting:                  # a Scenario, may differ from the benchmark scenarios
+      name: sneaky_spikes_cifar10dvs
+      data: {name: cifar10dvs, split: cifar10dvs_9to1_v1}
+      repr: {kind: frames, T: 16, split_by: number}
+      arch: {name: cifar10dvs_net, T: 16}
+      train: {epochs: 28, batch_size: 16, loss: mse, optimizer: adam, lr: 0.001, schedule: cosine}
+      budget: {poison_rate: 0.1, target: 0, defender_clean_fraction: 0.0, delta_pp: 100.0}
+    reported: {ca: 67.7, asr_all: 100.0}          # percent, metric registry names
+    ours: {ca: {mean: null, std: null}, asr_all: {mean: null, std: null}}   # filled by sbb replicate
 status: pending               # pending | replicated | explained | failed
 explanation: null
 ```
+
+The papers' ASR counts the target class, so records compare `asr_all`. A replication setting has no defender pool, because the papers have none, and a large `delta_pp`, so the validity check never hides the ASR. The status is `replicated` when every reported metric of every target is within `tolerance_pp` of our mean over the seeds (population standard deviation alongside). Otherwise it is `failed`, unless a maintainer marked it `explained` with the reason. v1 records propose their targets from the papers and wait for the maintainer's confirmation (`confirmed`).
 
 If a paper used an architecture that is not in the registry, register it under its own name. It is then available for replication and, if useful, for the benchmark.
 
@@ -1509,11 +1517,11 @@ Order: group A first (methods the maintainers authored, where fidelity is easies
 
 | Group | Method | Kind or stage | Implementation on shared parts | Replication target | Official code |
 |---|---|---|---|---|---|
-| A | Sneaky Spikes, static | data_poisoning | `PoisoningAttack` with `FramePatchTrigger`, `RandomSelector`, `DirtyLabel` | [FILL] | github.com/GorkaAbad/Sneaky-Spikes (MIT) |
-| A | Sneaky Spikes, moving | data_poisoning | same, with `MovingPatchTrigger` | [FILL] | [FILL] |
-| A | Sneaky Spikes, smart | data_poisoning | same, with `SmartPatchTrigger` | [FILL] | [FILL] |
+| A | Sneaky Spikes, static | data_poisoning | `DirtyLabelPoisoning` with `FramePatchTrigger` (`sneaky_static`) | Table I, static baseline, CIFAR10-DVS and Gesture (proposed) | github.com/GorkaAbad/Sneaky-Spikes (MIT) |
+| A | Sneaky Spikes, moving | data_poisoning | same, with `MovingPatchTrigger` (`sneaky_moving`) | Table I, moving baseline, CIFAR10-DVS and Gesture (proposed) | same |
+| A | Sneaky Spikes, smart | data_poisoning | same, with `SmartPatchTrigger` (`sneaky_smart`) | Figure 3a, size 0.1, poison rate 0.1 (proposed, read from the plot) | same |
 | A | Sneaky Spikes, dynamic | data_poisoning | same, with a learned trigger that implements `Trigger.fit` | [FILL] | [FILL] |
-| A | Flashy Backdoor, digital version | data_poisoning | same, with `FlashTrigger` | [FILL] | [FILL] |
+| A | Flashy Backdoor, digital version | data_poisoning | same, with `FlashTrigger` (`flashy`) | Table 4, 3 frames at the start, Gesture (proposed) | github.com/Yencr0s/Flashy_backdoor (MIT) |
 | A | Fine-tuning injection (baseline) | supply_chain | `ModelAttack` that fine-tunes a zoo model on poisoned data with the `Trainer` | none | none |
 | A | No defense, fine-tuning | post_training | `ModelDefense` | none | none |
 | A | Fine-pruning | post_training | `ModelDefense`, spike rates of the last conv block (`channel_means`), `zero_channels` | none (section 12) | github.com/kangliucn/Fine-pruning-defense (ANN, no license) |

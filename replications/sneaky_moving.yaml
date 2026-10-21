@@ -1,0 +1,99 @@
+method: sneaky_moving
+source: Abad et al., Sneaky Spikes, NDSS 2024, Table I, moving trigger, baseline columns,
+  rows CIFAR10-DVS and DVS128-Gesture. Setting of the official scripts/moving.sh.
+confirmed: false
+hparams:
+  selector:
+    include_target: true
+seeds:
+- 0
+- 1
+- 2
+tolerance_pp: 2.0
+targets:
+- setting:
+    name: sneaky_spikes_cifar10dvs
+    data:
+      name: cifar10dvs
+      split: cifar10dvs_9to1_v1
+      revision: null
+    repr:
+      kind: frames
+      T: 16
+      split_by: number
+      downsample: 1
+    arch:
+      name: cifar10dvs_net
+      T: 16
+      neuron:
+        model: lif
+        tau: 2.0
+        v_threshold: 1.0
+        v_reset: 0.0
+        surrogate: atan
+        detach_reset: true
+      backend: torch
+      kwargs: {}
+    train:
+      epochs: 28
+      batch_size: 16
+      loss: mse
+      optimizer: adam
+      lr: 0.001
+      weight_decay: 0.0
+      schedule: cosine
+      augment: none
+      amp: false
+    budget:
+      poison_rate: 0.1
+      target: 0
+      defender_clean_fraction: 0.0
+      delta_pp: 100.0
+  reported:
+    ca: 68.2
+    asr_all: 100.0
+  ours: null
+- setting:
+    name: sneaky_spikes_dvsgesture
+    data:
+      name: dvsgesture
+      split: dvsgesture_official_v1
+      revision: null
+    repr:
+      kind: frames
+      T: 16
+      split_by: number
+      downsample: 1
+    arch:
+      name: dvsgesture_net
+      T: 16
+      neuron:
+        model: lif
+        tau: 2.0
+        v_threshold: 1.0
+        v_reset: 0.0
+        surrogate: atan
+        detach_reset: true
+      backend: torch
+      kwargs: {}
+    train:
+      epochs: 64
+      batch_size: 16
+      loss: mse
+      optimizer: adam
+      lr: 0.001
+      weight_decay: 0.0
+      schedule: cosine
+      augment: none
+      amp: false
+    budget:
+      poison_rate: 0.1
+      target: 0
+      defender_clean_fraction: 0.0
+      delta_pp: 100.0
+  reported:
+    ca: 92.0
+    asr_all: 95.8
+  ours: null
+status: pending
+explanation: null
