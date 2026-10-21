@@ -192,6 +192,10 @@ STAGE_BASES: dict[Stage, type[Defense]] = {
 class EvalContext:
     """Predictions on the clean and triggered test sets.
 
+    The triggered test set holds every test sample. The benchmark's metrics count only those
+    whose true label is not the target (nontarget), and asr_all counts all of them, as the
+    ported papers do.
+
     With an input defense, scores are its per-sample scores (higher is more suspicious) and the
     accepted masks mark the samples at or below its threshold. Without one, every sample is
     accepted and the scores are None.
@@ -211,6 +215,12 @@ class EvalContext:
     def clean_ok(self) -> np.ndarray:
         """Mask of the accepted clean samples."""
         return _all(self.clean_pred) if self.clean_accepted is None else self.clean_accepted
+
+    @property
+    def nontarget(self) -> np.ndarray:
+        """Mask of the triggered samples whose true label is not the target."""
+        mask: np.ndarray = self.triggered_true != self.target
+        return mask
 
     @property
     def triggered_ok(self) -> np.ndarray:

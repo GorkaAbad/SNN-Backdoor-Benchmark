@@ -42,7 +42,7 @@ def test_channel_means_average_over_time_batch_and_space() -> None:
     assert means.shape == (32,) and torch.allclose(means, expected.double())
     assert model.training, "the model's mode is restored"
     assert not conv._forward_hooks, "the hook is removed"
-    # Flashy ranks without the last two batches of its loader, which islice reproduces.
+    # Any iterable of batches works, for example a part of a loader.
     first = channel_means(model, conv, islice(_loader(), 1), torch.device("cpu"))
     assert torch.allclose(first, outputs[0].transpose(0, 1).mean(dim=(0, 1, 3, 4)).double())
 

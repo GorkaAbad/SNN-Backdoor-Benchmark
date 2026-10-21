@@ -22,9 +22,8 @@ def channel_means(
     """Mean output per channel of module over the batches (x, y, index) of loader, shape [C].
 
     The model runs in eval mode, and the mean runs over time, samples and space. For a spiking
-    neuron layer it is the firing rate of each channel. Flashy's fine-pruning ranks the channels
-    of the last convolution by the absolute value of this mean, without the last two batches of
-    its loader, which islice(loader, len(loader) - 2) reproduces.
+    neuron layer it is the firing rate of each channel, which fine-pruning ranks by. loader can be
+    any iterable of batches, for example a part of a DataLoader.
     """
     sums: torch.Tensor | None = None
     count = 0
@@ -56,8 +55,8 @@ def zero_channels(
     """Prune output channels of a convolution or a batch norm by zeroing their weight and bias.
 
     The pruning lives in the weights, so it survives the checkpoint the Game stores. Zeroing a
-    convolution's channels keeps the shift of the batch norm after it, as Flashy's fine-pruning
-    does. Zeroing a batch norm's scale and shift silences the channel, as CLP does.
+    batch norm's scale and shift silences the channel: its neurons get no input current. Zeroing
+    a convolution's channels keeps the shift of the batch norm after it.
     """
     if module.weight is None:
         raise SbbError(f"{type(module).__name__} has no weights to prune")

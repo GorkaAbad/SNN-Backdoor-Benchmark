@@ -60,7 +60,7 @@ Each cell is a security game. The harness plays the challenger:
 5. **Victim.** For poisoning attacks, the harness trains the victim on the train split with the PoisonSet overlay, using the scenario recipe. The undefended backdoored model is cached and shared.
 6. **Attack validity.** `CA(backdoored) >= CA(clean) - delta`. Otherwise the result is `invalid_attack`.
 7. **Defense.** The harness builds a DefenderView with exactly the declared resources. The defense acts according to its stage (3.3). Pre-training and in-training defenses trigger a new victim training run with the sanitized data or the hooks.
-8. **Metrics.** Compute the metrics (section 8) on the clean test set and on the triggered test set (test samples whose true label is not the target).
+8. **Metrics.** Compute the metrics (section 8) on the clean test set and on the triggered test set. Every metric but `asr_all` counts only triggered samples whose true label is not the target.
 
 ### 3.2 Attacker capabilities
 
@@ -329,7 +329,7 @@ class FrameRepr {
 class DataModule {
   +train_loader(overlay, batch_size, keep) DataLoader
   +test_loader(batch_size) DataLoader
-  +triggered_loader(target, batch_size, events, frames) DataLoader
+  +triggered_loader(batch_size, events, frames) DataLoader
   +clean_subset_loader(fraction, batch_size) DataLoader
 }
 class PoisonSet {
@@ -763,10 +763,10 @@ class DataModule:
     def train_loader(self, overlay: PoisonSet | None, batch_size: int,
                      keep: np.ndarray | None = None, shuffle: bool = True) -> DataLoader: ...
     def test_loader(self, batch_size: int) -> DataLoader: ...
-    def triggered_loader(self, target: int, batch_size: int,
+    def triggered_loader(self, batch_size: int,
                          events: Callable[[EventSample, np.random.Generator], EventSample] | None = None,
                          frames: Callable[[torch.Tensor, np.random.Generator], torch.Tensor] | None = None,
-                         ) -> DataLoader: ...   # only samples with label != target
+                         ) -> DataLoader: ...   # every test sample, true labels
     def clean_subset_loader(self, fraction: float, batch_size: int) -> DataLoader: ...  # from the defender pool
 
 def reserve_defender_pool(labels: np.ndarray, train: Sequence[int], fraction: float, seed: int) -> np.ndarray: ...
@@ -978,7 +978,7 @@ v1 notes on how the Game plays each stage. The card's stage decides, and the cla
 
 v1 shared parts of the SNN adaptations (task 5), in `sbb.defenses.utils`, chosen from the official code of the group A defenses:
 
-- `channel_means(model, module, loader, device)`: the mean output per channel of any layer over a loader, in eval mode. On a spiking neuron layer it is the firing rate. Flashy's SNN fine-pruning ranks the channels of the last convolution by the absolute value of this mean on the convolution's output, without the last two batches of its loader, which `islice(loader, len(loader) - 2)` reproduces.
+- `channel_means(model, module, loader, device)`: the mean output per channel of any layer over a loader, in eval mode. On a spiking neuron layer it is the firing rate. sbb's fine-pruning ranks the neurons of the last conv block by it (section 12). It takes any iterable of batches.
 - `zero_channels(module, channels)`: prunes output channels of a convolution or a batch norm by zeroing their weight and bias. Pruning has to live in the weights, because the Game stores a defended model as a state dict. Zeroing a convolution keeps the shift of the following batch norm (Flashy's fine-pruning), and zeroing a batch norm silences the channel (CLP).
 - `conv_bn_pairs(model)`: each batch norm with the convolution before it, as CLP pairs them for its channel Lipschitz bound.
 - `superpose(x, overlay)`: STRIP's superposition. Inputs reach an input defense as frames, so it adds the frames, as Flashy's SNN STRIP does.
@@ -1264,8 +1264,9 @@ view:
   clean_fraction: 0.05
 input_repr: frames
 adaptation_note: >
-  Channels of the last convolution are ranked by the absolute mean of its output on clean
-  data (channel_means), as Flashy's SNN fine-pruning does. Pruning zeroes their weights
+  Neurons of the last conv block are ranked by their spike rate on clean data
+  (channel_means on its neuron layer), the SNN counterpart of the activations of the original
+  method. Pruning silences a channel by zeroing the scale and shift of its batch norm
   (zero_channels).
 hparams:                               # illustrative values
   default: {prune_ratio: 0.2, finetune_epochs: 10, lr: 0.001, batch_size: 64}
@@ -1401,7 +1402,7 @@ If a paper used an architecture that is not in the registry, register it under i
 
 ## 8. Metrics
 
-All metrics are fractions in [0, 1]. The triggered test set contains only test samples whose true label is not the target.
+All metrics are fractions in [0, 1]. The triggered test set contains every test sample. Every metric but `asr_all` counts only the triggered samples whose true label is not the target (v1 change: before, the triggered test set left them out).
 
 v1 notes. Registry names: `ca`, `asr`, `ra`, `frr`, `tpr` and `auroc` (input). A metric lists the defense stages it applies to (`Metric.stages`), so `frr`, `tpr` and `auroc` appear only in inference cells. `EvalContext` carries the accepted masks and scores of an input defense, and CA, ASR and RA count only accepted samples. AUROC counts ties as half. A detection cell also reports its raw `verdict`, which is not a fraction. The LeaderboardBuilder turns verdicts into the model AUROC.
 
@@ -1409,6 +1410,7 @@ v1 notes. Registry names: `ca`, `asr`, `ra`, `frr`, `tpr` and `auroc` (input). A
 |---|---|---|
 | CA | Clean test samples that are accepted and correctly classified. Without an input defense every sample is accepted. | all |
 | ASR | Triggered samples that are accepted and classified as the target. | all |
+| ASR (all), `asr_all` | ASR over every triggered sample, the target class included, the definition of the ported papers. Replications compare with it (v1). | all |
 | RA | Triggered samples that are accepted and classified as their true label. | all |
 | FRR | Clean test samples rejected by the input defense at its threshold. | inference |
 | TPR | Triggered samples rejected by the input defense at its threshold. | inference |
@@ -1426,7 +1428,7 @@ Aggregation: mean and standard deviation over seeds, with the number of seeds. S
 
 There are two separate guarantees.
 
-**The port matches the paper.** Every ported method has a replication record (7.9). It runs the paper's own setting, compares with the reported numbers and states a tolerance. A method enters the battery only with status `replicated` or `explained`. After that, benchmark numbers can differ from paper numbers only because the setting differs, never because of the port.
+**The port matches the paper.** Every ported attack has a replication record (7.9). It runs the paper's own setting, compares with the reported numbers and states a tolerance. A method enters the battery only with status `replicated` or `explained`. After that, benchmark numbers can differ from paper numbers only because the setting differs, never because of the port.
 
 **Anyone can rerun a leaderboard number.**
 
@@ -1499,6 +1501,8 @@ Protocol for every port:
 6. For ANN defenses, describe the SNN adaptation in the card's `adaptation_note` and implement it with the shared utilities in `sbb.defenses.utils`, never inline.
 7. Ask the original authors to review the port and the adaptation note.
 
+v1 decision (user, 2026-10-21): replication covers the main results of the attack papers, their CA and ASR tables. Results that attack papers report for defenses are not replicated, because each paper adapts each defense in its own way. A defense has one sbb implementation, the SNN adaptation of its original paper described in the card's `adaptation_note`, and every evaluation uses it. Variants can come later as separate methods or versions. So a defense port has no replication record, and only attack ports need status `replicated` or `explained`. Fine-pruning, for example, ranks the neurons of the last conv block by their spike rate on clean data, the SNN counterpart of the activations of the original method, and not by Flashy's conv-output variant.
+
 v0 decision: `static_patch` stays a raw-event variant of the Sneaky Spikes static trigger, not an exact port. The official code overwrites a patch in every SpikingJelly frame (size relative to the image, polarity modes 0 to 3) and poisons samples of every class. `static_patch` adds patch events to the raw stream and never poisons the target class. The card states this. An exact port needs frame-domain triggers (`trigger_domain: frames`), which v1 adds (6.5). The exact ports use them, and replications draw poisoned samples from every class (`RandomSelector(include_target=True)`), as the papers do. Benchmark cells keep the target class out.
 
 Order: group A first (methods the maintainers authored, where fidelity is easiest to judge, plus the defenses needed to exercise every stage), then group B.
@@ -1512,7 +1516,7 @@ Order: group A first (methods the maintainers authored, where fidelity is easies
 | A | Flashy Backdoor, digital version | data_poisoning | same, with `FlashTrigger` | [FILL] | [FILL] |
 | A | Fine-tuning injection (baseline) | supply_chain | `ModelAttack` that fine-tunes a zoo model on poisoned data with the `Trainer` | none | none |
 | A | No defense, fine-tuning | post_training | `ModelDefense` | none | none |
-| A | Fine-pruning | post_training | `ModelDefense`, `channel_means` of the last convolution (as Flashy's SNN adaptation), `zero_channels` | [FILL] | [FILL] |
+| A | Fine-pruning | post_training | `ModelDefense`, spike rates of the last conv block (`channel_means`), `zero_channels` | none (section 12) | github.com/kangliucn/Fine-pruning-defense (ANN, no license) |
 | A | CLP | post_training, data-free | `ModelDefense` with view `{model}`, `conv_bn_pairs`, `zero_channels` | [FILL] | [FILL] |
 | A | TMPBD | model_detection | `DetectionDefense` with view `{model}`, membrane probe with gradients | [FILL] | [FILL] |
 | A | STRIP | inference | `InputDefense` with view `{model, clean_subset}`, frame superposition (`superpose`, as Flashy's SNN STRIP) | [FILL] | [FILL] |
@@ -1599,7 +1603,7 @@ Definition of done:
 - A test pull request adds a defense with only a plugin file, a card and a replication record, without touching the core, and passes CI.
 - `sbb plan benchmarks/v0.9.yaml` lists every cell, with N/A reasons.
 - Every lite cell runs within the 6-hour job limit of a GitHub-hosted runner, and the lite track is verified after merge.
-- All group A ports have status `replicated` or `explained`.
+- All group A attack ports have status `replicated` or `explained` (defenses have no replication record, section 12).
 - One cell gives matching results through LocalExecutor and through SlurmExecutor on at least one cluster.
 - The leaderboard is online with statuses and N/A reasons.
 

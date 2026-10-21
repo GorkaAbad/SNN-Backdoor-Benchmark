@@ -44,7 +44,7 @@ def test_static_patch_backdoors_and_fine_tuning_runs(game: Game) -> None:
     assert [r.outcome for r in (clean, attacked, tuned)] == ["ok"] * 3, attacked.reason
     assert clean.metrics["ca"] > 0.9 and clean.metrics["asr"] < 0.1
     assert attacked.metrics["ca"] > 0.9 and attacked.metrics["asr"] > 0.9
-    assert set(tuned.metrics) == {"ca", "asr", "ra"}
+    assert set(tuned.metrics) == {"ca", "asr", "ra", "asr_all"}
     assert attacked.artifacts["clean_model"] == clean.artifacts["clean_model"]
     assert attacked.artifacts["model"] == tuned.artifacts["model"]
 
@@ -361,7 +361,7 @@ def test_retraining_defenses_retrain_the_victim(game: Game, defense: str) -> Non
     assert undefended.metrics["asr"] > 0.9 and defended.metrics["asr"] < 0.1
     assert defended.artifacts["model"] == undefended.artifacts["model"]
     assert defended.artifacts["defended_model"] != defended.artifacts["model"]
-    assert set(defended.metrics) == {"ca", "asr", "ra"}
+    assert set(defended.metrics) == {"ca", "asr", "ra", "asr_all"}
 
 
 @pytest.mark.usefixtures("stage_defenses")
@@ -369,7 +369,7 @@ def test_input_defense_rejects_triggered_inputs(game: Game) -> None:
     result = game.run(make_cell("static_patch", "patch_detector"))
     assert result.outcome == "ok", result.reason
     metrics = result.metrics
-    assert set(metrics) == {"ca", "asr", "ra", "frr", "tpr", "auroc"}
+    assert set(metrics) == {"ca", "asr", "ra", "asr_all", "frr", "tpr", "auroc"}
     assert metrics["tpr"] > 0.9 and metrics["auroc"] > 0.9 and metrics["frr"] < 0.2
     assert metrics["asr"] < 0.1  # rejected triggered inputs do not count as successes
     assert "defended_model" not in result.artifacts  # the model itself is unchanged
@@ -384,7 +384,7 @@ def test_detection_defense_records_a_cached_verdict(game: Game) -> None:
     assert first.outcome == "ok", first.reason
     assert first.metrics == again.metrics and _WeightNorm.calls == 1
     assert first.metrics["verdict"] > 0
-    assert {k: first.metrics[k] for k in ("ca", "asr", "ra")} == undefended.metrics
+    assert {k: first.metrics[k] for k in ("ca", "asr", "ra", "asr_all")} == undefended.metrics
 
 
 class _KeepAll(DataDefense):

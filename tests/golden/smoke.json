@@ -1,6 +1,6 @@
 {
-  "no_attack/no_defense": {"ca": 1.0, "asr": 0.0, "ra": 1.0},
-  "no_attack/fine_tuning": {"ca": 1.0, "asr": 0.0, "ra": 1.0},
-  "static_patch/no_defense": {"ca": 1.0, "asr": 1.0, "ra": 0.0},
-  "static_patch/fine_tuning": {"ca": 1.0, "asr": 1.0, "ra": 0.0}
+  "no_attack/no_defense": {"ca": 1.0, "asr": 0.0, "ra": 1.0, "asr_all": 0.25},
+  "no_attack/fine_tuning": {"ca": 1.0, "asr": 0.0, "ra": 1.0, "asr_all": 0.25},
+  "static_patch/no_defense": {"ca": 1.0, "asr": 1.0, "ra": 0.0, "asr_all": 1.0},
+  "static_patch/fine_tuning": {"ca": 1.0, "asr": 1.0, "ra": 0.0, "asr_all": 1.0}
 }

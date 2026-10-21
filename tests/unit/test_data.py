@@ -91,8 +91,8 @@ def test_loaders(datamodule: DataModule, synthetic: SyntheticEvents) -> None:
     def flip(sample: EventSample, rng: np.random.Generator) -> EventSample:
         return EventSample(sample.events[:0], sample.label, sample.index)
 
-    x, y, _ = next(iter(datamodule.triggered_loader(0, 200, events=flip)))
-    assert len(y) == 90 and (y != 0).all() and x.sum() == 0
+    x, y, _ = next(iter(datamodule.triggered_loader(200, events=flip)))
+    assert len(y) == len(datamodule.split.test) and x.sum() == 0  # every class, target included
 
     _, _, index = next(iter(datamodule.clean_subset_loader(0.05, batch_size=100)))
     assert set(index.tolist()) == set(datamodule.defender_pool.tolist())
@@ -113,8 +113,8 @@ def test_frame_triggers_act_after_the_representation(datamodule: DataModule) -> 
         assert torch.equal(x[position], expected), "only the poisoned sample changes"
     assert y[index.tolist().index(7)] == 0
 
-    x, y, index = next(iter(datamodule.triggered_loader(0, 200, frames=_plus_seed)))
-    assert len(y) == 90 and (y != 0).all()
+    x, y, index = next(iter(datamodule.triggered_loader(200, frames=_plus_seed)))
+    assert len(y) == len(datamodule.split.test)
     for frames, i in zip(x, index.tolist(), strict=True):
         shift = float(rng_for(0, i).integers(1, 100))
         assert torch.equal(frames, datamodule.cached_frames(i) + shift)

@@ -137,20 +137,19 @@ class DataModule:
 
     def triggered_loader(
         self,
-        target: int,
         batch_size: int,
         events: EventTriggerFn | None = None,
         frames: FrameTriggerFn | None = None,
     ) -> DataLoader[Item]:
-        """Loader over triggered test samples whose true label is not target.
+        """Loader over every test sample with the trigger applied, in split order.
 
         The trigger acts on the raw events (events) or on the encoded frames (frames) of each
-        sample, with the RNG rng_for(seed, index). Labels stay the true labels.
+        sample, with the RNG rng_for(seed, index). Labels stay the true labels, so metrics can
+        leave out the target class.
         """
         entries: list[Entry] = [
             (i, int(self.labels[i]), partial(self._triggered, i, events, frames))
             for i in self.split.test
-            if self.labels[i] != target
         ]
         return self._loader(entries, batch_size, shuffle=False)
 

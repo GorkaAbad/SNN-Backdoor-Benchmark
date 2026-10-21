@@ -207,9 +207,9 @@ class Game:
         # 8. Metrics on the clean and triggered test sets
         _check_domain(cell.attack, attack)  # again, the attack may have replaced its trigger
         if isinstance(attack.trigger, FrameTrigger):
-            triggered = data.triggered_loader(budget.target, bs, frames=attack.trigger.apply)
+            triggered = data.triggered_loader(bs, frames=attack.trigger.apply)
         else:
-            triggered = data.triggered_loader(budget.target, bs, events=attack.trigger.apply)
+            triggered = data.triggered_loader(bs, events=attack.trigger.apply)
         clean_pred, clean_true = trainer.predict(defended.model, test)
         triggered_pred, triggered_true = trainer.predict(defended.model, triggered)
         rejection: dict[str, np.ndarray] = {}

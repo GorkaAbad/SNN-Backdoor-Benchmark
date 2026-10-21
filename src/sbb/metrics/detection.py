@@ -32,14 +32,14 @@ class FalseRejectionRate(Metric):
 
 @METRICS.register("tpr")
 class TruePositiveRate(Metric):
-    """Triggered test samples the input defense rejects."""
+    """Triggered test samples of other classes than the target that the input defense rejects."""
 
     name = "tpr"
     stages = _INFERENCE
 
     def compute(self, ctx: EvalContext) -> float:
-        """Fraction of triggered samples rejected."""
-        return float(np.mean(~ctx.triggered_ok))
+        """Fraction of triggered non-target samples rejected."""
+        return float(np.mean(~ctx.triggered_ok[ctx.nontarget]))
 
 
 @METRICS.register("auroc")
@@ -50,6 +50,6 @@ class InputAUROC(Metric):
     stages = _INFERENCE
 
     def compute(self, ctx: EvalContext) -> float:
-        """AUROC of clean versus triggered scores."""
+        """AUROC of clean versus triggered non-target scores."""
         assert ctx.clean_scores is not None and ctx.triggered_scores is not None
-        return auroc(ctx.clean_scores, ctx.triggered_scores)
+        return auroc(ctx.clean_scores, ctx.triggered_scores[ctx.nontarget])
