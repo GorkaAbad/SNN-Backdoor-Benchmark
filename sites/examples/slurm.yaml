@@ -1,0 +1,10 @@
+# A Slurm cluster. Copy it outside the repository and fill in your account and partition.
+# sbb run then submits the pending cells as one job array, each task inside the image.
+name: my-cluster
+runtime: apptainer
+scheduler: slurm
+image: docker://ghcr.io/ORG/sbb@sha256:DIGEST   # TODO([FILL]) the image of task 9
+device: cuda
+cache_dir: /cluster/work/USER/sbb-cache
+max_parallel: 16
+slurm: {account: ACCOUNT, partition: PARTITION, time: "06:00:00", gres: "gpu:1"}

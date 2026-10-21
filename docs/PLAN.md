@@ -1159,6 +1159,8 @@ class SlurmExecutor(Executor): ...      # sbatch job arrays, apptainer exec --nv
 class HFJobsExecutor(Executor): ...     # optional, huggingface_hub.run_job, v2
 ```
 
+v1 notes (task 7). `Planner.pending` is a static method over any object with `get(key)` (a ResultStore), because the runner and results layers are independent. A cell is pending when it has no result or its last result failed. `sbb run` and `sbb replicate` run the pending cells in their own process on a local site with one worker, start `LocalExecutor`'s pool of `python -m sbb run-cell` processes with more workers, and submit through `SlurmExecutor` on a Slurm site. A submitting command returns at once, and running it again once the jobs end writes the table or fills the record. Every executor writes `<out>/jobs/<hash of the cell keys>/` with one JSON per cell, the site profile and the logs. The Slurm job is one array of at most `max_parallel` running tasks. `site.slurm` entries become `#SBATCH --<key>=<value>` lines and its `extra` entry is copied as is. With runtime `apptainer` each task runs `apptainer exec --nv --bind <cache_dir> <image> sbb run-cell ...`.
+
 ### 6.10 Results and verification (`sbb.results`)
 
 ```python

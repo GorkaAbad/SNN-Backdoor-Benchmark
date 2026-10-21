@@ -70,3 +70,15 @@ def test_replicate_runs_the_record_and_fills_it(tmp_path: Path) -> None:
     again = CliRunner().invoke(app, [*args, "--out", str(out), "--update"])
     assert "1 cells, 0 pending" in unstyle(again.output)
     assert ReplicationRecord.load(records / "static_patch.yaml").status == "replicated"
+
+
+def test_run_with_a_process_pool(tmp_path: Path) -> None:
+    # max_parallel 2 runs each cell in its own sbb run-cell process.
+    site = tmp_path / "site.yaml"
+    site.write_text(f"name: pool\ndevice: cpu\nmax_parallel: 2\ncache_dir: {tmp_path / 'cache'}\n")
+    out = tmp_path / "results"
+    args = ["run", str(SMOKE), "--attack", "no_attack", "--site", str(site), "--out", str(out)]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.output
+    assert len(list((out / "smoke-0.1.0").glob("*.json"))) == 2
+    assert "no_attack" in (out / "smoke-0.1.0" / "table.md").read_text()

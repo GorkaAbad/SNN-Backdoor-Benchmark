@@ -20,10 +20,12 @@ import sbb.metrics  # noqa: F401
 from sbb.core.cards import compatible
 from sbb.core.game import Game
 from sbb.core.registry import ATTACKS, DEFENSES
+from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
 from sbb.results.replication import ReplicationRecord
 from sbb.results.store import LocalResultStore, ResultStore
 from sbb.results.table import markdown_table
+from sbb.runner.executors import executor_for
 from sbb.runner.planner import Planner
 from sbb.runner.site import SiteProfile
 from sbb.runner.spec import BenchmarkSpec
@@ -60,17 +62,29 @@ def _site(path: Path | None) -> SiteProfile:
     return SiteProfile.load(path) if path else SiteProfile.default()
 
 
-def _done(store: ResultStore, cell: Cell) -> bool:
-    result = store.get(cell.key())
-    return result is not None and result.outcome != "failed"
+def _execute(cells: list[Cell], store: ResultStore, site: SiteProfile, out: Path) -> bool:
+    """Run or submit the cells without a result, and return whether their results are in.
 
-
-def _run_pending(cells: list[Cell], store: ResultStore, site: SiteProfile) -> int:
-    """Run the cells without a result in-process, and return the number that failed."""
-    pending = [c for c in cells if not _done(store, c)]
+    A local site with one worker runs them in this process, one with more workers in a pool of
+    sbb run-cell processes. A site with a scheduler submits them and returns False.
+    """
+    pending = Planner.pending(cells, store)
     console.print(f"{len(cells)} cells, {len(pending)} pending")
-    game = site.game("in-process")
-    return sum(not _run_cell(game, cell, store) for cell in pending)
+    if not pending:
+        return True
+    if site.scheduler == "none" and site.max_parallel == 1:
+        game = site.game("in-process")
+        for cell in pending:
+            _run_cell(game, cell, store)
+        return True
+    ids = executor_for(site).submit(pending, out)
+    if site.scheduler != "none":
+        console.print(f"submitted as job {', '.join(ids)}, run this command again when it ends")
+        return False
+    for cell in pending:
+        if result := store.get(cell.key()):
+            _print(result)
+    return True
 
 
 def _run_cell(game: Game, cell: Cell, store: ResultStore) -> bool:
@@ -78,9 +92,13 @@ def _run_cell(game: Game, cell: Cell, store: ResultStore) -> bool:
     console.print(f"[bold]{cell.scenario.name}[/] {cell.attack} × {cell.defense} seed {cell.seed}")
     result = game.run(cell)
     store.save(result)
+    _print(result)
+    return result.outcome != "failed"
+
+
+def _print(result: CellResult) -> None:
     metrics = " ".join(f"{k}={v:.4f}" for k, v in result.metrics.items())
     console.print(f"  {result.outcome} {metrics} {result.reason or ''}")
-    return result.outcome != "failed"
 
 
 @app.command("run-cell")
@@ -100,10 +118,13 @@ def run(
     site: Site = None,
     out: Out = Path("results"),
 ) -> None:
-    """Plan the cells of SPEC, run the pending ones in-process, and write table.md."""
+    """Plan the cells of SPEC, run or submit the pending ones, and write table.md when done."""
     bench = BenchmarkSpec.load(spec)
     store = LocalResultStore(out)
-    failures = _run_pending(Planner(bench).cells(track, attack, defense), store, _site(site))
+    cells = Planner(bench).cells(track, attack, defense)
+    if not _execute(cells, store, _site(site), out):
+        return
+    failures = len(Planner.pending(cells, store))
     table = out / bench.version / "table.md"
     table.parent.mkdir(parents=True, exist_ok=True)
     table.write_text(markdown_table(store.query(benchmark_version=bench.version)))
@@ -134,7 +155,9 @@ def replicate(
     record = ReplicationRecord.load(path)
     store = LocalResultStore(out)
     cells = record.cells()
-    if _run_pending(cells, store, _site(site)):
+    if not _execute(cells, store, _site(site), out):
+        return
+    if Planner.pending(cells, store):
         console.print("[red]some cells failed, the record is not updated[/]")
         raise typer.Exit(1)
     filled = record.with_results([store.get(cell.key()) for cell in cells])

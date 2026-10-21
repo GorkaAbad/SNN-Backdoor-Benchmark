@@ -1,10 +1,20 @@
 """Expands a benchmark spec into cells."""
 
+from collections.abc import Sequence
 from itertools import product
+from typing import Protocol
 
 from sbb.core.registry import ATTACKS, DEFENSES
+from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
 from sbb.runner.spec import BenchmarkSpec
+
+
+class Results(Protocol):
+    """Anything that finds a cell's result by key, such as a ResultStore."""
+
+    def get(self, key: str) -> CellResult | None:
+        """Return the result of a cell key, or None."""
 
 
 class Planner:
@@ -40,3 +50,12 @@ class Planner:
                     )
                 )
         return cells
+
+    @staticmethod
+    def pending(cells: Sequence[Cell], results: Results) -> list[Cell]:
+        """Return the cells without a result, or whose last result failed, in order."""
+        return [
+            cell
+            for cell in cells
+            if (result := results.get(cell.key())) is None or result.outcome == "failed"
+        ]
