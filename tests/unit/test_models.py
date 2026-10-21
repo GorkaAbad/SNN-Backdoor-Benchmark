@@ -50,6 +50,21 @@ def test_probes() -> None:
         model.probe("nope", "spikes")
 
 
+def test_membrane_probe_can_keep_the_graph() -> None:
+    # TMPBD optimizes inputs through membrane potentials. Its official code runs in train mode,
+    # where the surrogate gradient flows through the spikes of earlier layers.
+    model = _model().train()
+    x = (torch.rand(2, 4, 2, 16, 16) * 3).requires_grad_()
+    name = list(model.named_neurons())[-1][0]
+    with model.probe(name, "membrane", detach=False) as probe:
+        model(x)
+    probe.membrane().sum().backward()
+    assert x.grad is not None and x.grad.abs().sum() > 0
+    with model.probe(name, "membrane") as probe:
+        model(x)
+    assert not probe.membrane().requires_grad, "records are detached by default"
+
+
 def test_checkpoint_round_trip(tmp_path: Path) -> None:
     model = _model().eval()
     save_checkpoint(model, tmp_path, "k")

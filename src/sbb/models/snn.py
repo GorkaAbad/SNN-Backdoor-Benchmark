@@ -79,23 +79,29 @@ class SNNModel(nn.Module):
             if isinstance(module, neuron.BaseNode):
                 yield name, module
 
-    def probe(self, layer: str, kind: ProbeKind) -> "Probe":
-        """Return a probe that records one neuron layer. See named_neurons for layer names."""
+    def probe(self, layer: str, kind: ProbeKind, detach: bool = True) -> "Probe":
+        """Return a probe that records one neuron layer. See named_neurons for layer names.
+
+        With detach False the records keep the autograd graph, for defenses that optimize inputs
+        through them (TMPBD).
+        """
         neurons = dict(self.named_neurons())
         if layer not in neurons:
             raise SbbError(f"no neuron layer {layer!r}, known: {list(neurons)}")
-        return Probe(neurons[layer], kind)
+        return Probe(neurons[layer], kind, detach)
 
 
 class Probe:
     """Context manager that records spikes or membrane potentials of one layer.
 
-    Records are concatenated over the forward passes made inside the context.
+    Records are concatenated over the forward passes made inside the context. They are detached
+    unless detach is False.
     """
 
-    def __init__(self, layer: neuron.BaseNode, kind: ProbeKind) -> None:
+    def __init__(self, layer: neuron.BaseNode, kind: ProbeKind, detach: bool = True) -> None:
         self.layer = layer
         self.kind = kind
+        self.detach = detach
         self._records: list[torch.Tensor] = []
 
     def __enter__(self) -> "Probe":
@@ -110,7 +116,7 @@ class Probe:
 
     def _record(self, module: neuron.BaseNode, inputs: object, output: torch.Tensor) -> None:
         seq = module.v_seq if self.kind == "membrane" else output
-        self._records.append(seq.detach().transpose(0, 1))
+        self._records.append((seq.detach() if self.detach else seq).transpose(0, 1))
 
     def _get(self, kind: ProbeKind) -> torch.Tensor:
         if kind != self.kind:

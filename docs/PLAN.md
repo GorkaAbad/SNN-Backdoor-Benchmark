@@ -397,7 +397,7 @@ class SNNModel {
   +forward(x) logits
   +reset()
   +named_neurons()
-  +probe(layer, kind) Probe
+  +probe(layer, kind, detach) Probe
 }
 class Probe {
   +spikes()
@@ -804,7 +804,8 @@ class SNNModel(nn.Module):           # v0: one concrete wrapper around a net map
     def forward(self, x: torch.Tensor) -> torch.Tensor: ...
     def reset(self) -> None: ...
     def named_neurons(self) -> Iterator[tuple[str, nn.Module]]: ...
-    def probe(self, layer: str, kind: Literal["spikes", "membrane"]) -> "Probe": ...
+    def probe(self, layer: str, kind: Literal["spikes", "membrane"],
+              detach: bool = True) -> "Probe": ...   # v1: detach False keeps the autograd graph
     @property
     def spec(self) -> ArchSpec: ...
 
@@ -974,6 +975,16 @@ class DetectionDefense(Defense):
 ```
 
 v1 notes on how the Game plays each stage. The card's stage decides, and the class must subclass the matching base. A card must declare the resources its stage needs (the "Required resources" column of 3.3), which the card validation enforces, so a pre-training or in-training defense is N/A against model attacks. A pre-training defense returns unique positions of the train set (checked), and the victim is retrained on the poisoned split restricted to them. An in-training defense's hooks are passed to a fresh training run. Both retrained models and post-training repairs are cached under the defense key, so `sanitize`, `hooks` and `repair` run only on a cache miss. An input defense is fitted in every cell (its fitted state is not cached), and it rejects an input when its score is above `threshold`. A detection defense's verdict is cached under the defense key as `verdict.json` and reported in the cell's metrics as `verdict`. Input and detection defenses leave the model unchanged, so their cells have no `defended_model` artifact.
+
+v1 shared parts of the SNN adaptations (task 5), in `sbb.defenses.utils`, chosen from the official code of the group A defenses:
+
+- `channel_means(model, module, loader, device)`: the mean output per channel of any layer over a loader, in eval mode. On a spiking neuron layer it is the firing rate. Flashy's SNN fine-pruning ranks the channels of the last convolution by the absolute value of this mean on the convolution's output, without the last two batches of its loader, which `islice(loader, len(loader) - 2)` reproduces.
+- `zero_channels(module, channels)`: prunes output channels of a convolution or a batch norm by zeroing their weight and bias. Pruning has to live in the weights, because the Game stores a defended model as a state dict. Zeroing a convolution keeps the shift of the following batch norm (Flashy's fine-pruning), and zeroing a batch norm silences the channel (CLP).
+- `conv_bn_pairs(model)`: each batch norm with the convolution before it, as CLP pairs them for its channel Lipschitz bound.
+- `superpose(x, overlay)`: STRIP's superposition. Inputs reach an input defense as frames, so it adds the frames, as Flashy's SNN STRIP does.
+- `SNNModel.probe(layer, "membrane", detach=False)`: membrane potentials with their autograd graph, for TMPBD, which optimizes inputs to raise the output layer's membrane potential.
+
+Learned neuron masks (ANP, group B) come with that port.
 
 `no_defense` is a `ModelDefense` with view `{model}` that returns the model unchanged. A typical defense:
 
@@ -1253,8 +1264,9 @@ view:
   clean_fraction: 0.05
 input_repr: frames
 adaptation_note: >
-  Neuron activity is the mean spike rate over T of the last convolutional block,
-  measured with SNNModel.probe. Pruning masks output channels.
+  Channels of the last convolution are ranked by the absolute mean of its output on clean
+  data (channel_means), as Flashy's SNN fine-pruning does. Pruning zeroes their weights
+  (zero_channels).
 hparams:                               # illustrative values
   default: {prune_ratio: 0.2, finetune_epochs: 10, lr: 0.001, batch_size: 64}
   nmnist/tiny_lif_cnn: {prune_ratio: 0.3}
@@ -1500,10 +1512,10 @@ Order: group A first (methods the maintainers authored, where fidelity is easies
 | A | Flashy Backdoor, digital version | data_poisoning | same, with `FlashTrigger` | [FILL] | [FILL] |
 | A | Fine-tuning injection (baseline) | supply_chain | `ModelAttack` that fine-tunes a zoo model on poisoned data with the `Trainer` | none | none |
 | A | No defense, fine-tuning | post_training | `ModelDefense` | none | none |
-| A | Fine-pruning | post_training | `ModelDefense`, spike-rate probe for dormant neurons | [FILL] | [FILL] |
-| A | CLP | post_training, data-free | `ModelDefense` with view `{model}`, `named_neurons()` | [FILL] | [FILL] |
-| A | TMPBD | model_detection | `DetectionDefense` with view `{model}`, membrane probe | [FILL] | [FILL] |
-| A | STRIP | inference | `InputDefense` with view `{model, clean_subset}`, event superposition | [FILL] | [FILL] |
+| A | Fine-pruning | post_training | `ModelDefense`, `channel_means` of the last convolution (as Flashy's SNN adaptation), `zero_channels` | [FILL] | [FILL] |
+| A | CLP | post_training, data-free | `ModelDefense` with view `{model}`, `conv_bn_pairs`, `zero_channels` | [FILL] | [FILL] |
+| A | TMPBD | model_detection | `DetectionDefense` with view `{model}`, membrane probe with gradients | [FILL] | [FILL] |
+| A | STRIP | inference | `InputDefense` with view `{model, clean_subset}`, frame superposition (`superpose`, as Flashy's SNN STRIP) | [FILL] | [FILL] |
 | B | T-Backdoor (rate, latency, jitter) | data_poisoning | three temporal triggers | [FILL] | [FILL] |
 | B | Temporal clean-label poisoning | data_poisoning | `EventRedistributionTrigger`, `TargetClassSelector`, `CleanLabel` | [FILL] | [FILL] |
 | B | BadSNN | training_control | `ModelAttack` with `TrainerHooks` that change neuron hyperparameters during training, plus trigger optimization | [FILL] | github.com/SiSL-URI/BadSNN |
@@ -1571,7 +1583,7 @@ Tasks, in order:
 2. The standard full-track networks `dvsgesture_net` and `cifar10dvs_net`, the networks of the ported papers (v1 change, see 13.6).
 3. Scenario kinds `training_control` and `supply_chain`: ModelAttack, AttackerView for both kinds, clean models taken from the zoo.
 4. All defense stages in the Game: DataDefense (retrain on kept indices), TrainingDefense (retrain with hooks), InputDefense (rejection and threshold), DetectionDefense (model AUROC).
-5. Shared parts: patch, moving, smart, flash and temporal triggers, random and target-class selectors, label policies, `sbb.defenses.utils` (spike-rate and membrane helpers, neuron masks, event superposition).
+5. Shared parts: patch, moving, smart, flash and temporal triggers, random and target-class selectors, label policies, `sbb.defenses.utils` (channel means and spike rates, membrane probes with gradients, channel pruning, frame superposition).
 6. Group A ports (section 12), each with its replication record, and `sbb replicate`.
 7. Runner: `Planner.pending`, HubStore for the zoo, `sbb zoo pull` and `push`, SlurmExecutor with SiteProfile and Apptainer, LocalExecutor with a process pool.
 8. Results: Manifest, `sbb bundle`, `sbb validate`, `sbb reproduce`, Verification records for the lite track.
