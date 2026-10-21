@@ -578,3 +578,10 @@ def test_ported_defenses_run_in_the_game(game: Game, defense: str, extra: set[st
     result = game.run(make_cell("static_patch", defense))
     assert result.outcome == "ok", result.reason
     assert set(result.metrics) == {"ca", "asr", "ra", "asr_all"} | extra
+
+
+def test_finetune_injection_backdoors_the_supplied_model(game: Game) -> None:
+    result = game.run(make_cell("finetune_injection", "no_defense"))
+    assert result.outcome == "ok", result.reason
+    assert result.metrics["ca"] > 0.9 and result.metrics["asr"] > 0.9
+    assert result.artifacts["model"] != result.artifacts["clean_model"]

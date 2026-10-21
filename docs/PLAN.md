@@ -1522,7 +1522,7 @@ Order: group A first (methods the maintainers authored, where fidelity is easies
 | A | Sneaky Spikes, smart | data_poisoning | same, with `SmartPatchTrigger` (`sneaky_smart`) | Figure 3a, size 0.1, poison rate 0.1 (proposed, read from the plot) | same |
 | A | Sneaky Spikes, dynamic | data_poisoning | same, with a learned trigger that implements `Trigger.fit` | [FILL] | [FILL] |
 | A | Flashy Backdoor, digital version | data_poisoning | same, with `FlashTrigger` (`flashy`) | Table 4, 3 frames at the start, Gesture (proposed) | github.com/Yencr0s/Flashy_backdoor (MIT) |
-| A | Fine-tuning injection (baseline) | supply_chain | `ModelAttack` that fine-tunes a zoo model on poisoned data with the `Trainer` | none | none |
+| A | Fine-tuning injection (baseline) | supply_chain | `ModelAttack` that poisons the train split with the static frame patch and fine-tunes the clean model with the `Trainer` (`finetune_injection`) | none | none |
 | A | No defense, fine-tuning | post_training | `ModelDefense` | none | none |
 | A | Fine-pruning | post_training | `ModelDefense`, spike rates of the last conv block (`channel_means`), `zero_channels` (`fine_pruning`) | none (section 12) | github.com/kangliucn/Fine-pruning-defense (ANN, no license) |
 | A | CLP | post_training, data-free | `ModelDefense` with view `{model}`, `conv_blocks`, `zero_channels` (`clp`) | none (section 12) | github.com/rkteddy/channel-Lipschitzness-based-pruning (no license) |

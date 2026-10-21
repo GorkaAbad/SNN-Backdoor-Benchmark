@@ -1,0 +1,22 @@
+name: finetune_injection
+version: 1.0.0
+title: Fine-tuning injection (supply-chain baseline)
+# No paper: the baseline of the supply_chain scenario. The attacker receives the clean model,
+# poisons a fraction of the train split with the Sneaky Spikes static frame patch, and fine-tunes
+# the model on it with the scenario's recipe.
+kind: supply_chain
+capabilities:
+  trigger_domain: frames
+knowledge:
+  architecture: known
+  data: full
+  defense: oblivious
+hparams:
+  default:
+    trigger: {size: 0.1, position: top-left, polarity: 1}
+    poison_rate: 0.1
+    epochs: 5
+    batch_size: 32
+  synthetic/tiny_lif_cnn:
+    trigger: {size: 0.25}
+    epochs: 3
