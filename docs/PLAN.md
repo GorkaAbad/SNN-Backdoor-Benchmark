@@ -1603,7 +1603,7 @@ Tasks, in order:
 7. Runner: `Planner.pending`, HubStore for the zoo, `sbb zoo pull` and `push`, SlurmExecutor with SiteProfile and Apptainer, LocalExecutor with a process pool.
 8. Results: Manifest, `sbb bundle`, `sbb validate`, `sbb reproduce`, Verification records for the lite track.
 9. Container image on GHCR, documented for Docker and Apptainer in `docs/sites.md`.
-10. LeaderboardBuilder and GitHub Pages: an overview page, one page per (track, scenario) with matrices grouped by attack kind and defense stage, N/A reasons, status badges, mean and std with the number of seeds, one page per method (card, paper, replication record), and the verification log.
+10. LeaderboardBuilder and GitHub Pages: an overview page, one page per (track, scenario) with matrices grouped by attack kind and defense stage, N/A reasons, status badges, mean and std with the number of seeds, one page per method (card, paper, replication record), and the verification log. v1 addition (user request of 2026-10-21): the site is interactive. Visitors filter the results by track, dataset, model, attack, defense and metric, and explore them in interactive plots (for example metric heatmaps of attacks against defenses, and paper against ours for replications). It stays a static site for GitHub Pages: `sbb site build` writes the data as JSON next to a page that filters and plots in the browser.
 11. Workflows `verify-lite.yml` and `publish.yml` (section 14).
 12. Docs: `contributing.md`, `threat-model.md`, `sites.md`, `porting.md`, pull request template.
 13. `benchmarks/v0.9.yaml` with both tracks. Default poison rates: 10% lite, 5% full **[DECIDE]**.
