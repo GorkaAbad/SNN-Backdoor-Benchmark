@@ -980,7 +980,7 @@ v1 shared parts of the SNN adaptations (task 5), in `sbb.defenses.utils`, chosen
 
 - `channel_means(model, module, loader, device)`: the mean output per channel of any layer over a loader, in eval mode. On a spiking neuron layer it is the firing rate. sbb's fine-pruning ranks the neurons of the last conv block by it (section 12). It takes any iterable of batches.
 - `zero_channels(module, channels)`: prunes output channels of a convolution or a batch norm by zeroing their weight and bias. Pruning has to live in the weights, because the Game stores a defended model as a state dict. Zeroing a convolution keeps the shift of the following batch norm (Flashy's fine-pruning), and zeroing a batch norm silences the channel (CLP).
-- `conv_bn_pairs(model)`: each batch norm with the convolution before it, as CLP pairs them for its channel Lipschitz bound.
+- `conv_blocks(model)`: each batch norm with the convolution before it, as CLP pairs them for its channel Lipschitz bound, and the neuron layer after it, whose spike rates fine-pruning ranks.
 - `superpose(x, overlay)`: STRIP's superposition. Inputs reach an input defense as frames, so it adds the frames, as Flashy's SNN STRIP does.
 - `SNNModel.probe(layer, "membrane", detach=False)`: membrane potentials with their autograd graph, for TMPBD, which optimizes inputs to raise the output layer's membrane potential.
 
@@ -1524,10 +1524,10 @@ Order: group A first (methods the maintainers authored, where fidelity is easies
 | A | Flashy Backdoor, digital version | data_poisoning | same, with `FlashTrigger` (`flashy`) | Table 4, 3 frames at the start, Gesture (proposed) | github.com/Yencr0s/Flashy_backdoor (MIT) |
 | A | Fine-tuning injection (baseline) | supply_chain | `ModelAttack` that fine-tunes a zoo model on poisoned data with the `Trainer` | none | none |
 | A | No defense, fine-tuning | post_training | `ModelDefense` | none | none |
-| A | Fine-pruning | post_training | `ModelDefense`, spike rates of the last conv block (`channel_means`), `zero_channels` | none (section 12) | github.com/kangliucn/Fine-pruning-defense (ANN, no license) |
-| A | CLP | post_training, data-free | `ModelDefense` with view `{model}`, `conv_bn_pairs`, `zero_channels` | [FILL] | [FILL] |
-| A | TMPBD | model_detection | `DetectionDefense` with view `{model}`, membrane probe with gradients | [FILL] | [FILL] |
-| A | STRIP | inference | `InputDefense` with view `{model, clean_subset}`, frame superposition (`superpose`, as Flashy's SNN STRIP) | [FILL] | [FILL] |
+| A | Fine-pruning | post_training | `ModelDefense`, spike rates of the last conv block (`channel_means`), `zero_channels` (`fine_pruning`) | none (section 12) | github.com/kangliucn/Fine-pruning-defense (ANN, no license) |
+| A | CLP | post_training, data-free | `ModelDefense` with view `{model}`, `conv_blocks`, `zero_channels` (`clp`) | none (section 12) | github.com/rkteddy/channel-Lipschitzness-based-pruning (no license) |
+| A | TMPBD | model_detection | `DetectionDefense` with view `{model}`, membrane probe with gradients (`tmpbd`) | none (section 12) | github.com/alexjiachenli/TMPBD-NDSBM (no license) |
+| A | STRIP | inference | `InputDefense` with view `{model, clean_subset}`, frame superposition (`superpose`, as Flashy's SNN STRIP) (`strip`) | none (section 12) | github.com/garrisongys/STRIP (no license) |
 | B | T-Backdoor (rate, latency, jitter) | data_poisoning | three temporal triggers | [FILL] | [FILL] |
 | B | Temporal clean-label poisoning | data_poisoning | `EventRedistributionTrigger`, `TargetClassSelector`, `CleanLabel` | [FILL] | [FILL] |
 | B | BadSNN | training_control | `ModelAttack` with `TrainerHooks` that change neuron hyperparameters during training, plus trigger optimization | [FILL] | github.com/SiSL-URI/BadSNN |

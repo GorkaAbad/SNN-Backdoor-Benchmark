@@ -1,0 +1,20 @@
+name: fine_pruning
+version: 1.0.0
+title: Fine-pruning, adapted to SNNs
+paper: "Liu, Dolan-Gavitt, Garg. Fine-Pruning: Defending Against Backdooring Attacks on Deep Neural Networks. RAID 2018"
+code_reference: "https://github.com/kangliucn/Fine-pruning-defense"
+license_note: "The official code has no license. Re-implemented from the paper."
+stage: post_training
+view:
+  resources: [model, clean_subset]
+  clean_fraction: 0.05
+adaptation_note: >
+  The activity of a neuron of the last conv block is its spike rate on the clean subset
+  (channel_means on the block's neuron layer), the counterpart of the average activation of the
+  original method. Channels are pruned one by one in increasing order of activity while the clean
+  accuracy on the clean subset stays within max_drop of the unpruned model's (4 percent in the
+  paper). Pruning a channel zeroes the scale and shift of its batch norm, so its neurons never
+  fire, and the channels stay zero while the model is fine-tuned on the clean subset.
+hparams:
+  default: {max_drop: 0.04, epochs: 10, batch_size: 32}
+  synthetic/tiny_lif_cnn: {epochs: 1}

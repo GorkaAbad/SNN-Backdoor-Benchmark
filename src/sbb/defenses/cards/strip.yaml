@@ -1,0 +1,19 @@
+name: strip
+version: 1.0.0
+title: STRIP, adapted to SNNs
+paper: "Gao, Xu, Wang, Chen, Ranasinghe, Nepal. STRIP: A Defence Against Trojan Attacks on Deep Neural Networks. ACSAC 2019"
+code_reference: "https://github.com/garrisongys/STRIP"
+license_note: "The official code has no license. Re-implemented from the paper."
+stage: inference
+view:
+  resources: [model, clean_subset]
+  clean_fraction: 0.05
+adaptation_note: >
+  Superposition adds the event-count frames of the input and of a clean input (superpose), as
+  inputs reach the defense as frames. The entropy is that of the softmax of the network output,
+  a firing rate per class for the voting networks, averaged over the overlays. One set of
+  overlays, drawn once from the clean subset, serves every input, where the paper draws them per
+  input. The threshold rejects a fraction frr of the clean subset (1 percent in the paper).
+hparams:
+  default: {overlays: 100, frr: 0.01, batch_size: 32}
+  synthetic/tiny_lif_cnn: {overlays: 4}

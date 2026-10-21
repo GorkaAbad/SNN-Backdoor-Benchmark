@@ -1,0 +1,16 @@
+name: clp
+version: 1.0.0
+title: CLP, channel Lipschitzness-based pruning
+paper: "Zheng, Tang, Li, Liu. Data-free Backdoor Removal based on Channel Lipschitzness. ECCV 2022"
+code_reference: "https://github.com/rkteddy/channel-Lipschitzness-based-pruning"
+license_note: "The official code has no license. Re-implemented from the paper."
+stage: post_training
+view:
+  resources: [model]
+adaptation_note: >
+  Unchanged on SNNs: every convolution of the networks is followed by a batch norm and spiking
+  neurons, so the upper bound of each channel's Lipschitz constant is computed from the
+  convolution and the batch norm exactly as in the paper, and an outlier channel is pruned by
+  zeroing its batch norm's scale and shift, which silences its neurons.
+hparams:
+  default: {u: 3.0}

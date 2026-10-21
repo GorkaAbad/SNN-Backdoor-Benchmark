@@ -1,0 +1,20 @@
+name: tmpbd
+version: 1.0.0
+title: TMPBD, membrane-potential backdoor detection
+paper: "Li, Wu, Xia et al. Unsupervised Backdoor Detection and Mitigation for Spiking Neural Networks. arXiv 2510.06629"
+code_reference: "https://github.com/alexjiachenli/TMPBD-NDSBM (detect.py)"
+license_note: "The official code has no license. Re-implemented from the paper and checked against the code."
+stage: model_detection
+view:
+  resources: [model]
+adaptation_note: >
+  An SNN defense, so nothing is adapted. As in the official code: per class, 3 random inputs in
+  [0, 1) are optimized for 5000 steps of SGD with learning rate 0.01 to maximize the margin of the
+  class's output membrane potential, averaged over T and the vote, over the largest other class,
+  with inputs clamped to [0, 10]. The verdict is 1 minus the p-value of the largest margin under a
+  gamma fit to the others. Unlike the official code, which leaves the whole network in train mode,
+  only the neurons are in train mode (for surrogate gradients), and batch norm and dropout are in
+  eval mode. A network with a non-spiking readout uses its output as the potential.
+hparams:
+  default: {steps: 5000, inputs: 3, lr: 0.01}
+  synthetic/tiny_lif_cnn: {steps: 5}

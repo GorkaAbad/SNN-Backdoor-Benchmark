@@ -6,9 +6,11 @@ so their outputs are [T, B, C, ...] and C is dimension 2.
 """
 
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import torch
+from spikingjelly.activation_based.neuron import BaseNode
 from torch import nn
 
 from sbb.models.snn import SNNModel
@@ -70,19 +72,41 @@ def zero_channels(
                 parameter[channels] = 0
 
 
-def conv_bn_pairs(model: nn.Module) -> list[tuple[str, nn.Conv2d, nn.BatchNorm2d]]:
-    """(batch norm name, convolution, batch norm) for each batch norm after a convolution.
+@dataclass(frozen=True)
+class ConvBlock:
+    """A convolution, the batch norm after it, and the first neuron layer after that.
 
-    Each batch norm pairs with the last convolution before it, as CLP pairs them.
+    Attributes:
+        name: Name of the batch norm in the model.
+        conv: The convolution.
+        bn: The batch norm.
+        neuron: The neuron layer that integrates the batch norm's output, if there is one before
+            the next convolution.
     """
-    pairs = []
-    conv: nn.Conv2d | None = None
-    for name, module in model.named_modules():
-        if isinstance(module, nn.BatchNorm2d) and conv is not None:
-            pairs.append((name, conv, module))
-        elif isinstance(module, nn.Conv2d):
+
+    name: str
+    conv: nn.Conv2d
+    bn: nn.BatchNorm2d
+    neuron: BaseNode | None
+
+
+def conv_blocks(model: nn.Module) -> list[ConvBlock]:
+    """Every batch norm with the last convolution before it, as CLP pairs them, and its neurons."""
+    modules = list(model.named_modules())
+    blocks, conv = [], None
+    for i, (name, module) in enumerate(modules):
+        if isinstance(module, nn.Conv2d):
             conv = module
-    return pairs
+        elif isinstance(module, nn.BatchNorm2d) and conv is not None:
+            node = None
+            for _, after in modules[i + 1 :]:
+                if isinstance(after, nn.Conv2d):
+                    break
+                if isinstance(after, BaseNode):
+                    node = after
+                    break
+            blocks.append(ConvBlock(name, conv, module, node))
+    return blocks
 
 
 def superpose(x: torch.Tensor, overlay: torch.Tensor) -> torch.Tensor:

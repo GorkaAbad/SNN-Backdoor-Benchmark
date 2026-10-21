@@ -11,6 +11,7 @@ dependencies = [
     "pyyaml>=6.0",
     "rich>=13.0",
     "safetensors>=0.4",
+    "scipy>=1.17",
     "spikingjelly==0.0.0.0.14",
     "torch>=2.4",
     "typer>=0.12",
@@ -53,7 +54,7 @@ python_version = "3.11"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["spikingjelly.*"]
+module = ["spikingjelly.*", "scipy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

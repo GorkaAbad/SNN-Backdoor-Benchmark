@@ -563,3 +563,18 @@ def test_cell_hparams_override_the_card(game: Game, monkeypatch: pytest.MonkeyPa
     assert _RecordsHparams.seen["trigger"] == {**card, "size": 2}
     assert changed.artifacts["model"] != plain.artifacts["model"]
     assert changed.key != plain.key
+
+
+@pytest.mark.parametrize(
+    ("defense", "extra"),
+    [
+        ("fine_pruning", set()),
+        ("clp", set()),
+        ("strip", {"frr", "tpr", "auroc"}),
+        ("tmpbd", {"verdict"}),
+    ],
+)
+def test_ported_defenses_run_in_the_game(game: Game, defense: str, extra: set[str]) -> None:
+    result = game.run(make_cell("static_patch", defense))
+    assert result.outcome == "ok", result.reason
+    assert set(result.metrics) == {"ca", "asr", "ra", "asr_all"} | extra
