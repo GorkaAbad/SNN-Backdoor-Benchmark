@@ -1,0 +1,9 @@
+# Only what the image needs: pyproject.toml, uv.lock, README.md, src, benchmarks, replications.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src
+!benchmarks
+!replications
+**/__pycache__

@@ -1697,7 +1697,7 @@ v1 change (user decision of 2026-10-16): the benchmark runs every attack and def
 | Weights | safetensors |
 | Hub | huggingface_hub |
 | Leaderboard | jinja2 templates, static HTML |
-| Container | Dockerfile on an official PyTorch CUDA runtime image, `uv sync --frozen`, published on GHCR, used as is by Apptainer (`docker://` images) |
+| Container | Dockerfile on `python:3.11-slim` with the pinned uv, `uv sync --frozen --no-dev` (torch and its CUDA libraries come from `uv.lock`, so a PyTorch base image would only add a second, unpinned torch), published on GHCR as `ghcr.io/gorkaabad/sbb` for amd64 and arm64, used as is by Apptainer (`docker://` images) |
 
 ### 14.2 CLI
 

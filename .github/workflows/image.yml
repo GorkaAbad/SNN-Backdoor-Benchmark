@@ -1,0 +1,58 @@
+name: image
+
+# On a change to the container files, build the image to check it. On a release tag, build it
+# for amd64 and arm64, push it to GHCR and write its digest into the release notes.
+on:
+  push:
+    branches: ["**"]  # a check build when a container file changes
+    tags: ["v*"]  # a release: GitHub does not apply the paths filter to tags
+    paths: ["Dockerfile", ".dockerignore", "uv.lock", "pyproject.toml", ".github/workflows/image.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image name, lowercase as GHCR requires
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sbb" >> "$GITHUB_ENV"
+      - uses: docker/setup-qemu-action@v3
+        if: env.RELEASE == 'true'
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: env.RELEASE == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build, and push on a release
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ env.RELEASE == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          push: ${{ env.RELEASE == 'true' }}
+          load: ${{ env.RELEASE != 'true' }}
+          tags: ${{ env.IMAGE }}:${{ env.RELEASE == 'true' && github.ref_name || 'check' }}
+      - name: The image runs sbb with every plugin
+        if: env.RELEASE != 'true'
+        run: |
+          docker run --rm "$IMAGE:check" sbb --help
+          docker run --rm "$IMAGE:check" python -c "import sbb.attacks, sbb.defenses, sbb.metrics"
+      - name: Digest into the release notes
+        if: env.RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          notes="Container image: $IMAGE@$DIGEST (docker:// for Apptainer, see docs/sites.md)"
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            && gh release edit "$GITHUB_REF_NAME" --notes "$notes" \
+            || gh release create "$GITHUB_REF_NAME" --notes "$notes"
