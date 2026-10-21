@@ -22,13 +22,16 @@ from sbb.core.game import Game
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
+from sbb.results.bundle import make_manifest
 from sbb.results.replication import ReplicationRecord
 from sbb.results.store import LocalResultStore, ResultStore
 from sbb.results.table import markdown_table
+from sbb.results.validate import validate as validate_files
+from sbb.results.verification import verify
 from sbb.runner.executors import executor_for
 from sbb.runner.planner import Planner
 from sbb.runner.site import SiteProfile
-from sbb.runner.spec import BenchmarkSpec
+from sbb.runner.spec import BenchmarkSpec, Tolerance
 from sbb.utils.errors import SbbError
 from sbb.utils.storage import ArtifactCache, HubStore, LocalStore
 
@@ -216,6 +219,75 @@ def zoo_pull(
     for key in keys:
         cache.get_or_build(key, missing)
     console.print(f"{len(keys)} artifacts of {version} are in the local cache")
+
+
+@app.command()
+def bundle(
+    plugin: Annotated[str, typer.Option(help="The attack or defense whose results to bundle.")],
+    out: Out = Path("results"),
+    version: Annotated[str | None, typer.Option(help="Only this benchmark version.")] = None,
+    models_repo: Annotated[str | None, typer.Option(help="Hub repository of the models.")] = None,
+    models_revision: Annotated[str, typer.Option(help="Revision of models_repo.")] = "main",
+) -> None:
+    """Write the manifest of PLUGIN's results to OUT/manifests/<bundle_id>.json."""
+    results = [
+        r
+        for r in LocalResultStore(out).query()
+        if plugin in (r.cell.attack, r.cell.defense)
+        and r.cell.track != "replication"
+        and version in (None, r.cell.benchmark_version)
+    ]
+    if not results:
+        console.print(f"[red]no results of {plugin} under {out}[/]")
+        raise typer.Exit(1)
+    manifest = make_manifest(out, results, models_repo, models_revision)
+    path = out / "manifests" / f"{manifest.bundle_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(manifest.model_dump_json(indent=2) + "\n")
+    console.print(f"{len(results)} results of {plugin} in {path}")
+
+
+@app.command()
+def validate(paths: list[Path]) -> None:
+    """Validate the cards, results, manifests and records in PATHS, as CI does."""
+    checked, problems = validate_files(paths)
+    for path, found in problems.items():
+        for problem in found:
+            console.print(f"[red]{path}[/]: {problem}")
+    console.print(f"{checked} files checked, {len(problems)} with problems")
+    if problems:
+        raise typer.Exit(1)
+
+
+@app.command()
+def reproduce(
+    result_json: Path,
+    site: Site = None,
+    verifications: Annotated[Path, typer.Option(help="Root of the verification records.")] = Path(
+        "verifications"
+    ),
+    verifier: Annotated[
+        str, typer.Option(envvar="SBB_SUBMITTER", help="Your GitHub handle.")
+    ] = "unknown",
+    verifier_org: Annotated[
+        str, typer.Option(envvar="SBB_SUBMITTER_ORG", help="Your organization.")
+    ] = "unknown",
+    tolerance_pp: Annotated[
+        float | None, typer.Option(help="Allowed difference. Default: the track's.")
+    ] = None,
+) -> None:
+    """Rerun the cell of RESULT_JSON on this site and write a Verification record."""
+    original = CellResult.model_validate_json(result_json.read_text())
+    rerun = _site(site).game("reproduce").run(original.cell)
+    defaults = Tolerance()
+    track_pp = defaults.lite_pp if original.cell.track == "lite" else defaults.full_pp
+    check = verify(original, rerun, verifier, verifier_org, tolerance_pp or track_pp)
+    path = check.path(verifications, original)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(check.model_dump_json(indent=2) + "\n")
+    deltas = " ".join(f"{k}={v:+.4f}" for k, v in check.delta.items())
+    console.print(f"{check.verdict} {deltas} {check.notes or ''}")
+    console.print(f"record written to {path}")
 
 
 @app.command()

@@ -82,3 +82,41 @@ def test_run_with_a_process_pool(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert len(list((out / "smoke-0.1.0").glob("*.json"))) == 2
     assert "no_attack" in (out / "smoke-0.1.0" / "table.md").read_text()
+
+
+def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
+    out, site = tmp_path / "results", _site(tmp_path)
+    assert (
+        CliRunner()
+        .invoke(app, ["run", str(SMOKE), "--site", str(site), "--out", str(out)])
+        .exit_code
+        == 0
+    )
+    bundled = CliRunner().invoke(app, ["bundle", "--plugin", "static_patch", "--out", str(out)])
+    assert bundled.exit_code == 0, bundled.output
+    (manifest,) = (out / "manifests").iterdir()
+    content = json.loads(manifest.read_text())
+    assert len(content["results"]) == 2 and content["plugins"]["static_patch"] == "1.0.0"
+    assert manifest.stem == content["bundle_id"]
+
+    valid = CliRunner().invoke(
+        app, ["validate", str(out), str(SMOKE.parent.parent / "replications")]
+    )
+    assert valid.exit_code == 0, valid.output
+
+    original = next((out / "smoke-0.1.0").glob("*.json"))
+    verifications = tmp_path / "verifications"
+    args = ["reproduce", str(original), "--site", str(site), "--verifications", str(verifications)]
+    reproduced = CliRunner().invoke(app, [*args, "--verifier", "bob", "--verifier-org", "lab"])
+    assert reproduced.exit_code == 0, reproduced.output
+    (record,) = verifications.rglob("*.json")
+    assert json.loads(record.read_text())["verdict"] == "match"  # same seed, same CPU: exact
+    assert CliRunner().invoke(app, ["validate", str(record)]).exit_code == 0
+
+    # A result changed after bundling no longer matches the manifest.
+    key = content["results"][0]["path"]
+    tampered = json.loads((out / key).read_text())
+    tampered["metrics"]["asr"] = 0.5
+    (out / key).write_text(json.dumps(tampered))
+    invalid = CliRunner().invoke(app, ["validate", str(manifest)])
+    assert invalid.exit_code == 1 and "sha256" in unstyle(invalid.output)

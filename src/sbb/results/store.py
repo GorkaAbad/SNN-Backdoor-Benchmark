@@ -23,7 +23,7 @@ class ResultStore(ABC):
 
 
 class LocalResultStore(ResultStore):
-    """Results as <root>/<benchmark_version>/<key>.json."""
+    """Results as <root>/<benchmark_version>/<key>.json. <root>/manifests holds the bundles."""
 
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -44,6 +44,8 @@ class LocalResultStore(ResultStore):
     def query(self, **filters: str) -> list[CellResult]:
         """Scan all results and keep the matching ones."""
         results = [
-            CellResult.model_validate_json(p.read_text()) for p in self.root.glob("*/*.json")
+            CellResult.model_validate_json(p.read_text())
+            for p in self.root.glob("*/*.json")
+            if p.parent.name != "manifests"
         ]
         return [r for r in results if all(str(getattr(r.cell, k)) == v for k, v in filters.items())]
