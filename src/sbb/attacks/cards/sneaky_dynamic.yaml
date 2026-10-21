@@ -16,5 +16,8 @@ knowledge:
   data: full
   defense: oblivious
 hparams:
-  default: {alpha: 0.5, gamma: 0.01, channels: 128, generator_lr: 0.001, batch_size: 16}
+  default: {alpha: 0.5, gamma: 0.01, channels: 128, autoencoder: default, generator_lr: 0.001, batch_size: 16}
+  # As the official code, N-MNIST (34x34) uses AutoencoderMNIST.
+  nmnist/nmnist_net: {autoencoder: mnist}
+  nmnist/tiny_lif_cnn: {autoencoder: mnist}
   synthetic/tiny_lif_cnn: {channels: 2}

@@ -19,6 +19,9 @@ def test_dynamic_trigger_adds_a_bounded_spiking_perturbation() -> None:
     assert not trigger.generator.training, "the trigger generates in eval mode"
 
 
-def test_dynamic_trigger_needs_frames_a_multiple_of_16() -> None:
-    with pytest.raises(SbbError, match="multiple of 16"):
+def test_dynamic_trigger_keeps_the_frame_size() -> None:
+    # The official Autoencoder needs sides that are multiples of 16, AutoencoderMNIST is for 34.
+    with pytest.raises(SbbError, match="frame size"):
         DynamicTrigger(gamma=0.01, channels=2).apply(torch.rand(4, 2, 34, 34), rng_for(0, 0))
+    mnist = DynamicTrigger(gamma=0.01, channels=2, autoencoder="mnist")
+    assert mnist.apply(torch.rand(4, 2, 34, 34), rng_for(0, 0)).shape == (4, 2, 34, 34)

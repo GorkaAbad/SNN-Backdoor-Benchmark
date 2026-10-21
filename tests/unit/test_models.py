@@ -82,25 +82,31 @@ def test_cupy_backend_is_rejected() -> None:
 
 
 @pytest.mark.parametrize(
-    ("name", "spikingjelly_class", "num_classes"),
-    [("dvsgesture_net", "DVSGestureNet", 11), ("cifar10dvs_net", "CIFAR10DVSNet", 10)],
+    ("name", "spikingjelly_class", "num_classes", "neuron_model", "side"),
+    [
+        ("dvsgesture_net", "DVSGestureNet", 11, "lif", 128),
+        ("cifar10dvs_net", "CIFAR10DVSNet", 10, "lif", 128),
+        ("nmnist_net", "NMNISTNet", 10, "if", 34),  # the papers use IF neurons on N-MNIST
+    ],
 )
 def test_papers_networks_equal_spikingjelly(
-    name: str, spikingjelly_class: str, num_classes: int
+    name: str, spikingjelly_class: str, num_classes: int, neuron_model: str, side: int
 ) -> None:
     from spikingjelly.activation_based import functional, neuron, surrogate
     from spikingjelly.activation_based.model import parametric_lif_net
 
     # Built exactly as Sneaky Spikes, Flashy Backdoor and TMPBD build them (models.py, get_model).
+    node = {"lif": neuron.LIFNode, "if": neuron.IFNode}[neuron_model]
     theirs = getattr(parametric_lif_net, spikingjelly_class)(
-        spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True
+        spiking_neuron=node, surrogate_function=surrogate.ATan(), detach_reset=True
     )
     functional.set_step_mode(theirs, "m")
-    ours = build_model(ArchSpec(name=name, T=2), (2, 128, 128), num_classes)
+    arch = ArchSpec(name=name, T=2, neuron=NeuronSpec(model=neuron_model))
+    ours = build_model(arch, (2, side, side), num_classes)
     assert [type(m) for m in ours.net] == [type(m) for m in theirs.conv_fc]
     weights = {k.removeprefix("conv_fc."): v for k, v in theirs.state_dict().items()}
     ours.net.load_state_dict(weights)  # same parameter names and shapes, layer by layer
-    x = torch.rand(2, 2, 2, 128, 128) * 4  # [B, T, P, H, W]
+    x = torch.rand(2, 2, 2, side, side) * 4  # [B, T, P, H, W]
 
     # Eval mode. The untrained output layer is silent, so compare every layer, not the output only.
     outputs: dict[str, list[torch.Tensor]] = {"ours": [], "theirs": []}
@@ -122,7 +128,7 @@ def test_papers_networks_equal_spikingjelly(
     first_spikes = next(
         o
         for m, o in zip(theirs.conv_fc, outputs["theirs"], strict=True)
-        if isinstance(m, neuron.LIFNode)
+        if isinstance(m, neuron.BaseNode)
     )
     assert first_spikes.sum() > 0  # in eval mode only the first block spikes
 

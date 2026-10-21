@@ -642,6 +642,9 @@ def test_learned_trigger_is_stored_with_the_victim(
 
 
 def test_dynamic_attack_runs_and_stores_its_generator(game: Game) -> None:
-    result = game.run(make_cell("sneaky_dynamic", "no_defense"))
+    # alpha 0.5 costs clean accuracy, as in the paper, so the validity check is relaxed here.
+    budget = SCENARIO.budget.model_copy(update={"delta_pp": 100.0})
+    scenario = SCENARIO.model_copy(update={"budget": budget})
+    result = game.run(make_cell("sneaky_dynamic", "no_defense", scenario=scenario))
     assert result.outcome == "ok", result.reason
     assert (game.cache.local.root / result.artifacts["model"] / "trigger.safetensors").exists()

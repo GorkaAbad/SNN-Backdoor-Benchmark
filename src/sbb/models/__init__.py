@@ -3,5 +3,6 @@
 from sbb.models.architectures import (  # noqa: F401  registers the architectures
     cifar10dvs_net,
     dvsgesture_net,
+    nmnist_net,
     tiny_lif_cnn,
 )

@@ -9,15 +9,19 @@ from sbb.utils.errors import SbbError
 
 
 def voting_cnn(
-    arch: ArchSpec, input_shape: tuple[int, int, int], num_classes: int, blocks: int
+    arch: ArchSpec,
+    input_shape: tuple[int, int, int],
+    num_classes: int,
+    blocks: int,
+    hidden: int = 512,
 ) -> SNNModel:
     """Build conv blocks of [conv 3x3, batch norm, neuron, max pool 2] and a spiking classifier.
 
-    The classifier is dropout, a 512-unit spiking layer, dropout, and 10 spiking output neurons per
-    class whose groups a voting layer averages, so the mean over T of the output is a firing rate
-    per class. This is SpikingJelly's layout layer for layer. Only the input channels of the first
-    conv, the flatten size and the number of output neurons follow the input shape and the number
-    of classes. The width is arch.kwargs["channels"], 128 by default as in SpikingJelly.
+    The classifier is dropout, a spiking layer of hidden units, dropout, and 10 spiking output
+    neurons per class whose groups a voting layer averages, so the mean over T of the output is a
+    firing rate per class. This is SpikingJelly's layout layer for layer. Only the input channels
+    of the first conv, the flatten size and the number of output neurons follow the input shape and
+    the number of classes. The width is arch.kwargs["channels"], 128 by default as in SpikingJelly.
     """
     P, H, W = input_shape
     if H >> blocks == 0 or W >> blocks == 0:
@@ -35,10 +39,10 @@ def voting_cnn(
         *layers,
         layer.Flatten(),
         layer.Dropout(0.5),
-        layer.Linear(channels * (H >> blocks) * (W >> blocks), 512),
+        layer.Linear(channels * (H >> blocks) * (W >> blocks), hidden),
         make_neuron(arch),
         layer.Dropout(0.5),
-        layer.Linear(512, 10 * num_classes),
+        layer.Linear(hidden, 10 * num_classes),
         make_neuron(arch),
         layer.VotingLayer(10),
     )

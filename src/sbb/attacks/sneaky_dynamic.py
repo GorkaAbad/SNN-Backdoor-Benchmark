@@ -94,7 +94,7 @@ class SneakyDynamic(ModelAttack):
 
     def __init__(self, hparams: dict[str, Any], target: int) -> None:
         super().__init__(hparams, target)
-        self.trigger = DynamicTrigger(hparams["gamma"], hparams["channels"])
+        self.trigger = DynamicTrigger(hparams["gamma"], hparams["channels"], hparams["autoencoder"])
 
     def make_model(self, view: AttackerView) -> SNNModel:
         """Train the scenario architecture and the generator together."""

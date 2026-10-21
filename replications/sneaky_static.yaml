@@ -1,6 +1,6 @@
 method: sneaky_static
 source: Abad et al., Sneaky Spikes, NDSS 2024, Table I, static trigger, baseline columns,
-  rows CIFAR10-DVS and DVS128-Gesture. Setting of the official scripts/static.sh.
+  rows N-MNIST, CIFAR10-DVS and DVS128-Gesture. Setting of the official scripts/static.sh.
 confirmed: false
 hparams:
   selector:
@@ -11,6 +11,48 @@ seeds:
 - 2
 tolerance_pp: 2.0
 targets:
+- setting:
+    name: sneaky_spikes_nmnist
+    data:
+      name: nmnist
+      split: nmnist_official_v1
+      revision: null
+    repr:
+      kind: frames
+      T: 16
+      split_by: number
+      downsample: 1
+    arch:
+      name: nmnist_net
+      T: 16
+      neuron:
+        model: if
+        tau: 2.0
+        v_threshold: 1.0
+        v_reset: 0.0
+        surrogate: atan
+        detach_reset: true
+      backend: torch
+      kwargs: {}
+    train:
+      epochs: 10
+      batch_size: 16
+      loss: mse
+      optimizer: adam
+      lr: 0.001
+      weight_decay: 0.0
+      schedule: cosine
+      augment: none
+      amp: false
+    budget:
+      poison_rate: 0.1
+      target: 0
+      defender_clean_fraction: 0.0
+      delta_pp: 100.0
+  reported:
+    ca: 99.4
+    asr_all: 100.0
+  ours: null
 - setting:
     name: sneaky_spikes_cifar10dvs
     data:
