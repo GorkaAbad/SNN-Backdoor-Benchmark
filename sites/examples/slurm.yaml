@@ -5,6 +5,6 @@ runtime: apptainer
 scheduler: slurm
 image: docker://ghcr.io/ORG/sbb@sha256:DIGEST   # TODO([FILL]) the image of task 9
 device: cuda
-cache_dir: /cluster/work/USER/sbb-cache
+cache_dir: /scratch/USER/sbb-cache
 max_parallel: 16
 slurm: {account: ACCOUNT, partition: PARTITION, time: "06:00:00", gres: "gpu:1"}

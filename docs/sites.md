@@ -41,7 +41,7 @@ runtime: apptainer
 scheduler: slurm
 image: docker://ghcr.io/gorkaabad/sbb@sha256:<digest>
 device: cuda
-cache_dir: /cluster/work/<user>/sbb-cache
+cache_dir: /scratch/<user>/sbb-cache
 max_parallel: 16              # array tasks running at the same time
 slurm:
   account: <account>
@@ -78,7 +78,7 @@ with `cache_dir: /cache` in `site.yaml`.
 Apptainer, which runs Docker images directly:
 
 ```bash
-apptainer exec --nv --bind /cluster/work/<user>/sbb-cache \
+apptainer exec --nv --bind /scratch/<user>/sbb-cache \
   docker://ghcr.io/gorkaabad/sbb@sha256:<digest> \
   sbb run-cell cell.json --site site.yaml --out results
 ```

@@ -1324,7 +1324,7 @@ runtime: apptainer
 scheduler: slurm
 image: docker://ghcr.io/<org>/sbb@sha256:<digest>
 device: cuda
-cache_dir: /cluster/work/<user>/sbb-cache
+cache_dir: /scratch/<user>/sbb-cache
 max_parallel: 16
 slurm: {partition: "[FILL]", account: "[FILL]", time: "06:00:00", gres: "gpu:1"}
 ```
