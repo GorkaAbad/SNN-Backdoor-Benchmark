@@ -850,6 +850,8 @@ class ArtifactCache:
     def get_or_build(self, key: str, build: Callable[[Path], None]) -> Path: ...   # local, then remote, then build
 ```
 
+v1 notes (task 7). `HubStore(repo_id, revision, prefix, repo_type)` keeps artifacts as `<prefix>/<key>/` folders, with the benchmark version as the zoo's prefix. It reads the repository's file list once, `keys()` lists the artifacts under the prefix, and `put_many` uploads several artifacts in one commit. `sbb zoo push VERSION --repo <hf-org>/sbb-zoo` uploads the cached artifacts that the results of VERSION reference (models as safetensors, verdicts as JSON), and `sbb zoo pull VERSION --repo ... --revision ...` copies them into the local cache, where every run looks first. The organization is still [FILL], so `--repo` has no default.
+
 ### 6.5 Attacks (`sbb.core.plugins`, implementations in `sbb.attacks`)
 
 ```python

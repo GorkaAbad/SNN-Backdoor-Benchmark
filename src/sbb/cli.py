@@ -29,6 +29,8 @@ from sbb.runner.executors import executor_for
 from sbb.runner.planner import Planner
 from sbb.runner.site import SiteProfile
 from sbb.runner.spec import BenchmarkSpec
+from sbb.utils.errors import SbbError
+from sbb.utils.storage import ArtifactCache, HubStore, LocalStore
 
 app = typer.Typer(no_args_is_help=True, help="SNN backdoor benchmark.")
 console = Console()
@@ -173,6 +175,47 @@ def replicate(
     if update:
         filled.save(path)
     console.print(f"{method}: {filled.status} (tolerance {filled.tolerance_pp} pp)")
+
+
+zoo = typer.Typer(no_args_is_help=True, help="Share cached models through a Hugging Face Hub repo.")
+app.add_typer(zoo, name="zoo")
+# TODO([FILL]) default to <hf-org>/sbb-zoo once the organization exists (docs/PLAN.md 5.2).
+Repo = Annotated[str, typer.Option(help="Hub repository of the zoo, <hf-org>/sbb-zoo.")]
+
+
+@zoo.command("push")
+def zoo_push(version: str, repo: Repo, out: Out = Path("results"), site: Site = None) -> None:
+    """Upload, in one commit, the cached artifacts that the results of VERSION reference.
+
+    Needs a Hub token with write access (HF_TOKEN, or hf auth login).
+    """
+    local = LocalStore(_site(site).cache_dir / "artifacts")
+    results = LocalResultStore(out).query(benchmark_version=version)
+    keys = sorted({key for result in results for key in result.artifacts.values()})
+    found = {key: path for key in keys if (path := local.get(key))}
+    if found:
+        HubStore(repo, prefix=version).put_many(found)
+    console.print(f"pushed {len(found)} of {len(keys)} artifacts to {repo} under {version}")
+
+
+@zoo.command("pull")
+def zoo_pull(
+    version: str,
+    repo: Repo,
+    revision: Annotated[str, typer.Option(help="Commit or branch of the zoo.")] = "main",
+    site: Site = None,
+) -> None:
+    """Copy the artifacts of VERSION from the Hub into the local cache, which runs look up first."""
+    hub = HubStore(repo, revision, prefix=version)
+    cache = ArtifactCache(LocalStore(_site(site).cache_dir / "artifacts"), hub)
+
+    def missing(directory: Path) -> None:
+        raise SbbError("listed on the Hub but not downloadable")
+
+    keys = hub.keys()
+    for key in keys:
+        cache.get_or_build(key, missing)
+    console.print(f"{len(keys)} artifacts of {version} are in the local cache")
 
 
 @app.command()
