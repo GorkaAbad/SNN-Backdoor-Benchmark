@@ -98,3 +98,19 @@ option: sbb requires NumPy 1.26 or later, and cupy-cuda13x 14.2.0 requires NumPy
 
 On CPU, two runs with the same seed also give identical metrics and identical weights
 (`tests/integration/test_game.py`). The full N-MNIST rerun above confirms the GPU result on real data.
+
+## LocalExecutor and SlurmExecutor (v1)
+
+Checked on 2026-10-22 at commit 7f6e34a, on a Slurm cluster with NVIDIA GH200 nodes (aarch64),
+torch 2.14.1+cu130. The smoke benchmark (4 cells) ran twice, each run with its own empty cache:
+
+- through LocalExecutor, two `sbb run-cell` workers in one job with two GPUs,
+- through SlurmExecutor, a job array of four tasks submitted from inside a job, which ran on
+  three different nodes.
+
+Both runs gave identical metrics in all 4 cells and bit-identical weights (same sha256) for all
+7 stored models.
+
+A first attempt with two workers on one GPU failed in two cells with
+`CUDA_ERROR_DEVICE_UNAVAILABLE`: the cluster's GPUs run in exclusive-process mode, where a GPU
+takes one process only. Since commit 7f6e34a, LocalExecutor gives each worker its own GPU.
