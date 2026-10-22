@@ -167,6 +167,7 @@ class TrainerHooks {
 class DefenderView {
   <<proxy>>
   +scenario
+  +arch
   +trainer
   +model
   +train_set
@@ -944,6 +945,7 @@ class TrainSetView:
 class DefenderView:
     """Proxy built from the defense card. Undeclared access raises ThreatModelViolation."""
     scenario: ScenarioInfo         # always
+    arch: ArchSpec                 # always, public (3.3), v1: a DataDefense builds its reference model from it
     trainer: Trainer               # always, fresh, configured with the scenario recipe
     rng: np.random.Generator       # always
     model: SNNModel                # Resource.MODEL, a copy

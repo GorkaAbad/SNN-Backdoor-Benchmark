@@ -36,9 +36,8 @@ def _model() -> SNNModel:
 
 def _view(cls: type, datamodule: DataModule, model: SNNModel) -> DefenderView:
     trainer = Trainer(TrainSpec(epochs=1, batch_size=8), CPU)
-    return DefenderView(
-        cls.card, INFO, 0, trainer, model, TrainSetView(datamodule, None), datamodule
-    )
+    train_set = TrainSetView(datamodule, None)
+    return DefenderView(cls.card, INFO, 0, trainer, model, train_set, datamodule, ARCH)
 
 
 def test_channel_lipschitz_matches_the_official_loop() -> None:

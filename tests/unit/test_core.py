@@ -25,12 +25,14 @@ def _defender_view(datamodule: DataModule, resources: list[str]) -> DefenderView
     card = defense_card(view={"resources": resources, "clean_fraction": 0.05})
     model = build_model(ARCH, (2, 16, 16), 4)
     trainer = Trainer(TrainSpec(epochs=1, batch_size=8), CPU)
-    return DefenderView(card, INFO, 0, trainer, model, TrainSetView(datamodule, None), datamodule)
+    train_set = TrainSetView(datamodule, None)
+    return DefenderView(card, INFO, 0, trainer, model, train_set, datamodule, ARCH)
 
 
 def test_defense_reading_an_undeclared_resource_raises(datamodule: DataModule) -> None:
     view = _defender_view(datamodule, ["model"])
     assert view.model is not None
+    assert view.arch == ARCH  # public, so a defense can train its own reference model
     with pytest.raises(ThreatModelViolation, match="clean_subset"):
         view.clean_loader(8)
     with pytest.raises(ThreatModelViolation, match="train_set"):

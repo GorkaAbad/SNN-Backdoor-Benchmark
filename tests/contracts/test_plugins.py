@@ -125,7 +125,7 @@ def check_defense(cls: type[Defense], datamodule: DataModule) -> None:
     model = build_model(ARCH, (2, 16, 16), 4)
     trainer = Trainer(TrainSpec(epochs=1, batch_size=8), torch.device("cpu"))
     train_set = TrainSetView(datamodule, None)
-    view = DefenderView(cls.card, INFO, 0, trainer, model, train_set, datamodule)
+    view = DefenderView(cls.card, INFO, 0, trainer, model, train_set, datamodule, ARCH)
     x = torch.rand(3, 4, 2, 16, 16)
     if isinstance(defense, ModelDefense):
         repaired = defense.repair(view)

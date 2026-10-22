@@ -5,7 +5,13 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from sbb.defenses.utils import channel_means, conv_blocks, superpose, zero_channels
+from sbb.defenses.utils import (
+    channel_means,
+    conv_blocks,
+    readout_inputs,
+    superpose,
+    zero_channels,
+)
 from sbb.models.snn import SNNModel, build_model
 from sbb.models.spec import ArchSpec
 from sbb.utils.errors import SbbError
@@ -21,6 +27,20 @@ def _model() -> SNNModel:
 def _loader(n: int = 10) -> DataLoader[tuple[torch.Tensor, ...]]:
     x = torch.rand(n, 4, 2, 16, 16, generator=torch.Generator().manual_seed(1)) * 3
     return DataLoader(TensorDataset(x, torch.zeros(n), torch.arange(n)), batch_size=4)
+
+
+def test_readout_inputs_are_what_the_readout_sees() -> None:
+    # The readout of tiny_lif_cnn is linear, so the features through it give the model output.
+    model, loader = _model(), _loader()
+    features = readout_inputs(model.train(), loader, torch.device("cpu"))
+    assert model.training  # the mode is restored
+    readout = model.net[-1]
+    assert isinstance(readout, nn.Linear) and features.shape == (10, readout.in_features)
+    with torch.no_grad():
+        outputs = torch.cat([model.eval()(x) for x, _, _ in loader])
+    torch.testing.assert_close(readout(features), outputs)
+    with pytest.raises(SbbError, match="linear"):
+        readout_inputs(nn.Sequential(nn.ReLU()), loader, torch.device("cpu"))  # type: ignore[arg-type]
 
 
 def test_channel_means_average_over_time_batch_and_space() -> None:

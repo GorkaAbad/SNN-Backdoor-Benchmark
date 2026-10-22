@@ -198,6 +198,7 @@ class Game:
             victim,
             TrainSetView(data, poison),
             data,
+            scenario.arch,
         )
         defense_key = artifact_key(
             model_key=artifacts["model"],

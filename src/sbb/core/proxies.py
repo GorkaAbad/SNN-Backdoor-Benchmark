@@ -154,6 +154,7 @@ class DefenderView:
 
     Attributes:
         scenario: Public scenario description.
+        arch: The scenario architecture, public, so a defense can train its own reference model.
         trainer: A fresh Trainer with the scenario recipe.
         rng: Seeded generator.
     """
@@ -167,9 +168,11 @@ class DefenderView:
         model: SNNModel,
         train_set: TrainSetView,
         data: DataModule,
+        arch: ArchSpec,
     ) -> None:
         declared = card.view.resources
         self.scenario = scenario
+        self.arch = arch
         self.trainer = trainer
         self.rng = np.random.default_rng(seed)
         self._owner = card.name

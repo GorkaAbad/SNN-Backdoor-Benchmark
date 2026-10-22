@@ -51,6 +51,34 @@ def channel_means(
     return (sums / count).cpu()
 
 
+@torch.no_grad()
+def readout_inputs(model: SNNModel, loader: Iterable[Any], device: torch.device) -> torch.Tensor:
+    """What the readout sees for each sample of loader, in order, shape [N, F].
+
+    The readout is the last linear layer, and a sample's feature is its input averaged over time:
+    the spike rates of the layer before the readout, the SNN counterpart of the penultimate
+    activations that defenses such as spectral signatures read. The model runs in eval mode.
+    """
+    linears = [m for m in model.modules() if isinstance(m, nn.Linear)]
+    if not linears:
+        raise SbbError("readout_inputs needs a model with a linear readout")
+    features: list[torch.Tensor] = []
+
+    def record(_module: nn.Module, inputs: tuple[torch.Tensor, ...]) -> None:
+        features.append(inputs[0].mean(0).cpu())  # [T, B, F] in multi-step mode
+
+    training = model.training
+    handle = linears[-1].register_forward_pre_hook(record)
+    try:
+        model.eval()
+        for x, _, _ in loader:
+            model(x.to(device))
+    finally:
+        handle.remove()
+        model.train(training)
+    return torch.cat(features)
+
+
 def zero_channels(
     module: nn.Conv2d | nn.BatchNorm2d, channels: Sequence[int] | torch.Tensor
 ) -> None:
