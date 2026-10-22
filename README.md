@@ -192,7 +192,7 @@ in each card), and the benchmark:
 @misc{sbb2026,
   title        = {{SNN Backdoor Benchmark}: A Reproducible Benchmark for Backdoor Attacks and
                   Defenses on Spiking Neural Networks},
-  author       = {{sbb contributors}},
+  author       = {Gorka Abad},
   year         = {2026},
   howpublished = {\url{https://github.com/GorkaAbad/SNN-Backdoor-Benchmark}}
 }
