@@ -16,6 +16,7 @@ from sbb.defenses.anp import ANP, neuron_masks, perturb_bn
 from sbb.defenses.clp import CLP, channel_lipschitz
 from sbb.defenses.fine_pruning import FinePruning
 from sbb.defenses.nad import NAD, AttentionDistillation, attention_map
+from sbb.defenses.ndsbm import NDSBM, Clamps
 from sbb.defenses.spectral_signatures import spectral_outliers
 from sbb.defenses.strip import STRIP
 from sbb.defenses.tmpbd import class_potentials, p_value
@@ -260,3 +261,37 @@ def test_anp_masks_lie_in_the_unit_interval_and_prune_only_the_scale(
     for block, original in zip(conv_blocks(repaired), conv_blocks(model), strict=True):
         assert (block.bn.weight == 0).all()
         torch.testing.assert_close(block.bn.bias, original.bn.bias)  # the shift stays
+
+
+def test_clamps_bound_the_input_current_per_time_step_and_channel() -> None:
+    model = _model().eval()
+    clamps = Clamps(model, init=10.0)
+    assert [p.shape for p in clamps.upper] == [(4, 16), (4, 32)]  # [T, C] per conv block
+    x = torch.rand(2, 4, 2, 16, 16)
+    with torch.no_grad():
+        free = model(x)
+        handles = clamps.attach(model)
+        assert torch.equal(model(x), free)  # 1 +- 10 does not bind on these inputs
+        for upper, lower in zip(clamps.upper, clamps.lower, strict=True):
+            upper.fill_(0.0)
+            lower.fill_(0.0)
+        currents: list[torch.Tensor] = []
+        hook = conv_blocks(model)[0].bn.register_forward_hook(lambda m, i, o: currents.append(o))
+        model(x)
+        hook.remove()
+        for handle in handles:
+            handle.remove()
+    assert (currents[0] == 0).all()  # the clamp replaced the batch norm's output
+
+
+def test_ndsbm_narrows_the_clamps_and_keeps_the_weights(datamodule: DataModule) -> None:
+    model = _model()
+    view = _view(NDSBM, datamodule, model)
+    defense = NDSBM({**NDSBM.card.hparams_for("synthetic", "tiny_lif_cnn"), "epochs": 2})
+    repaired = defense.repair(view)
+    before, after = dict(model.named_parameters()), dict(repaired.named_parameters())
+    for name in before:  # the batch-norm statistics follow the clean data, as in the official code
+        torch.testing.assert_close(before[name], after[name])
+    clamps = defense.extra(repaired)
+    assert all((upper < 11.0).all() for upper in clamps.upper)  # the norm term pulls them in
+    assert all(not m._forward_hooks for m in repaired.modules())  # the Game attaches them

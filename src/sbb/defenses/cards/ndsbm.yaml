@@ -1,0 +1,25 @@
+name: ndsbm
+version: 1.0.0
+title: NDSBM, neural dendrites suppression backdoor mitigation
+paper: "Li, Wu, Xia et al. Unsupervised Backdoor Detection and Mitigation for Spiking Neural Networks. arXiv 2510.06629"
+code_reference: "https://github.com/alexjiachenli/TMPBD-NDSBM (mitigate.py, clamping)"
+license_note: "The official code has no license. Re-implemented from the paper, checked against the code."
+# As in the official clamping algorithm (dual clamping, its default): bounds per time step and
+# channel starting at 1 +- 10 (1 +- 20 on CIFAR10-DVS), Adam with lr 0.1 for 50 epochs, batch 16,
+# c = 1e-5 (2e-5 on CIFAR10-DVS), on clean data without labels, in train mode like the official
+# code (SpikingJelly neurons pass surrogate gradients only there), so the batch-norm statistics
+# follow the clean data while the weights stay. Two differences: the official bounds also have a
+# batch dimension, here they are shared by the samples, and the official forward skips the
+# neurons of the second conv block (a commented-out call), the port keeps them.
+stage: post_training
+view:
+  resources: [model, clean_subset]
+  clean_fraction: 0.05
+adaptation_note: >
+  Native to SNNs: the paper clamps the input of the neurons after the first convolution of each
+  block, here the batch norm's output that feeds each conv block's neurons, and matches the mean
+  membrane potential of the last spiking layer. The clamps live outside the weights, so the Game
+  stores them next to the checkpoint (ModelDefense.extra) and reattaches them on load.
+hparams:
+  default: {epochs: 50, lr: 0.1, c: 1.0e-5, init: 10.0, batch_size: 16}
+  cifar10dvs/cifar10dvs_net: {c: 2.0e-5, init: 20.0}

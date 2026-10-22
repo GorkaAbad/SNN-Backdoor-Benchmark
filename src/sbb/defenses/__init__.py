@@ -8,6 +8,7 @@ from sbb.defenses import (  # noqa: F401
     fine_pruning,
     fine_tuning,
     nad,
+    ndsbm,
     no_defense,
     spectral_signatures,
     strip,
