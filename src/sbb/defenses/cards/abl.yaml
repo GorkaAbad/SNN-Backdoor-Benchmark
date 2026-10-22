@@ -1,0 +1,25 @@
+name: abl
+version: 1.0.0
+title: ABL, anti-backdoor learning
+paper: "Li, Lyu, Koren, Lyu, Li, Ma. Anti-Backdoor Learning: Training Clean Models on Poisoned Data. NeurIPS 2021"
+code_reference: "https://github.com/bboylyg/ABL (backdoor_isolation.py, backdoor_unlearning.py)"
+license_note: "The official code has no license. Re-implemented from the paper, checked against the code."
+# The official code trains an isolation model for 10 epochs of local gradient ascent, isolates
+# 1% of the samples, fine-tunes it for 60 epochs on the rest and unlearns the isolated samples
+# for 5 epochs (SGD, lr 0.0005, momentum 0.9, weight decay 0.0001). Here the stages run inside
+# the victim's training run with the scenario recipe: the ascent takes the same share of the
+# epochs (10 of 70, so 1 of 10, 9 of 64 and 4 of 28), and the unlearning follows the last epoch.
+stage: in_training
+view:
+  resources: [train_set, training_loop]
+adaptation_note: >
+  The full-track networks train with an MSE loss on firing rates, whose values are far below the
+  cross-entropy gamma of 0.5. gamma is set to the same confidence instead: a cross-entropy of 0.5
+  is a probability of exp(-0.5) on the true class, and a rate of exp(-0.5) on the true class
+  with silent other outputs has an MSE of (1 - exp(-0.5))^2 / K, 0.0141 for the 11 classes of
+  DVS128 Gesture and 0.0155 for the 10 of CIFAR10-DVS. The lite network trains with
+  cross-entropy and keeps 0.5.
+hparams:
+  default: {gamma: 0.5, isolation_ratio: 0.01, isolation_epochs: 1, unlearning_epochs: 5, unlearning_lr: 0.0005}
+  dvsgesture/dvsgesture_net: {gamma: 0.0141, isolation_epochs: 9}
+  cifar10dvs/cifar10dvs_net: {gamma: 0.0155, isolation_epochs: 4}

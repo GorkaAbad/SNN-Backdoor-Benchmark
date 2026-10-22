@@ -6,8 +6,9 @@ import torch
 import torch.nn.functional as F
 
 from sbb.core.proxies import DefenderView, ScenarioInfo, TrainSetView
-from sbb.core.trainer import Trainer, TrainSpec
+from sbb.core.trainer import Trainer, TrainSpec, TrainState, per_sample_loss
 from sbb.data.module import DataModule
+from sbb.defenses.abl import ABL
 from sbb.defenses.activation_clustering import small_clusters
 from sbb.defenses.clp import CLP, channel_lipschitz
 from sbb.defenses.fine_pruning import FinePruning
@@ -143,3 +144,38 @@ def test_small_clusters_remove_a_planted_minority_only() -> None:
     # Class 1 splits in two equal clusters, above max_share, so it keeps every sample.
     removed = small_clusters(features, labels, dims=10, max_share=0.35, seed=0)
     assert removed.tolist() == list(range(90, 120))
+
+
+def _losses(model: SNNModel, view: DefenderView, positions: np.ndarray) -> torch.Tensor:
+    with torch.no_grad():
+        model.eval()
+        x, y, _ = next(iter(view.train_set.loader(len(positions), indices=positions)))
+        return per_sample_loss("cross_entropy", model(x), y)
+
+
+def test_abl_ascends_near_gamma_isolates_the_easiest_and_unlearns_them(
+    datamodule: DataModule,
+) -> None:
+    model = _model()
+    view = _view(ABL, datamodule, model)
+    hparams = {**ABL.card.hparams_for("synthetic", "tiny_lif_cnn"), "isolation_ratio": 0.1}
+    hooks = ABL(hparams).hooks(view)
+    state = TrainState(0, 0, model, None, torch.tensor([0, 1]), None, torch.empty(0))  # type: ignore[arg-type]
+    for losses, expected in [([0.1, 0.3], -0.2), ([0.6, 0.8], 0.7)]:  # gamma 0.5
+        state.per_sample_loss = torch.tensor(losses)
+        assert hooks.loss(state, torch.empty(0), torch.empty(0)).item() == pytest.approx(expected)
+
+    view.trainer.fit(model, view.train_set.loader(8, shuffle=True), epochs=2)
+    hooks._isolate(model)  # what on_epoch_end does after the last ascent epoch
+    everything = np.arange(len(view.train_set))
+    lowest = _losses(model, view, everything).argsort(stable=True)[: len(everything) // 10]
+    assert hooks.isolated.tolist() == lowest.tolist()
+
+    _, _, indices = next(iter(view.train_set.loader(len(everything))))
+    state.epoch, state.batch_indices = 1, indices[[int(hooks.isolated[0]), 0, 1]]
+    state.per_sample_loss = torch.tensor([9.0, 1.0, 2.0])  # the isolated sample is left out
+    assert hooks.loss(state, torch.empty(0), torch.empty(0)).item() == pytest.approx(1.5)
+
+    before = _losses(model, view, hooks.isolated).mean()
+    hooks._unlearn(model)
+    assert _losses(model, view, hooks.isolated).mean() > before
