@@ -2,6 +2,7 @@ name: abl
 version: 1.0.0
 title: ABL, anti-backdoor learning
 paper: "Li, Lyu, Koren, Lyu, Li, Ma. Anti-Backdoor Learning: Training Clean Models on Poisoned Data. NeurIPS 2021"
+published: "2021-10"
 code_reference: "https://github.com/bboylyg/ABL (backdoor_isolation.py, backdoor_unlearning.py)"
 license_note: "The official code has no license. Re-implemented from the paper, checked against the code."
 # The official code trains an isolation model for 10 epochs of local gradient ascent, isolates

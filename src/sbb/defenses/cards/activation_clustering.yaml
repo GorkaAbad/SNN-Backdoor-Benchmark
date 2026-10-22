@@ -2,6 +2,7 @@ name: activation_clustering
 version: 1.0.0
 title: Activation clustering
 paper: "Chen, Carvalho, Baracaldo, Ludwig, Edwards, Lee, Molloy, Srivastava. Detecting Backdoor Attacks on Deep Neural Networks by Activation Clustering. arXiv 1811.03728"
+published: "2018-11"
 code_reference: "https://github.com/Trusted-AI/adversarial-robustness-toolbox (art/defences/detector/poison/activation_defence.py)"
 license_note: "MIT"
 # The paper's method: the last hidden layer's activations of each label, reduced to 10

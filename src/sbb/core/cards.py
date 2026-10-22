@@ -111,6 +111,9 @@ class CardBase(BaseModel, frozen=True):
     version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
     title: str
     paper: str | None = None
+    # Year and month of the paper's first public version. The leaderboard lists methods oldest
+    # first. Baselines without a paper leave it out.
+    published: str | None = Field(None, pattern=r"^\d{4}-\d{2}$")
     code_reference: str | None = None
     license_note: str | None = None
     hparams: dict[str, dict[str, Any]] = {}

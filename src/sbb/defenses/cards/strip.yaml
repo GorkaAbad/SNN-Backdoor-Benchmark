@@ -2,6 +2,7 @@ name: strip
 version: 1.0.0
 title: STRIP, adapted to SNNs
 paper: "Gao, Xu, Wang, Chen, Ranasinghe, Nepal. STRIP: A Defence Against Trojan Attacks on Deep Neural Networks. ACSAC 2019"
+published: "2019-02"
 code_reference: "https://github.com/garrisongys/STRIP"
 license_note: "The official code has no license. Re-implemented from the paper."
 stage: inference

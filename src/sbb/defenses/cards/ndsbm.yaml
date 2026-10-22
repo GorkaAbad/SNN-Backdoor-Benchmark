@@ -2,6 +2,7 @@ name: ndsbm
 version: 1.0.0
 title: NDSBM, neural dendrites suppression backdoor mitigation
 paper: "Li, Wu, Xia et al. Unsupervised Backdoor Detection and Mitigation for Spiking Neural Networks. arXiv 2510.06629"
+published: "2025-10"
 code_reference: "https://github.com/alexjiachenli/TMPBD-NDSBM (mitigate.py, clamping)"
 license_note: "The official code has no license. Re-implemented from the paper, checked against the code."
 # As in the official clamping algorithm (dual clamping, its default): bounds per time step and

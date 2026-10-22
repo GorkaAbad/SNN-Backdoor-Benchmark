@@ -19,7 +19,7 @@ const state = {
   seen: { attack: new Set(), defense: new Set() }, // methods offered before, to keep unticked ones
   compareBy: "attack",
   compareItem: null,
-  sort: { key: 0, dir: 1 }, // column index and direction of the table
+  sort: { key: -1, dir: 1 }, // column index and direction of the table, -1 for the default order
 };
 let DATA = null;
 
@@ -55,10 +55,20 @@ function isBaseline(name) {
   return name === "no_attack" || name === "no_defense";
 }
 
+function published(name, methods) {
+  return (methods[name] && methods[name].published) || "9999-99"; // undated methods go last
+}
+
 function orderMethods(names, methods) {
-  // By scenario kind or defense stage, the baselines first in their group, then by name.
+  // The baselines first, then the oldest paper first, then by name.
   return [...names].sort((a, b) =>
-    groupIndex(a, methods) - groupIndex(b, methods) || isBaseline(b) - isBaseline(a) || a.localeCompare(b));
+    isBaseline(b) - isBaseline(a) || published(a, methods).localeCompare(published(b, methods)) || a.localeCompare(b));
+}
+
+function groupedMethods(names, methods) {
+  // As orderMethods, but grouped by scenario kind or defense stage, for the filter lists.
+  const order = orderMethods(names, methods);
+  return [...order].sort((a, b) => groupIndex(a, methods) - groupIndex(b, methods) || order.indexOf(a) - order.indexOf(b));
 }
 
 function matrix(cells, metric, methods) {
@@ -145,7 +155,7 @@ function syncControls() {
 }
 
 function syncChecks(id, role) {
-  const names = orderMethods(uniq(scenarioCells().map((c) => c[role])), DATA.methods);
+  const names = groupedMethods(uniq(scenarioCells().map((c) => c[role])), DATA.methods);
   const chosen = role === "attack" ? state.attacks : state.defenses;
   for (const name of names) {
     if (!state.seen[role].has(name)) chosen.add(name); // a new method starts ticked
@@ -302,8 +312,13 @@ function renderTable() {
   // Sort keys: the text of the first four columns, the mean of a metric column.
   const keyOf = (cell, column) =>
     [cell.attack, cell.defense, cell.seeds.length, cell.status][column] ?? cell.metrics[metrics[column - 4]]?.mean ?? -Infinity;
-  const column = state.sort.key < headers.length ? state.sort.key : 0;
+  const column = state.sort.key < headers.length ? state.sort.key : -1;
+  // The default order follows the matrix: attacks, then defenses, baselines and oldest papers first.
+  const attacks = orderMethods(uniq(cells.map((c) => c.attack)), DATA.methods);
+  const defenses = orderMethods(uniq(cells.map((c) => c.defense)), DATA.methods);
+  const rank = (c) => attacks.indexOf(c.attack) * defenses.length + defenses.indexOf(c.defense);
   const sorted = [...cells].sort((a, b) => {
+    if (column < 0) return rank(a) - rank(b);
     const [ka, kb] = [keyOf(a, column), keyOf(b, column)];
     const order = typeof ka === "number" ? ka - kb : String(ka).localeCompare(String(kb));
     return state.sort.dir * order;
@@ -317,7 +332,9 @@ function renderTable() {
 
 function replicationRows() {
   const rows = [];
-  for (const record of DATA.replications) {
+  const order = orderMethods(DATA.replications.map((r) => r.method), DATA.methods);
+  const records = [...DATA.replications].sort((a, b) => order.indexOf(a.method) - order.indexOf(b.method));
+  for (const record of records) {
     for (const target of record.targets) {
       for (const [metric, reported] of Object.entries(target.reported)) {
         const ours = target.ours ? target.ours[metric] : null;
@@ -383,7 +400,7 @@ function renderMethods() {
       const card = document.createElement("article");
       card.className = "card";
       const title = Object.assign(document.createElement("h3"), { textContent: m.title || name });
-      const meta = Object.assign(document.createElement("div"), { className: "meta", textContent: `${name} · ${role} · ${m.group.replaceAll("_", " ")} · v${m.version}` });
+      const meta = Object.assign(document.createElement("div"), { className: "meta", textContent: `${name} · ${role} · ${m.group.replaceAll("_", " ")} · v${m.version}${m.published ? ` · ${m.published}` : ""}` });
       card.append(title, meta);
       const lines = [
         m.paper,

@@ -2,6 +2,7 @@ name: sneaky_moving
 version: 1.0.0
 title: Sneaky Spikes, moving trigger
 paper: "Abad, Ersoy, Picek, Urbieta. Sneaky Spikes: Uncovering Stealthy Backdoor Attacks in Spiking Neural Networks with Neuromorphic Data. NDSS 2024"
+published: "2023-02"
 code_reference: "https://github.com/GorkaAbad/Sneaky-Spikes (create_moving_trigger)"
 license_note: "MIT"
 # A square that jumps between three places in a row, one per frame. The last frame stays clean,

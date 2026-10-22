@@ -204,7 +204,7 @@ def _methods() -> dict[str, dict[str, Any]]:
 
 
 def _common(card: dict[str, Any]) -> dict[str, Any]:
-    keys = ("version", "title", "paper", "code_reference", "license_note")
+    keys = ("version", "title", "paper", "published", "code_reference", "license_note")
     return {k: card.get(k) for k in keys}
 
 

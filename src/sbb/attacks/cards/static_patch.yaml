@@ -2,6 +2,7 @@ name: static_patch
 version: 1.0.0
 title: Static patch trigger on raw events (after Sneaky Spikes)
 paper: "Abad et al., Sneaky Spikes, NDSS 2024"
+published: "2023-02"
 code_reference: "https://github.com/GorkaAbad/Sneaky-Spikes"
 license_note: "MIT"
 # This is a raw-event variant, not an exact port. The official code overwrites a patch in every

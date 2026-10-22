@@ -2,6 +2,7 @@ name: tbackdoor_jitter
 version: 1.0.0
 title: T-Backdoor, jitter trigger
 paper: "Miah, Vu, Bi. T-Backdoor: Exploiting Temporal Redundancy in Neuromorphic Data for Spike-preserving Backdoor Attacks on SNNs. arXiv 2609.30119"
+published: "2026-09"
 code_reference: "https://github.com/SiSL-URI/T-Backdoor (single_poisoned_dataset.py)"
 license_note: "The official code has no license. Re-implemented from the paper's equations (temporal_triggers), checked against the code."
 # The trigger swaps 3 evenly spaced pairs of frames (the official jitter_fixed default). The paper poisons every class, so its replication sets

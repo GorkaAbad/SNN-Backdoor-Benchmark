@@ -2,6 +2,7 @@ name: anp
 version: 1.0.0
 title: ANP, adversarial neuron pruning
 paper: "Wu, Wang. Adversarial Neuron Pruning Purifies Backdoored Deep Models. NeurIPS 2021"
+published: "2021-10"
 code_reference: "https://github.com/csdongxian/ANP_backdoor (optimize_mask_cifar.py, prune_neuron_cifar.py, models/anp_batchnorm.py)"
 license_note: "The official code has no license. Re-implemented from the paper, checked against the code."
 # As in the paper: masks optimized on 1% of clean data with eps 0.4 and alpha 0.2, SGD with a

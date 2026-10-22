@@ -2,6 +2,7 @@ name: clp
 version: 1.0.0
 title: CLP, channel Lipschitzness-based pruning
 paper: "Zheng, Tang, Li, Liu. Data-free Backdoor Removal based on Channel Lipschitzness. ECCV 2022"
+published: "2022-08"
 code_reference: "https://github.com/rkteddy/channel-Lipschitzness-based-pruning"
 license_note: "The official code has no license. Re-implemented from the paper."
 stage: post_training

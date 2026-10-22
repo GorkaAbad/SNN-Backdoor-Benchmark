@@ -2,6 +2,7 @@ name: spectral_signatures
 version: 1.0.0
 title: Spectral signatures
 paper: "Tran, Li, Madry. Spectral Signatures in Backdoor Attacks. NeurIPS 2018"
+published: "2018-11"
 code_reference: "https://github.com/MadryLab/backdoor_data_poisoning (compute_corr.py)"
 license_note: "MIT"
 # The official code scores only the target label, which a defender does not know, so the port

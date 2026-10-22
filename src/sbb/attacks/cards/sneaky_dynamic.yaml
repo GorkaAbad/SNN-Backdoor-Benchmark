@@ -2,6 +2,7 @@ name: sneaky_dynamic
 version: 1.0.0
 title: Sneaky Spikes, dynamic trigger
 paper: "Abad, Ersoy, Picek, Urbieta. Sneaky Spikes: Uncovering Stealthy Backdoor Attacks in Spiking Neural Networks with Neuromorphic Data. NDSS 2024"
+published: "2023-02"
 code_reference: "https://github.com/GorkaAbad/Sneaky-Spikes (dynamic.py, models.py Autoencoder)"
 license_note: "MIT"
 # The attacker trains the model, jointly with a spiking autoencoder G, and the trigger of an

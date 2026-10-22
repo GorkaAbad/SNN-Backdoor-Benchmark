@@ -118,24 +118,40 @@ def test_build_writes_a_site_with_the_data(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_page_matrix_groups_attacks_by_kind_and_defenses_by_stage() -> None:
+def test_page_lists_baselines_then_the_oldest_papers_first() -> None:
     app = Path(__file__).parents[2] / "src" / "sbb" / "site" / "templates" / "app.js"
     script = """
 const { matrix } = require(process.argv[1]);
 const methods = {
-  a: { role: "attack", group: "supply_chain" }, b: { role: "attack", group: "data_poisoning" },
-  x: { role: "defense", group: "inference" }, y: { role: "defense", group: "pre_training" },
+  no_attack: { role: "attack", group: "data_poisoning", published: null },
+  flashy: { role: "attack", group: "data_poisoning", published: "2024-11" },
+  sneaky_static: { role: "attack", group: "data_poisoning", published: "2023-02" },
+  sneaky_dynamic: { role: "attack", group: "training_control", published: "2023-02" },
+  finetune_injection: { role: "attack", group: "supply_chain", published: null },
+  no_defense: { role: "defense", group: "post_training", published: null },
+  strip: { role: "defense", group: "inference", published: "2019-02" },
+  fine_pruning: { role: "defense", group: "post_training", published: "2018-05" },
 };
 const cell = (attack, defense, metrics, status) =>
   ({ attack, defense, metrics, status, seeds: [0, 1], sites: ["laptop"], reason: null });
-const cells = [cell("a", "x", { asr: { mean: 0.5, std: 0.1 } }, "self-reported"),
-               cell("b", "y", {}, "not-applicable")];
-console.log(JSON.stringify(matrix(cells, "asr", methods)));
+const cells = [];
+for (const a of ["flashy", "finetune_injection", "sneaky_dynamic", "no_attack", "sneaky_static"])
+  for (const d of ["strip", "no_defense", "fine_pruning"])
+    cells.push(cell(a, d, { asr: { mean: 0.5, std: 0.1 } }, "self-reported"));
+cells.push(cell("flashy", "strip", {}, "not-applicable"));
+console.log(JSON.stringify(matrix(cells.slice(-1).concat(cells.slice(1)), "asr", methods)));
 """
     out = subprocess.run(
         ["node", "-e", script, str(app)], capture_output=True, text=True, check=True
     )
     m = json.loads(out.stdout)
-    assert m["attacks"] == ["b", "a"] and m["defenses"] == ["y", "x"]
-    assert m["z"] == [[None, None], [None, 50.0]]
-    assert m["text"][0][0] == "not-applicable" and m["text"][1][1].startswith("50.0")
+    # Baselines first, then by first publication (Sneaky Spikes before Flashy), undated last.
+    assert m["attacks"] == [
+        "no_attack",
+        "sneaky_dynamic",
+        "sneaky_static",
+        "flashy",
+        "finetune_injection",
+    ]
+    assert m["defenses"] == ["no_defense", "fine_pruning", "strip"]
+    assert m["text"][3][2] == "not-applicable" and m["z"][3][2] is None  # flashy x strip
