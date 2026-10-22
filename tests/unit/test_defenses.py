@@ -1,5 +1,7 @@
 """Defense-specific logic. The registered defenses also meet tests/contracts."""
 
+import copy
+
 import numpy as np
 import pytest
 import torch
@@ -12,6 +14,7 @@ from sbb.defenses.abl import ABL
 from sbb.defenses.activation_clustering import small_clusters
 from sbb.defenses.clp import CLP, channel_lipschitz
 from sbb.defenses.fine_pruning import FinePruning
+from sbb.defenses.nad import NAD, AttentionDistillation, attention_map
 from sbb.defenses.spectral_signatures import spectral_outliers
 from sbb.defenses.strip import STRIP
 from sbb.defenses.tmpbd import class_potentials, p_value
@@ -179,3 +182,35 @@ def test_abl_ascends_near_gamma_isolates_the_easiest_and_unlearns_them(
     before = _losses(model, view, hooks.isolated).mean()
     hooks._unlearn(model)
     assert _losses(model, view, hooks.isolated).mean() > before
+
+
+def test_attention_map_sums_channels_and_has_unit_norm() -> None:
+    rates = torch.rand(3, 8, 4, 4)
+    am = attention_map(rates, p=2.0)
+    assert am.shape == (3, 1, 4, 4)
+    torch.testing.assert_close(am * am.flatten(1).norm(dim=1).view(3, 1, 1, 1), am)  # unit norm
+    expected = (rates**2).sum(1, keepdim=True)
+    torch.testing.assert_close(am, expected / expected.flatten(1).norm(dim=1).view(3, 1, 1, 1))
+
+
+def test_nad_adds_attention_distillation_and_leaves_no_probe(datamodule: DataModule) -> None:
+    student = _model()
+    x, y, index = next(iter(datamodule.test_loader(4)))
+    for teacher, more in [(copy.deepcopy(student), False), (_model().train(), True)]:
+        if more:
+            for p in teacher.parameters():
+                p.data.add_(torch.randn_like(p) * 0.5)
+        hooks = AttentionDistillation(teacher, student, betas=[500.0, 1000.0, 1000.0], p=2.0)
+        logits = student.eval()(x)  # the teacher runs in eval mode, as in the official code
+        state = TrainState(
+            0, 0, student, None, index, per_sample_loss("cross_entropy", logits, y), x
+        )  # type: ignore[arg-type]
+        loss = hooks.loss(state, logits, y)
+        hooks.close()
+        assert (loss.item() > state.per_sample_loss.mean().item()) is more
+        loss.backward()  # type: ignore[no-untyped-call]  # the distillation term reaches the student
+    for module in student.modules():
+        assert not module._forward_hooks
+    view = _view(NAD, datamodule, _model())
+    repaired = NAD(NAD.card.hparams_for("synthetic", "tiny_lif_cnn")).repair(view)
+    assert all(not m._forward_hooks for m in repaired.modules())

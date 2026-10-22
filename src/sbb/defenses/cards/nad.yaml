@@ -1,0 +1,22 @@
+name: nad
+version: 1.0.0
+title: NAD, neural attention distillation
+paper: "Li, Lyu, Koren, Lyu, Li, Ma. Neural Attention Distillation: Erasing Backdoor Triggers from Deep Neural Networks. ICLR 2021"
+code_reference: "https://github.com/bboylyg/NAD (main.py, at.py)"
+license_note: "The official code has no license. Re-implemented from the paper, checked against the code."
+# The teacher is the model fine-tuned on the clean subset for 10 epochs, and the student is the
+# model trained for 20 epochs on the same data with the task loss plus beta times the attention
+# loss at three depths (the official 500, 1000 and 1000, A2sum maps, p = 2). Both stages use the
+# scenario recipe through the view's trainer, as fine_tuning does, instead of the paper's SGD with
+# a step schedule and its data augmentation.
+stage: post_training
+view:
+  resources: [model, clean_subset]
+  clean_fraction: 0.05
+adaptation_note: >
+  The feature maps are the spike rates (mean over T) of the neurons of the last three conv blocks,
+  the SNN counterpart of the outputs of the three residual groups of the paper, with the last beta
+  on the last block. A network with fewer blocks uses the last betas. The student's spikes keep
+  their graph, so the distillation term trains it through the surrogate gradients.
+hparams:
+  default: {teacher_epochs: 10, epochs: 20, batch_size: 64, betas: [500.0, 1000.0, 1000.0], p: 2.0}
