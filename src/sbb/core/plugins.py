@@ -167,11 +167,28 @@ class TrainingDefense(Defense):
 
 
 class ModelDefense(Defense):
-    """Post-training defense."""
+    """Post-training defense.
+
+    The Game stores the repaired model as a checkpoint of its weights and evaluates the model it
+    loads back. A repair that keeps state outside the weights, such as the clamps of NDSBM,
+    returns it from extra and applies it in attach, as a learned trigger does with learned().
+    """
 
     @abstractmethod
     def repair(self, view: DefenderView) -> SNNModel:
         """Return the repaired model."""
+
+    def extra(self, model: SNNModel) -> nn.Module | None:
+        """State of the repair outside the weights, sized for model, or None.
+
+        After repair it holds the repair's values. The Game stores its state dict next to the
+        checkpoint and loads it into extra(model) for a model loaded back, repair being skipped
+        on a cache hit.
+        """
+        return None
+
+    def attach(self, model: SNNModel, extra: nn.Module) -> None:  # noqa: B027  optional hook
+        """Make a model loaded from the checkpoint use extra, for example through hooks."""
 
 
 class InputDefense(Defense):

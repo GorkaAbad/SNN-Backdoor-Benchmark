@@ -648,3 +648,46 @@ def test_dynamic_attack_runs_and_stores_its_generator(game: Game) -> None:
     result = game.run(make_cell("sneaky_dynamic", "no_defense", scenario=scenario))
     assert result.outcome == "ok", result.reason
     assert (game.cache.local.root / result.artifacts["model"] / "trigger.safetensors").exists()
+
+
+class _Offset(torch.nn.Module):
+    def __init__(self, classes: int) -> None:
+        super().__init__()
+        self.offset = torch.nn.Parameter(torch.zeros(classes))
+
+
+class _Bias(ModelDefense):
+    """Keeps a logit offset outside the weights, which sends every input to class 1."""
+
+    card = defense_card(name="bias")
+    calls = 0
+
+    def __init__(self, hparams: dict[str, Any]) -> None:
+        super().__init__(hparams)
+        self._offset: _Offset | None = None
+
+    def repair(self, view: DefenderView) -> SNNModel:
+        _Bias.calls += 1
+        self.extra(view.model).offset.data[1] = 100.0
+        return view.model
+
+    def extra(self, model: SNNModel) -> _Offset:
+        if self._offset is None:
+            self._offset = _Offset(model.num_classes)
+        return self._offset
+
+    def attach(self, model: SNNModel, extra: torch.nn.Module) -> None:
+        offset = extra.offset  # type: ignore[union-attr]
+        model.register_forward_hook(lambda m, i, out: out + offset.to(out.device))
+
+
+def test_defense_state_outside_the_weights_survives_the_checkpoint(
+    game: Game, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(DEFENSES._items, "bias", _Bias)
+    _Bias.calls = 0
+    first = game.run(make_cell("static_patch", "bias"))
+    again = game.run(make_cell("static_patch", "bias"))  # from the cache, repair is skipped
+    assert first.outcome == "ok", first.reason
+    assert _Bias.calls == 1 and first.metrics == again.metrics
+    assert first.metrics["asr"] == 0.0 and first.metrics["ca"] < 0.5  # everything went to class 1

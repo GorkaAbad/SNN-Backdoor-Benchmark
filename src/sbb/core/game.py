@@ -357,7 +357,19 @@ class Game:
         stage = defense.card.stage
         if stage == Stage.POST_TRAINING:
             assert isinstance(defense, ModelDefense)
-            model = self._model(key, seed, lambda: defense.repair(view))
+
+            def build(directory: Path) -> None:
+                seed_everything(seed)
+                repaired = defense.repair(view)
+                save_checkpoint(repaired, directory, key)
+                if (extra := defense.extra(repaired)) is not None:  # stored with the model
+                    save_file(extra.state_dict(), directory / "defense.safetensors")
+
+            path = self.cache.get_or_build(key, build)
+            model = load_checkpoint(path, self.device)
+            if (extra := defense.extra(model)) is not None:  # repair is skipped on a hit
+                extra.load_state_dict(load_file(path / "defense.safetensors"))
+                defense.attach(model, extra.to(self.device))
             return _Defended(model, artifacts={"defended_model": key})
         if stage == Stage.PRE_TRAINING:
             assert isinstance(defense, DataDefense)
