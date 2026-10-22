@@ -10,6 +10,7 @@ from sbb.core.trainer import Trainer, TrainSpec
 from sbb.data.module import DataModule
 from sbb.defenses.clp import CLP, channel_lipschitz
 from sbb.defenses.fine_pruning import FinePruning
+from sbb.defenses.spectral_signatures import spectral_outliers
 from sbb.defenses.strip import STRIP
 from sbb.defenses.tmpbd import class_potentials, p_value
 from sbb.defenses.utils import channel_means, conv_blocks
@@ -117,3 +118,15 @@ def test_tmpbd_potentials_average_the_output_neurons() -> None:
     assert torch.allclose(class_potentials(model, x).detach(), expected)
     tiny = _model()
     assert torch.equal(class_potentials(tiny, x[..., :16, :16]), tiny(x[..., :16, :16]))
+
+
+def test_spectral_outliers_are_the_shifted_samples_of_their_class() -> None:
+    rng = np.random.default_rng(0)
+    features = rng.normal(size=(210, 5))
+    features[100:110, 0] += 8.0  # a planted cluster in class 0, as poisoned samples would be
+    labels = np.repeat([0, 1], [110, 100])
+    removed = spectral_outliers(features, labels, percentile=85)
+    assert set(range(100, 110)) <= set(removed.tolist())
+    # About 15% of each class, the paper's 1.5 epsilon. np.percentile interpolates, so 17 of the
+    # 110 scores of class 0 lie above its 85th percentile, as in the official code.
+    assert np.bincount(labels[removed]).tolist() == [17, 15]
