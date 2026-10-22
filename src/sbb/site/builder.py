@@ -16,6 +16,7 @@ from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.metrics.detection import auroc
 from sbb.results.replication import ReplicationRecord
+from sbb.results.verification import LITE_VERIFIER, Verification
 
 # Labels and direction of the metrics the site shows. A metric not listed keeps its name.
 METRICS = {
@@ -38,21 +39,29 @@ _TEMPLATES = ("index.html", "app.js", "style.css")
 
 
 class LeaderboardBuilder:
-    """Builds the site from results and replication records.
+    """Builds the site from results, replication records and verification records.
 
-    Every finished cell is self-reported in v1. The statuses computed from verifications land
-    with the VerificationPolicy in v2.
+    A finished lite cell is reproduced when the verify-lite workflow matched every seed, and
+    disputed when it mismatched one. Every other finished cell is self-reported in v1. The
+    full-track statuses land with the VerificationPolicy in v2.
 
     Args:
         results: Cell results of any benchmark versions. Replication cells are left out.
         replications: The replication records.
+        verifications: The verification records.
     """
 
     def __init__(
-        self, results: Sequence[CellResult], replications: Sequence[ReplicationRecord]
+        self,
+        results: Sequence[CellResult],
+        replications: Sequence[ReplicationRecord],
+        verifications: Sequence[Verification] = (),
     ) -> None:
         self.results = [r for r in results if r.cell.track != "replication"]
         self.replications = replications
+        self.checks: dict[str, list[Verification]] = defaultdict(list)
+        for check in verifications:
+            self.checks[check.result_key].append(check)
 
     def build(self, out: Path) -> None:
         """Write data.json and the page into out."""
@@ -70,7 +79,7 @@ class LeaderboardBuilder:
             "sbb_version": __version__,
             "metrics": {k: {"label": label, "better": d} for k, (label, d) in METRICS.items()},
             "methods": _methods(),
-            "cells": [_aggregate(group) for group in self._groups().values()],
+            "cells": [_aggregate(group, self.checks) for group in self._groups().values()],
             "model_auroc": self._model_auroc(),
             "replications": [_replication(r) for r in self.replications],
         }
@@ -117,12 +126,12 @@ class LeaderboardBuilder:
         return rows
 
 
-def _aggregate(results: list[CellResult]) -> dict[str, Any]:
+def _aggregate(results: list[CellResult], checks: dict[str, list[Verification]]) -> dict[str, Any]:
     """One row of the site: the cell over its seeds, metrics as mean and population std."""
     first = results[0].cell
     severity = list(_STATUS)
     bad = sorted((r for r in results if r.outcome != "ok"), key=lambda r: severity.index(r.outcome))
-    status = _STATUS[bad[0].outcome] if bad else "self-reported"
+    status = _STATUS[bad[0].outcome] if bad else _verified(results, checks)
     metrics = {}
     if not bad:  # metrics only when every seed finished
         for name in sorted({name for r in results for name in r.metrics}):
@@ -143,7 +152,32 @@ def _aggregate(results: list[CellResult]) -> dict[str, Any]:
         "metrics": metrics,
         "sites": sorted({r.provenance.site for r in results}),
         "devices": sorted({r.provenance.device for r in results}),
+        "verifications": [
+            {
+                "seed": r.cell.seed,
+                "verifier": v.verifier,
+                "verifier_org": v.verifier_org,
+                "verdict": v.verdict,
+                "site": v.provenance.site,
+                "device": v.provenance.device,
+                "date": v.provenance.started_at.date().isoformat(),
+            }
+            for r in sorted(results, key=lambda r: r.cell.seed)
+            for v in checks.get(r.key, [])
+        ],
     }
+
+
+def _verified(results: list[CellResult], checks: dict[str, list[Verification]]) -> str:
+    """Status of a finished cell: the verify-lite verdicts of its seeds decide a lite cell."""
+    if results[0].cell.track != "lite":
+        return "self-reported"
+    verdicts = [
+        [v.verdict for v in checks.get(r.key, []) if v.verifier == LITE_VERIFIER] for r in results
+    ]
+    if any("mismatch" in seed for seed in verdicts):
+        return "disputed"
+    return "reproduced" if all(verdicts) else "self-reported"
 
 
 def _methods() -> dict[str, dict[str, Any]]:

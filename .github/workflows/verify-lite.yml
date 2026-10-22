@@ -1,0 +1,114 @@
+name: verify-lite
+
+# Reruns every lite result on main that has no record of this workflow yet, one GitHub-hosted
+# runner per cell, then opens a pull request with the Verification records (docs/PLAN.md 10).
+on:
+  push:
+    branches: [main]
+    paths: ["results/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-lite
+
+env:
+  # The verifier name the site reads, sbb.results.verification.LITE_VERIFIER.
+  SBB_SUBMITTER: github-actions
+  SBB_SUBMITTER_ORG: github-actions
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      cells: ${{ steps.pending.outputs.cells }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lite results without a record, on main or in an open records branch
+        id: pending
+        run: |
+          shopt -s nullglob
+          git fetch -q origin '+refs/heads/verify-lite/*:refs/remotes/origin/verify-lite/*'
+          proposed=$(git for-each-ref --format='%(refname)' refs/remotes/origin/verify-lite \
+            | xargs -r -n1 git ls-tree -r --name-only)
+          for f in results/*/*.json; do
+            version=$(basename "$(dirname "$f")") key=$(basename "$f" .json)
+            [ "$version" != manifests ] && [ "$(jq -r .cell.track "$f")" = lite ] || continue
+            records=(verifications/"$version"/"$key"/"$SBB_SUBMITTER"-*.json)
+            [ ${#records[@]} -eq 0 ] || continue
+            grep -q "^verifications/$version/$key/$SBB_SUBMITTER-" <<<"$proposed" && continue
+            jq -c --arg result "$f" '{result: $result, dataset: .cell.scenario.data.name}' "$f"
+          done > "$RUNNER_TEMP/cells.jsonl"
+          total=$(wc -l < "$RUNNER_TEMP/cells.jsonl")
+          echo "$total lite results to verify"
+          if [ "$total" -gt 256 ]; then
+            echo "::warning::A run holds at most 256 jobs. Run this workflow again after merging the records."
+          fi
+          echo "cells=$(head -n 256 "$RUNNER_TEMP/cells.jsonl" | jq -cs .)" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: plan
+    if: needs.plan.outputs.cells != '[]'
+    name: verify ${{ matrix.cell.result }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # a hosted runner stops a job at 6 hours
+    strategy:
+      fail-fast: false
+      matrix:
+        cell: ${{ fromJSON(needs.plan.outputs.cells) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --frozen --no-dev
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/sbb/datasets/${{ matrix.cell.dataset }}
+          key: sbb-dataset-${{ matrix.cell.dataset }}
+      - name: Rerun the cell
+        env:
+          RESULT: ${{ matrix.cell.result }}
+        run: >-
+          uv run sbb reproduce "$RESULT" --site sites/examples/local-cpu.yaml
+          --verifications "$RUNNER_TEMP/records"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: verification-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/records
+
+  records:
+    needs: [plan, verify]
+    if: ${{ !cancelled() && needs.plan.outputs.cells != '[]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: verification-*
+          path: verifications
+          merge-multiple: true
+      - name: Open a pull request with the records
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: verify-lite/${{ github.run_id }}
+        run: |
+          git add verifications
+          if git diff --cached --quiet; then echo "No record was written."; exit 0; fi
+          git switch -c "$BRANCH"
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Add the verify-lite records of run $GITHUB_RUN_ID"
+          git push -q origin "$BRANCH"
+          {
+            echo "Reruns of lite cells on GitHub-hosted runners, run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+            echo
+            git diff --name-only HEAD~1 | while read -r f; do echo "- $(jq -r .verdict "$f") \`$f\`"; done
+            echo
+            echo "A pull request opened with GITHUB_TOKEN does not start CI. Close and reopen it to run CI."
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --base main --head "$BRANCH" \
+            --title "verify-lite records of run $GITHUB_RUN_ID" --body-file "$RUNNER_TEMP/body.md"

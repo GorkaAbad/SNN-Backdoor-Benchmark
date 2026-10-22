@@ -138,4 +138,4 @@ tbody tr:hover { background: var(--accent-soft); }
 .card a { color: var(--accent); }
 
 h2 { font-size: 1.05rem; margin: 24px 0 8px; }
-footer { color: var(--muted); font-size: 0.8rem; padding: 24px 16px 40px; }
+footer.wrap { color: var(--muted); font-size: 0.8rem; padding: 24px 16px 40px; }

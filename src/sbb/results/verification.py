@@ -8,6 +8,9 @@ from pydantic import BaseModel, ConfigDict
 
 from sbb.core.result import CellResult, Provenance
 
+# The verifier name of the verify-lite workflow. Its records set the status of lite cells.
+LITE_VERIFIER = "github-actions"
+
 
 class Verification(BaseModel, frozen=True):
     """One independent rerun of a cell.

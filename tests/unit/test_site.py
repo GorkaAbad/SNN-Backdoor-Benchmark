@@ -9,6 +9,7 @@ import torch
 
 from sbb.core.result import CellResult, Outcome, collect_provenance
 from sbb.results.replication import ReplicationRecord
+from sbb.results.verification import LITE_VERIFIER, Verification
 from sbb.runner.planner import Planner
 from sbb.site.builder import LeaderboardBuilder
 from tests.unit.test_runner import SMOKE
@@ -18,9 +19,10 @@ REPLICATIONS = Path(__file__).parents[2] / "replications"
 
 
 def _result(
-    attack: str, defense: str, seed: int, outcome: Outcome = "ok", **m: float
+    attack: str, defense: str, seed: int, outcome: Outcome = "ok", track: str = "lite", **m: float
 ) -> CellResult:
-    cell = Planner(SMOKE).cells(attack=attack, defense=defense)[0].model_copy(update={"seed": seed})
+    cell = Planner(SMOKE).cells(attack=attack, defense=defense)[0]
+    cell = cell.model_copy(update={"seed": seed, "track": track})
     reason = None if outcome == "ok" else "a reason"
     return CellResult(
         key=cell.key(), cell=cell, outcome=outcome, reason=reason, metrics=m, provenance=PROVENANCE
@@ -54,6 +56,44 @@ def test_cells_aggregate_the_seeds() -> None:
     assert na["status"] == "not-applicable" and na["reason"] == "a reason" and na["metrics"] == {}
     assert data["metrics"]["asr"]["label"] and "static_patch" in data["methods"]
     assert data["methods"]["static_patch"]["role"] == "attack"
+
+
+def _check(result: CellResult, verdict: str, verifier: str = LITE_VERIFIER) -> Verification:
+    return Verification(
+        result_key=result.key,
+        verifier=verifier,
+        verifier_org=verifier,
+        provenance=PROVENANCE,
+        metrics=result.metrics,
+        delta={},
+        verdict=verdict,  # type: ignore[arg-type]
+    )
+
+
+def test_the_lite_verifier_sets_the_status_of_lite_cells() -> None:
+    seed0, seed1 = RESULTS[0], RESULTS[1]  # static_patch x no_defense
+    full = _result("no_attack", "no_defense", 0, track="full", ca=0.9)
+
+    def cell(*checks: Verification, attack: str = "static_patch") -> dict:
+        data = LeaderboardBuilder([*RESULTS, full], [], checks).data()
+        return next(
+            c
+            for c in data["cells"]
+            if (c["attack"], c["defense"]) == (attack, "no_defense")
+            and c["track"] == ("full" if attack == "no_attack" else "lite")
+        )
+
+    assert cell(_check(seed0, "match"))["status"] == "self-reported"  # seed 1 is not checked yet
+    both = cell(_check(seed0, "match"), _check(seed1, "match"))
+    assert both["status"] == "reproduced"
+    assert [(v["seed"], v["verdict"]) for v in both["verifications"]] == [
+        (0, "match"),
+        (1, "match"),
+    ]
+    assert cell(_check(seed0, "match"), _check(seed1, "mismatch"))["status"] == "disputed"
+    others = cell(_check(seed0, "match", "someone"), _check(seed1, "match", "someone"))
+    assert others["status"] == "self-reported"  # only the verify-lite workflow counts for lite
+    assert cell(_check(full, "match"), attack="no_attack")["status"] == "self-reported"
 
 
 def test_model_auroc_ranks_backdoored_above_clean_models() -> None:

@@ -310,6 +310,9 @@ function renderTable() {
   });
   const rows = sorted.map((c) => [c.attack, c.defense, c.seeds.length, badge(c.status), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
   $("table").replaceChildren(table(headers, rows, true));
+  const log = cells.flatMap((c) => c.verifications.map((v) => [c.attack, c.defense, v.seed, v.verifier, v.verifier_org, v.site, v.device, v.date, v.verdict]));
+  if (!log.length) return empty($("verification-log"), "No verification of these cells yet.");
+  $("verification-log").replaceChildren(table(["Attack", "Defense", "Seed", "Verifier", "Organization", "Site", "Device", "Date", "Verdict"], log));
 }
 
 function replicationRows() {
@@ -458,7 +461,7 @@ async function main() {
       render();
     });
   }
-  $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. Statuses are self-reported until independent verification (v2).`;
+  $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. Lite cells are verified on GitHub runners after merge. Full-track cells are self-reported until independent verification (v2).`;
   render();
 }
 

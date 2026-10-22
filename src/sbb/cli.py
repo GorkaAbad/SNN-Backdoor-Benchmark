@@ -27,7 +27,7 @@ from sbb.results.replication import ReplicationRecord
 from sbb.results.store import LocalResultStore, ResultStore
 from sbb.results.table import markdown_table
 from sbb.results.validate import validate as validate_files
-from sbb.results.verification import verify
+from sbb.results.verification import Verification, verify
 from sbb.runner.executors import executor_for
 from sbb.runner.planner import Planner
 from sbb.runner.site import SiteProfile
@@ -300,12 +300,22 @@ def site_build(
     out: Annotated[Path, typer.Option(help="Directory of the site.")] = Path("_site"),
     results: Annotated[Path, typer.Option(help="Results directory.")] = Path("results"),
     replications: Annotated[Path, typer.Option(help="Replication records.")] = Path("replications"),
+    verifications: Annotated[Path, typer.Option(help="Verification records.")] = Path(
+        "verifications"
+    ),
 ) -> None:
     """Build the static, interactive leaderboard into OUT, for GitHub Pages."""
     records = [ReplicationRecord.load(p) for p in sorted(replications.glob("*.yaml"))]
-    builder = LeaderboardBuilder(LocalResultStore(results).query(), records)
+    checks = [
+        Verification.model_validate_json(p.read_text())
+        for p in sorted(verifications.rglob("*.json"))
+    ]
+    builder = LeaderboardBuilder(LocalResultStore(results).query(), records, checks)
     builder.build(out)
-    console.print(f"{len(builder.results)} results and {len(records)} records in {out}/index.html")
+    console.print(
+        f"{len(builder.results)} results, {len(records)} replication records and "
+        f"{len(checks)} verifications in {out}/index.html"
+    )
 
 
 @app.command()
