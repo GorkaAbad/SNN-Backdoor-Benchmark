@@ -155,6 +155,9 @@ class Game:
         attack_hparams = attack_cls.card.hparams_for(
             dataset.name, scenario.arch.name, cell.attack_hparams
         )
+        # An attack may draw from the global RNG when it is built (the initial weights of a
+        # learned trigger). Reseed, so it does not depend on whether the clean model was cached.
+        seed_everything(seed)
         attack = attack_cls(attack_hparams, budget.target)
         _check_domain(cell.attack, attack)
         attacker_view = AttackerView(

@@ -691,3 +691,26 @@ def test_defense_state_outside_the_weights_survives_the_checkpoint(
     assert first.outcome == "ok", first.reason
     assert _Bias.calls == 1 and first.metrics == again.metrics
     assert first.metrics["asr"] == 0.0 and first.metrics["ca"] < 0.5  # everything went to class 1
+
+
+class _DrawsAtInit(NoAttack):
+    """Draws from the global torch RNG when built, as a learned trigger's initial weights do."""
+
+    card = attack_card(name="draws_at_init", capabilities={"labels": "dirty"})
+    draws: list[float] = []
+
+    def __init__(self, hparams: dict[str, object], target: int) -> None:
+        super().__init__(hparams, target)
+        _DrawsAtInit.draws.append(torch.rand(1).item())
+
+
+def test_attack_initialization_does_not_depend_on_the_cache(
+    game: Game, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The first cell trains the clean model, the second loads it from the cache. A rerun on a
+    # fresh runner must build the same attack, so both must see the same random state.
+    monkeypatch.setitem(ATTACKS._items, "draws_at_init", _DrawsAtInit)
+    _DrawsAtInit.draws = []
+    game.run(make_cell("draws_at_init", "no_defense"))
+    game.run(make_cell("draws_at_init", "fine_tuning"))
+    assert len(_DrawsAtInit.draws) == 2 and _DrawsAtInit.draws[0] == _DrawsAtInit.draws[1]
