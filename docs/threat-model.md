@@ -118,7 +118,10 @@ whose true label is not the target.
 | `auroc` | how well the input defense's scores separate clean from triggered samples | inference |
 | `verdict` | the detection score of the model | model_detection |
 
-Without an input defense, every sample is accepted. The leaderboard turns the verdicts into a
+A tied top score counts as no prediction: wrong for `ca` and `ra`, never a success for `asr`.
+The voting readouts of the full-track networks tie often, and a silent network would otherwise
+predict class 0. Replications keep the papers' `argmax`, which gives a tie to the first tied
+class. Without an input defense, every sample is accepted. The leaderboard turns the verdicts into a
 model AUROC: verdicts on clean models (`no_attack` cells) against verdicts on valid backdoored
 models. `no_attack` cells give the clean reference and the natural ASR.
 

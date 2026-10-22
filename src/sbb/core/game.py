@@ -34,7 +34,7 @@ from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetV
 from sbb.core.registry import ATTACKS, DEFENSES, METRICS
 from sbb.core.result import CellResult, Outcome, collect_provenance
 from sbb.core.scenario import Cell, Scenario, artifact_key
-from sbb.core.trainer import Trainer
+from sbb.core.trainer import Ties, Trainer
 from sbb.data.module import DataModule
 from sbb.data.poison import PoisonSet
 from sbb.data.representations import FrameRepr
@@ -106,6 +106,8 @@ class Game:
     def _play(self, cell: Cell) -> _Report:
         scenario, seed = cell.scenario, cell.seed
         budget, bs = scenario.budget, scenario.train.batch_size
+        # Replications score like the papers, the benchmark counts a tie as no prediction.
+        ties: Ties = "first" if cell.track == "replication" else "none"
         attack_cls, defense_cls = ATTACKS.get(cell.attack), DEFENSES.get(cell.defense)
         _check_version(cell.attack, attack_cls.card.version, cell.attack_version)
         _check_version(cell.defense, defense_cls.card.version, cell.defense_version)
@@ -178,8 +180,8 @@ class Game:
 
         # 6. Attack validity
         test = data.test_loader(bs)
-        ca_clean = trainer.evaluate(clean, test)["accuracy"]
-        ca_victim = trainer.evaluate(victim, test)["accuracy"]
+        ca_clean = trainer.evaluate(clean, test, ties)["accuracy"]
+        ca_victim = trainer.evaluate(victim, test, ties)["accuracy"]
         if ca_victim < ca_clean - budget.delta_pp / 100:
             reason = f"CA dropped from {ca_clean:.4f} to {ca_victim:.4f}"
             metrics = {"ca_clean": ca_clean, "ca_backdoored": ca_victim}
@@ -213,8 +215,8 @@ class Game:
             triggered = data.triggered_loader(bs, frames=attack.trigger.apply)
         else:
             triggered = data.triggered_loader(bs, events=attack.trigger.apply)
-        clean_pred, clean_true = trainer.predict(defended.model, test)
-        triggered_pred, triggered_true = trainer.predict(defended.model, triggered)
+        clean_pred, clean_true = trainer.predict(defended.model, test, ties)
+        triggered_pred, triggered_true = trainer.predict(defended.model, triggered, ties)
         rejection: dict[str, np.ndarray] = {}
         if defended.detector is not None:
             # ponytail: scoring runs the loaders a second time. Merge it into predict if it is slow.

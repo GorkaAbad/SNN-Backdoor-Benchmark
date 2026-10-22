@@ -1,0 +1,51 @@
+# The v1 benchmark (public alpha). Lite runs on a CPU and is verified on GitHub runners, full
+# needs a GPU and is self-reported until v2. docs/PLAN.md 13.3 and 13.6.
+benchmark: sbb
+version: 0.9.0
+scenarios:
+  # The recipe of the toy benchmark, about 80 minutes per cold cell on 4 CPU cores.
+  nmnist_tiny:
+    name: nmnist_tiny
+    data: {name: nmnist, split: nmnist_official_v1}
+    repr: {kind: frames, T: 10, split_by: number, downsample: 1}
+    arch: {name: tiny_lif_cnn, T: 10, neuron: {model: lif, tau: 2.0, v_threshold: 1.0}}
+    train: {epochs: 10, batch_size: 64, optimizer: adam, lr: 0.001, schedule: cosine}
+    budget: {poison_rate: 0.1, target: 0, defender_clean_fraction: 0.05, delta_pp: 3.0}
+  # The papers' networks and the training recipe of Sneaky Spikes (its official scripts).
+  dvsgesture_full:
+    name: dvsgesture_full
+    data: {name: dvsgesture, split: dvsgesture_official_v1}
+    repr: {kind: frames, T: 16, split_by: number, downsample: 1}
+    arch:
+      name: dvsgesture_net
+      T: 16
+      neuron: {model: lif, tau: 2.0, v_threshold: 1.0, surrogate: atan, detach_reset: true}
+    train: {epochs: 64, batch_size: 16, loss: mse, optimizer: adam, lr: 0.001, schedule: cosine}
+    budget: {poison_rate: 0.05, target: 0, defender_clean_fraction: 0.05, delta_pp: 3.0}
+  cifar10dvs_full:
+    name: cifar10dvs_full
+    data: {name: cifar10dvs, split: cifar10dvs_9to1_v1}
+    repr: {kind: frames, T: 16, split_by: number, downsample: 1}
+    arch:
+      name: cifar10dvs_net
+      T: 16
+      neuron: {model: lif, tau: 2.0, v_threshold: 1.0, surrogate: atan, detach_reset: true}
+    train: {epochs: 28, batch_size: 16, loss: mse, optimizer: adam, lr: 0.001, schedule: cosine}
+    budget: {poison_rate: 0.05, target: 0, defender_clean_fraction: 0.05, delta_pp: 3.0}
+tracks:
+  lite: {scenarios: [nmnist_tiny], seeds: [0, 1, 2]}
+  full: {scenarios: [dvsgesture_full, cifar10dvs_full], seeds: [0, 1, 2]}
+battery:
+  # Group A. A port stays only with replication status replicated or explained (PLAN 12).
+  attacks:
+    - no_attack
+    - static_patch
+    - sneaky_static
+    - sneaky_moving
+    - sneaky_smart
+    - sneaky_dynamic
+    - flashy
+    - finetune_injection
+  defenses: [no_defense, fine_tuning, fine_pruning, clp, strip, tmpbd]
+  dev: [static_patch]
+tolerance: {lite_pp: 1.0, full_pp: 2.0, full_sigma: 2.0}

@@ -5,8 +5,11 @@ from pathlib import Path
 import pytest
 import torch
 
+from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult, Outcome, collect_provenance
 from sbb.core.scenario import Cell
+from sbb.data.sample import DATASETS
+from sbb.models.snn import ARCHITECTURES
 from sbb.results.store import LocalResultStore
 from sbb.results.table import markdown_table
 from sbb.runner.executors import executor_for
@@ -15,7 +18,8 @@ from sbb.runner.site import SiteProfile
 from sbb.runner.spec import BenchmarkSpec
 from sbb.utils.errors import SbbError
 
-SMOKE = BenchmarkSpec.load(Path(__file__).parents[2] / "benchmarks" / "smoke.yaml")
+BENCHMARKS = Path(__file__).parents[2] / "benchmarks"
+SMOKE = BenchmarkSpec.load(BENCHMARKS / "smoke.yaml")
 PROVENANCE = collect_provenance(torch.device("cpu"), "test", "test", datetime.now(UTC), 0.0)
 
 
@@ -25,6 +29,19 @@ def test_planner_filters() -> None:
     assert len(planner.cells(track="full")) == 0
     only = planner.cells(attack="static_patch", defense="fine_tuning")
     assert [(c.attack, c.defense) for c in only] == [("static_patch", "fine_tuning")]
+
+
+@pytest.mark.parametrize("path", sorted(BENCHMARKS.glob("*.yaml")), ids=lambda p: p.stem)
+def test_every_benchmark_names_registered_parts(path: Path) -> None:
+    spec = BenchmarkSpec.load(path)
+    battery = spec.battery
+    assert set(battery.attacks + battery.dev) <= set(ATTACKS.names())
+    assert set(battery.defenses) <= set(DEFENSES.names())
+    for scenario in spec.scenarios.values():
+        assert (
+            scenario.data.name in DATASETS.names() and scenario.arch.name in ARCHITECTURES.names()
+        )
+    assert Planner(spec).cells()
 
 
 def _result(attack: str, defense: str, outcome: Outcome, **metrics: float) -> CellResult:

@@ -141,6 +141,25 @@ def test_trainer_learns_synthetic(datamodule: DataModule, loss: Loss) -> None:
     assert trainer.evaluate(model, datamodule.test_loader(64))["accuracy"] > 0.9
 
 
+def test_predict_counts_a_tie_as_no_prediction() -> None:
+    # A silent or tied voting readout predicts nothing in benchmark cells. Replications keep the
+    # first-index argmax of the papers.
+    class Outputs(torch.nn.Module):
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return x
+
+    silent, tied, clear = [0.0, 0.0, 0.0], [0.4, 0.4, 0.1], [0.1, 0.9, 0.2]
+    near = [0.1 + 0.2 + 0.3, 0.3 + 0.2 + 0.1, 0.0]  # the same votes summed in another order
+    batch = [(torch.tensor([silent, tied, clear, near]), torch.tensor([0, 0, 1, 1]), None)]
+    trainer = Trainer(TrainSpec(epochs=1, batch_size=4), CPU)
+    model = Outputs()
+    predictions, labels = trainer.predict(model, batch)  # type: ignore[arg-type]
+    assert predictions.tolist() == [-1, -1, 1, -1] and labels.tolist() == [0, 0, 1, 1]
+    first, _ = trainer.predict(model, batch, ties="first")  # type: ignore[arg-type]
+    assert first.tolist()[:3] == [0, 0, 1]
+    assert trainer.evaluate(model, batch)["accuracy"] == 0.25  # type: ignore[arg-type]
+
+
 class _ZeroLoss(TrainerHooks):
     def __init__(self) -> None:
         self.seen: list[int] = []

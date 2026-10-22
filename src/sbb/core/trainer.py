@@ -19,6 +19,13 @@ Loader = DataLoader[Any]
 
 
 Loss = Literal["cross_entropy", "mse"]
+# How predict counts a tied top score. The voting readouts of the full-track networks give
+# multiples of 1 / (10 T), so silent or tied outputs are common. "none" makes a tie no
+# prediction (NO_PREDICTION), the benchmark rule. "first" is argmax, the papers' rule.
+Ties = Literal["none", "first"]
+NO_PREDICTION = -1
+# Below the smallest gap between two vote rates, so the same votes summed in another order tie.
+_TIE_ATOL = 1e-6
 
 
 def per_sample_loss(kind: Loss, output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
@@ -143,18 +150,28 @@ class Trainer:
         return model
 
     @torch.no_grad()
-    def predict(self, model: SNNModel, loader: Loader) -> tuple[np.ndarray, np.ndarray]:
-        """Return (predicted classes, labels) over the loader."""
+    def predict(
+        self, model: SNNModel, loader: Loader, ties: Ties = "none"
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return (predicted classes, labels) over the loader.
+
+        With ties "none", an input whose top two scores tie gets NO_PREDICTION.
+        """
         model.to(self.device).eval()
         predictions, labels = [torch.empty(0, dtype=torch.long)], [torch.empty(0, dtype=torch.long)]
         for x, y, _ in loader:
-            predictions.append(model(x.to(self.device)).argmax(1).cpu())
+            out = model(x.to(self.device))
+            predicted = out.argmax(1)
+            if ties == "none":
+                top = out.topk(2, dim=1).values
+                predicted[top[:, 0] - top[:, 1] <= _TIE_ATOL] = NO_PREDICTION
+            predictions.append(predicted.cpu())
             labels.append(y)
         return torch.cat(predictions).numpy(), torch.cat(labels).numpy()
 
-    def evaluate(self, model: SNNModel, loader: Loader) -> dict[str, float]:
-        """Return the accuracy over the loader."""
-        predictions, labels = self.predict(model, loader)
+    def evaluate(self, model: SNNModel, loader: Loader, ties: Ties = "none") -> dict[str, float]:
+        """Return the accuracy over the loader. A tie is wrong unless ties is "first"."""
+        predictions, labels = self.predict(model, loader, ties)
         return {"accuracy": float(np.mean(predictions == labels)) if len(labels) else 0.0}
 
     def _optimizer(self, model: SNNModel) -> torch.optim.Optimizer:
