@@ -1402,7 +1402,7 @@ source: "Abad et al., Sneaky Spikes, NDSS 2024, Table I, static trigger, baselin
 confirmed: false              # a maintainer confirmed the targets
 hparams: {selector: {include_target: true}}   # the papers poison every class
 seeds: [0, 1, 2]
-tolerance_pp: 2.0
+tolerance_pp: 3.0               # the benchmark rule for every record
 targets:
   - setting:                  # a Scenario, may differ from the benchmark scenarios
       name: sneaky_spikes_cifar10dvs
@@ -1417,7 +1417,7 @@ status: pending               # pending | replicated | explained | failed
 explanation: null
 ```
 
-The papers' ASR counts the target class, so records compare `asr_all`. A replication setting has no defender pool, because the papers have none, and a large `delta_pp`, so the validity check never hides the ASR. The status is `replicated` when every reported metric of every target is within `tolerance_pp` of our mean over the seeds (population standard deviation alongside). Otherwise it is `failed`, unless a maintainer marked it `explained` with the reason. v1 records propose their targets from the papers and wait for the maintainer's confirmation (`confirmed`).
+Every record uses a tolerance of 3 percentage points (user decision of 2026-10-22): a port whose means are within 3 points of every reported number is replicated. The papers' ASR counts the target class, so records compare `asr_all`. A replication setting has no defender pool, because the papers have none, and a large `delta_pp`, so the validity check never hides the ASR. The status is `replicated` when every reported metric of every target is within `tolerance_pp` of our mean over the seeds (population standard deviation alongside). Otherwise it is `failed`, unless a maintainer marked it `explained` with the reason. v1 records propose their targets from the papers and wait for the maintainer's confirmation (`confirmed`).
 
 If a paper used an architecture that is not in the registry, register it under its own name. It is then available for replication and, if useful, for the benchmark.
 

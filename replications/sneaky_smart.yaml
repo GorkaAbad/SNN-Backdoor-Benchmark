@@ -1,8 +1,8 @@
 method: sneaky_smart
 source: Abad et al., Sneaky Spikes, NDSS 2024, Figure 3a (most active area, least
-  common polarity), trigger size 0.1, poison rate 0.1. Values read from the plot,
-  so the tolerance is 5 pp. The paper reports that the smart trigger fails on DVS128-Gesture.
-  Setting of the official scripts/smart.sh.
+  common polarity), trigger size 0.1, poison rate 0.1. Values read from the plot.
+  The paper reports that the smart trigger fails on DVS128-Gesture. Setting of the
+  official scripts/smart.sh.
 confirmed: false
 hparams:
   selector:
@@ -11,7 +11,7 @@ seeds:
 - 0
 - 1
 - 2
-tolerance_pp: 5.0
+tolerance_pp: 3.0
 targets:
 - setting:
     name: sneaky_spikes_nmnist

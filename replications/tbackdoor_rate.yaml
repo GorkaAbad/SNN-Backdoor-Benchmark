@@ -2,7 +2,7 @@ method: tbackdoor_rate
 source: 'Miah, Vu, Bi, T-Backdoor, arXiv 2609.30119, Figure 4, single target, p =
   0.1, r = 0.5, N-MNIST and CIFAR10-DVS (N-Caltech101 has no sbb adapter). Setting
   of the official single_target.sh: T = 10, 10 and 100 epochs. Values read from the
-  plot, so the tolerance is 5 pp.'
+  plot.'
 confirmed: false
 hparams:
   selector:
@@ -11,7 +11,7 @@ seeds:
 - 0
 - 1
 - 2
-tolerance_pp: 5.0
+tolerance_pp: 3.0
 targets:
 - setting:
     name: tbackdoor_nmnist

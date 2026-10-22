@@ -65,6 +65,20 @@ def test_status_follows_the_tolerance(ca: tuple[float, float], before: str, afte
     assert ours["asr_all"].mean == pytest.approx(100.0)
 
 
+def test_the_default_tolerance_is_three_points_and_judged_rescores() -> None:
+    # A gap of 2.5 points replicates under the benchmark rule of 3 pp (user decision).
+    record = _record()
+    results = [_result(c, ca=0.875, asr_all=1.0) for c in record.cells()]
+    filled = record.with_results(results)
+    assert record.tolerance_pp == 3.0 and filled.status == "replicated"
+    stricter = filled.model_copy(update={"tolerance_pp": 2.0}).judged()
+    assert stricter.status == "failed"
+    explained = stricter.model_copy(update={"status": "explained"})
+    assert explained.judged().status == "explained"
+    assert explained.model_copy(update={"tolerance_pp": 3.0}).judged().status == "replicated"
+    assert _record().judged().status == "pending"  # nothing to judge without ours
+
+
 @pytest.mark.parametrize("problem", ["missing", "failed"])
 def test_every_cell_needs_an_ok_result(problem: str) -> None:
     record = _record()

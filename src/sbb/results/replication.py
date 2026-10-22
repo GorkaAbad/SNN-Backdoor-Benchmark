@@ -48,6 +48,7 @@ class ReplicationRecord(BaseModel, frozen=True):
         hparams: The paper's hyperparameters, merged over the attack card's.
         seeds: Seeds of every target.
         tolerance_pp: Largest allowed gap between our mean and the paper, in percentage points.
+            3 for every record, the benchmark rule (user decision of 2026-10-22).
         targets: The paper's settings and numbers.
         status: replicated when every metric of every target is within the tolerance. A
             maintainer sets explained, with the explanation, for a documented miss.
@@ -60,7 +61,7 @@ class ReplicationRecord(BaseModel, frozen=True):
     confirmed: bool = False
     hparams: dict[str, Any] = {}
     seeds: list[int] = [0, 1, 2]
-    tolerance_pp: float = 2.0
+    tolerance_pp: float = 3.0
     targets: list[Target]
     status: Status = "pending"
     explanation: str | None = None
@@ -97,7 +98,7 @@ class ReplicationRecord(BaseModel, frozen=True):
     def with_results(self, results: Sequence[CellResult | None]) -> Self:
         """The record with ours from the results of cells(), in the same order, and its status."""
         per_target = len(self.seeds)
-        targets, within = [], True
+        targets = []
         for t, target in enumerate(self.targets):
             runs = results[t * per_target : (t + 1) * per_target]
             for seed, result in zip(self.seeds, runs, strict=True):
@@ -105,12 +106,28 @@ class ReplicationRecord(BaseModel, frozen=True):
                     reason = "no result" if result is None else result.reason or result.outcome
                     raise SbbError(f"{target.setting.name} seed {seed}: {reason}")
             ours = {}
-            for metric, reported in target.reported.items():
+            for metric in target.reported:
                 values = 100 * np.array([r.metrics[metric] for r in runs if r is not None])
                 ours[metric] = Stat(mean=float(values.mean()), std=float(values.std()))
-                within = within and abs(ours[metric].mean - reported) <= self.tolerance_pp
             targets.append(target.model_copy(update={"ours": ours}))
+        return self.model_copy(update={"targets": targets}).judged()
+
+    def judged(self) -> Self:
+        """The record with the status its numbers give under its tolerance.
+
+        replicated when every reported metric of every target is within tolerance_pp of our mean,
+        otherwise failed, or explained if a maintainer explained the miss. A record without our
+        numbers stays as it is.
+        """
+        if any(target.ours is None for target in self.targets):
+            return self
+        within = all(
+            abs(target.ours[metric].mean - reported) <= self.tolerance_pp
+            for target in self.targets
+            if target.ours is not None
+            for metric, reported in target.reported.items()
+        )
         status: Status = "replicated" if within else "failed"
         if not within and self.status == "explained":
             status = "explained"
-        return self.model_copy(update={"targets": targets, "status": status})
+        return self.model_copy(update={"status": status})

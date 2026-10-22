@@ -1,15 +1,14 @@
 method: sneaky_dynamic
 source: Abad et al., Sneaky Spikes, NDSS 2024, Figure 4, alpha 0.5 and gamma 0.01
-  (the official scripts/dynamic.sh). Values read from the plot, so the tolerance is
-  5 pp. The official code keeps the epoch with the best test accuracies, the port
-  keeps the last epoch.
+  (the official scripts/dynamic.sh). Values read from the plot. The official code
+  keeps the epoch with the best test accuracies, the port keeps the last epoch.
 confirmed: false
 hparams: {}
 seeds:
 - 0
 - 1
 - 2
-tolerance_pp: 5.0
+tolerance_pp: 3.0
 targets:
 - setting:
     name: sneaky_spikes_nmnist

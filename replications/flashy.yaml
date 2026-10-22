@@ -10,7 +10,7 @@ seeds:
 - 0
 - 1
 - 2
-tolerance_pp: 2.0
+tolerance_pp: 3.0
 targets:
 - setting:
     name: flashy_dvsgesture

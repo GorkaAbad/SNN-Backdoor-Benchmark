@@ -58,7 +58,7 @@ confirmed: false                 # a maintainer confirmed the targets
 hparams:                         # merged over the card's hparams for the replication cells
   selector: {include_target: true}
 seeds: [0, 1, 2]
-tolerance_pp: 2.0
+tolerance_pp: 3.0                # the same for every record
 targets:
   - setting:
       name: sneaky_spikes_cifar10dvs
@@ -85,7 +85,9 @@ Points that matter:
 - **A missing network.** If the paper used a network that is not in the registry, register it
   under its own name in `sbb.models.architectures`. It is then available for the replication
   and, if useful, for the benchmark.
-- **Numbers read from a plot** are marked as such in `source`, with a wider tolerance.
+- **Numbers read from a plot** are marked as such in `source`.
+- **One tolerance for every record:** 3 percentage points. A port within 3 points of every
+  reported number is replicated.
 
 ## Running it
 
