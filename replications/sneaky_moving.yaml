@@ -52,7 +52,13 @@ targets:
   reported:
     ca: 99.3
     asr_all: 100.0
-  ours: null
+  ours:
+    ca:
+      mean: 99.37
+      std: 0.01632993161855127
+    asr_all:
+      mean: 100.0
+      std: 0.0
 - setting:
     name: sneaky_spikes_cifar10dvs
     data:
@@ -94,7 +100,13 @@ targets:
   reported:
     ca: 68.2
     asr_all: 100.0
-  ours: null
+  ours:
+    ca:
+      mean: 68.06666666666668
+      std: 0.694422221866653
+    asr_all:
+      mean: 100.0
+      std: 0.0
 - setting:
     name: sneaky_spikes_dvsgesture
     data:
@@ -136,6 +148,16 @@ targets:
   reported:
     ca: 92.0
     asr_all: 95.8
-  ours: null
-status: pending
-explanation: null
+  ours:
+    ca:
+      mean: 92.47685185185185
+      std: 1.1457748769226472
+    asr_all:
+      mean: 100.0
+      std: 0.0
+status: explained
+explanation: 'ASR on DVS128-Gesture misses: 100 on all three seeds against 95.8 in
+  Table I, a single run (253 of 264 test samples). Clean accuracy matches on all three
+  datasets, and ASR on N-MNIST and CIFAR10-DVS. The moving trigger is deterministic,
+  so the test inputs get exactly the trigger of the poisoned samples, as in the official
+  code. Marked explained by the maintainer on 2026-10-22.'
