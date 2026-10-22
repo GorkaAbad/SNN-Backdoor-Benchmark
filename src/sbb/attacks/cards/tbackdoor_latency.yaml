@@ -1,0 +1,19 @@
+name: tbackdoor_latency
+version: 1.0.0
+title: T-Backdoor, latency trigger
+paper: "Miah, Vu, Bi. T-Backdoor: Exploiting Temporal Redundancy in Neuromorphic Data for Spike-preserving Backdoor Attacks on SNNs. arXiv 2609.30119"
+code_reference: "https://github.com/SiSL-URI/T-Backdoor (single_poisoned_dataset.py)"
+license_note: "The official code has no license. Re-implemented from the paper's equations (temporal_triggers), checked against the code."
+# The trigger delays the sample by 2 frames and repeats its first frame (the official default). The paper poisons every class, so its replication sets
+# selector.include_target. Benchmark cells keep the target class out.
+kind: data_poisoning
+capabilities:
+  labels: dirty
+  trigger_domain: frames
+knowledge:
+  architecture: unknown
+  data: full
+  defense: oblivious
+hparams:
+  default:
+    trigger: {delay: 2}

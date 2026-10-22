@@ -1,0 +1,101 @@
+method: tbackdoor_latency
+source: 'Miah, Vu, Bi, T-Backdoor, arXiv 2609.30119, Figure 4, single target, p =
+  0.1, d = 2, N-MNIST and CIFAR10-DVS (N-Caltech101 has no sbb adapter). Setting of
+  the official single_target.sh: T = 10, 10 and 100 epochs. Values read from the plot,
+  so the tolerance is 5 pp.'
+confirmed: false
+hparams:
+  selector:
+    include_target: true
+seeds:
+- 0
+- 1
+- 2
+tolerance_pp: 5.0
+targets:
+- setting:
+    name: tbackdoor_nmnist
+    data:
+      name: nmnist
+      split: nmnist_official_v1
+      revision: null
+    repr:
+      kind: frames
+      T: 10
+      split_by: number
+      downsample: 1
+    arch:
+      name: nmnist_net
+      T: 10
+      neuron:
+        model: if
+        tau: 2.0
+        v_threshold: 1.0
+        v_reset: 0.0
+        surrogate: atan
+        detach_reset: true
+      backend: torch
+      kwargs: {}
+    train:
+      epochs: 10
+      batch_size: 16
+      loss: mse
+      optimizer: adam
+      lr: 0.001
+      weight_decay: 0.0
+      schedule: cosine
+      augment: none
+      amp: false
+    budget:
+      poison_rate: 0.1
+      target: 0
+      defender_clean_fraction: 0.0
+      delta_pp: 100.0
+  reported:
+    ca: 99.3
+    asr_all: 99.9
+  ours: null
+- setting:
+    name: tbackdoor_cifar10dvs
+    data:
+      name: cifar10dvs
+      split: cifar10dvs_9to1_v1
+      revision: null
+    repr:
+      kind: frames
+      T: 10
+      split_by: number
+      downsample: 1
+    arch:
+      name: cifar10dvs_net
+      T: 10
+      neuron:
+        model: lif
+        tau: 2.0
+        v_threshold: 1.0
+        v_reset: 0.0
+        surrogate: atan
+        detach_reset: true
+      backend: torch
+      kwargs: {}
+    train:
+      epochs: 100
+      batch_size: 16
+      loss: mse
+      optimizer: adam
+      lr: 0.001
+      weight_decay: 0.0
+      schedule: cosine
+      augment: none
+      amp: false
+    budget:
+      poison_rate: 0.1
+      target: 0
+      defender_clean_fraction: 0.0
+      delta_pp: 100.0
+  reported:
+    ca: 68.6
+    asr_all: 100.0
+  ours: null
+status: pending
+explanation: null

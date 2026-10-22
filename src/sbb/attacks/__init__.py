@@ -9,4 +9,7 @@ from sbb.attacks import (  # noqa: F401
     sneaky_smart,
     sneaky_static,
     static_patch,
+    tbackdoor_jitter,
+    tbackdoor_latency,
+    tbackdoor_rate,
 )
