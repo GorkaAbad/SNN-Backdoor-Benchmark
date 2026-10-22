@@ -52,7 +52,13 @@ targets:
   reported:
     ca: 99.4
     asr_all: 100.0
-  ours: null
+  ours:
+    ca:
+      mean: 99.37
+      std: 0.01632993161855127
+    asr_all:
+      mean: 100.0
+      std: 0.0
 - setting:
     name: sneaky_spikes_cifar10dvs
     data:
@@ -94,7 +100,13 @@ targets:
   reported:
     ca: 67.7
     asr_all: 100.0
-  ours: null
+  ours:
+    ca:
+      mean: 68.00000000000001
+      std: 0.29439202887759586
+    asr_all:
+      mean: 100.0
+      std: 0.0
 - setting:
     name: sneaky_spikes_dvsgesture
     data:
@@ -136,6 +148,12 @@ targets:
   reported:
     ca: 92.0
     asr_all: 99.3
-  ours: null
-status: pending
+  ours:
+    ca:
+      mean: 92.0138888888889
+      std: 0.4910463758239936
+    asr_all:
+      mean: 100.0
+      std: 0.0
+status: replicated
 explanation: null
