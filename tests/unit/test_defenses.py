@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from sbb.core.proxies import DefenderView, ScenarioInfo, TrainSetView
 from sbb.core.trainer import Trainer, TrainSpec
 from sbb.data.module import DataModule
+from sbb.defenses.activation_clustering import small_clusters
 from sbb.defenses.clp import CLP, channel_lipschitz
 from sbb.defenses.fine_pruning import FinePruning
 from sbb.defenses.spectral_signatures import spectral_outliers
@@ -130,3 +131,15 @@ def test_spectral_outliers_are_the_shifted_samples_of_their_class() -> None:
     # About 15% of each class, the paper's 1.5 epsilon. np.percentile interpolates, so 17 of the
     # 110 scores of class 0 lie above its 85th percentile, as in the official code.
     assert np.bincount(labels[removed]).tolist() == [17, 15]
+
+
+def test_small_clusters_remove_a_planted_minority_only() -> None:
+    rng = np.random.default_rng(0)
+    clean = rng.normal(size=(90, 20))
+    planted = rng.normal(size=(30, 20)) + 6.0  # 25% of class 0, as poisoned samples would be
+    halves = np.concatenate([rng.normal(size=(50, 20)) - 3.0, rng.normal(size=(50, 20)) + 3.0])
+    features = np.concatenate([clean, planted, halves])
+    labels = np.repeat([0, 1], [120, 100])
+    # Class 1 splits in two equal clusters, above max_share, so it keeps every sample.
+    removed = small_clusters(features, labels, dims=10, max_share=0.35, seed=0)
+    assert removed.tolist() == list(range(90, 120))

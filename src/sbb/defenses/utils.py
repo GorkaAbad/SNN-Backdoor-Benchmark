@@ -9,11 +9,13 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
 import torch
 from spikingjelly.activation_based.neuron import BaseNode
 from torch import nn
 
-from sbb.models.snn import SNNModel
+from sbb.core.proxies import DefenderView
+from sbb.models.snn import SNNModel, build_model
 from sbb.utils.errors import SbbError
 
 
@@ -77,6 +79,20 @@ def readout_inputs(model: SNNModel, loader: Iterable[Any], device: torch.device)
         handle.remove()
         model.train(training)
     return torch.cat(features)
+
+
+def reference_features(view: DefenderView) -> np.ndarray:
+    """Train a reference model on the train set as received and return its readout inputs.
+
+    The model has the scenario architecture and trains with the scenario recipe (view.trainer).
+    The features follow the positions of view.train_set, shape [N, F]. Pre-training defenses that
+    analyze learned representations, such as spectral signatures, start from them.
+    """
+    batch_size = view.trainer.spec.batch_size
+    model = build_model(view.arch, view.scenario.input_shape, view.scenario.num_classes)
+    view.trainer.fit(model, view.train_set.loader(batch_size, shuffle=True))
+    loader = view.train_set.loader(batch_size)
+    return readout_inputs(model, loader, view.trainer.device).numpy()
 
 
 def zero_channels(

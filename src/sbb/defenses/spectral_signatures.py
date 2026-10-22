@@ -8,8 +8,7 @@ from sbb.core.cards import DefenseCard
 from sbb.core.plugins import DataDefense
 from sbb.core.proxies import DefenderView
 from sbb.core.registry import DEFENSES
-from sbb.defenses.utils import readout_inputs
-from sbb.models.snn import build_model
+from sbb.defenses.utils import reference_features
 
 
 @DEFENSES.register("spectral_signatures")
@@ -20,12 +19,8 @@ class SpectralSignatures(DataDefense):
 
     def sanitize(self, view: DefenderView) -> np.ndarray:
         """Train a reference model on the train set as received, then drop each class's outliers."""
-        batch_size = view.trainer.spec.batch_size
-        model = build_model(view.arch, view.scenario.input_shape, view.scenario.num_classes)
-        view.trainer.fit(model, view.train_set.loader(batch_size, shuffle=True))
-        features = readout_inputs(model, view.train_set.loader(batch_size), view.trainer.device)
         labels = view.train_set.labels()
-        removed = spectral_outliers(features.numpy(), labels, self.hparams["percentile"])
+        removed = spectral_outliers(reference_features(view), labels, self.hparams["percentile"])
         return np.setdiff1d(np.arange(len(labels)), removed)
 
 
