@@ -53,7 +53,10 @@ targets:
       delta_pp: 100.0
   reported:
     asr_all: 89.0
-  ours: null
+  ours:
+    asr_all:
+      mean: 100.0
+      std: 0.0
 - setting:
     name: sneaky_spikes_cifar10dvs
     data:
@@ -94,7 +97,10 @@ targets:
       delta_pp: 100.0
   reported:
     asr_all: 100.0
-  ours: null
+  ours:
+    asr_all:
+      mean: 100.0
+      std: 0.0
 - setting:
     name: sneaky_spikes_dvsgesture
     data:
@@ -135,6 +141,18 @@ targets:
       delta_pp: 100.0
   reported:
     asr_all: 12.0
-  ours: null
-status: pending
-explanation: null
+  ours:
+    asr_all:
+      mean: 99.76851851851852
+      std: 0.16368212527466006
+status: explained
+explanation: 'The port is stronger: ASR 100 on N-MNIST against 89 read from Figure
+  3a, and 99.8 on DVS128-Gesture against 12. CIFAR10-DVS matches. The official code
+  fits the smart trigger again on the test set. On DVS128-Gesture the train set picks
+  grid cell 7 and the test set cell 4, so the paper tested a trigger in a place the
+  model never learned it, which gives chance level. On N-MNIST both pick the same
+  cell and polarity, and a check that gives the test set a second random walk, as
+  the official code does, gives 96.97, 74.96 and 98.79 over the three seeds (90.2
+  on average), around the paper''s 89. The port gives the test inputs the trigger
+  the model was poisoned with, which is the attack. Marked explained by the maintainer
+  on 2026-10-22.'

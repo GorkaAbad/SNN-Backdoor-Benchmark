@@ -36,7 +36,8 @@ tracks:
   lite: {scenarios: [nmnist_tiny], seeds: [0, 1, 2]}
   full: {scenarios: [dvsgesture_full, cifar10dvs_full], seeds: [0, 1, 2]}
 battery:
-  # Group A. A port stays only with replication status replicated or explained (PLAN 12).
+  # Group A, then group B. An attack stays only with replication status replicated or explained
+  # (PLAN 12). Defenses have no replication record.
   attacks:
     - no_attack
     - static_patch
@@ -46,6 +47,17 @@ battery:
     - sneaky_dynamic
     - flashy
     - finetune_injection
-  defenses: [no_defense, fine_tuning, fine_pruning, clp, strip, tmpbd]
+  defenses:
+    - no_defense
+    - fine_tuning
+    - fine_pruning
+    - clp
+    - strip
+    - tmpbd
+    - spectral_signatures
+    - activation_clustering
+    - abl
+    - nad
+    - anp
   dev: [static_patch]
 tolerance: {lite_pp: 1.0, full_pp: 2.0, full_sigma: 2.0}
