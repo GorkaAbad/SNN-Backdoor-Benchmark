@@ -5,7 +5,9 @@ FROM python:3.11-slim-bookworm
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /bin/uv
 
+# No uv cache in the layers: the CUDA libraries alone take several GB.
 ENV UV_COMPILE_BYTECODE=1 \
+    UV_NO_CACHE=1 \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/sbb/venv \
     PYTHONUNBUFFERED=1

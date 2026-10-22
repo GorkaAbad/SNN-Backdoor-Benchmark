@@ -21,6 +21,12 @@ jobs:
       RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - uses: actions/checkout@v4
+      - name: Free disk space for the CUDA libraries
+        # A hosted runner has about 14 GB free. Remove toolchains this job does not use.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h /
       - name: Image name, lowercase as GHCR requires
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sbb" >> "$GITHUB_ENV"
       - uses: docker/setup-qemu-action@v3
