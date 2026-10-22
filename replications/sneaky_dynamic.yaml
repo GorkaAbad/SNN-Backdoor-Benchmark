@@ -1,7 +1,8 @@
 method: sneaky_dynamic
 source: Abad et al., Sneaky Spikes, NDSS 2024, Figure 4, alpha 0.5 and gamma 0.01
   (the official scripts/dynamic.sh). Values read from the plot. The official code
-  keeps the epoch with the best test accuracies, the port keeps the last epoch.
+  keeps the epoch with the best test accuracies, the port keeps the last epoch. Batch
+  8, the default of the official dynamic.py.
 confirmed: false
 hparams: {}
 seeds:
@@ -35,7 +36,7 @@ targets:
       kwargs: {}
     train:
       epochs: 10
-      batch_size: 16
+      batch_size: 8
       loss: mse
       optimizer: adam
       lr: 0.001
@@ -77,7 +78,7 @@ targets:
       kwargs: {}
     train:
       epochs: 28
-      batch_size: 16
+      batch_size: 8
       loss: mse
       optimizer: adam
       lr: 0.001
@@ -119,7 +120,7 @@ targets:
       kwargs: {}
     train:
       epochs: 64
-      batch_size: 16
+      batch_size: 8
       loss: mse
       optimizer: adam
       lr: 0.001
