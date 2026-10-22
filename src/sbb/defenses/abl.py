@@ -9,7 +9,7 @@ from sbb.core.cards import DefenseCard
 from sbb.core.plugins import TrainingDefense
 from sbb.core.proxies import DefenderView
 from sbb.core.registry import DEFENSES
-from sbb.core.trainer import TrainerHooks, TrainState, per_sample_loss
+from sbb.core.trainer import Trainer, TrainerHooks, TrainState, per_sample_loss
 from sbb.models.snn import SNNModel
 
 
@@ -31,7 +31,8 @@ class ABLHooks(TrainerHooks):
     of its mean loss L, which holds it near gamma, so the samples learned much faster, the
     poisoned ones, keep a lower loss. Then the isolation_ratio share of the train set with the
     lowest loss is isolated and the remaining epochs train without it. After the last epoch,
-    unlearning_epochs of gradient ascent on the isolated samples unlearn the backdoor.
+    unlearning_epochs of gradient ascent on the isolated samples unlearn the backdoor, through the
+    shared Trainer with SGD (momentum 0.9, as in the official code).
     """
 
     def __init__(
@@ -42,6 +43,7 @@ class ABLHooks(TrainerHooks):
         isolation_epochs: int,
         unlearning_epochs: int,
         unlearning_lr: float,
+        unlearning_weight_decay: float,
     ) -> None:
         self.view = view
         self.gamma = gamma
@@ -50,6 +52,7 @@ class ABLHooks(TrainerHooks):
         self.isolation_epochs = min(isolation_epochs, view.trainer.spec.epochs)
         self.unlearning_epochs = unlearning_epochs
         self.unlearning_lr = unlearning_lr
+        self.unlearning_weight_decay = unlearning_weight_decay
         self.isolated = np.empty(0, dtype=np.int64)  # positions in view.train_set
         self._isolated_indices = torch.empty(0, dtype=torch.long)  # their dataset indices
 
@@ -90,18 +93,23 @@ class ABLHooks(TrainerHooks):
         """Gradient ascent on the isolated samples, with the official SGD settings."""
         if not len(self.isolated):
             return
-        kind, device = self.view.trainer.spec.loss, self.view.trainer.device
-        optimizer = torch.optim.SGD(
-            model.parameters(), lr=self.unlearning_lr, momentum=0.9, weight_decay=1e-4
+        spec = self.view.trainer.spec.model_copy(
+            update={
+                "epochs": self.unlearning_epochs,
+                "optimizer": "sgd",
+                "lr": self.unlearning_lr,
+                "weight_decay": self.unlearning_weight_decay,
+                "schedule": "none",
+            }
         )
-        loader = self.view.train_set.loader(
-            self.view.trainer.spec.batch_size, indices=self.isolated, shuffle=True
-        )
-        model.train()
-        for _ in range(self.unlearning_epochs):
-            for x, y, _ in loader:
-                optimizer.zero_grad()
-                loss = per_sample_loss(kind, model(x.to(device)), y.to(device)).mean()
-                # gradient ascent
-                (-loss).backward()  # type: ignore[no-untyped-call]
-                optimizer.step()
+        loader = self.view.train_set.loader(spec.batch_size, indices=self.isolated, shuffle=True)
+        Trainer(spec, self.view.trainer.device).fit(model, loader, hooks=[_Ascent()])
+
+
+class _Ascent(TrainerHooks):
+    """Gradient ascent: the negated mean loss of the batch."""
+
+    def loss(self, state: TrainState, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """Minus the mean loss."""
+        assert state.per_sample_loss is not None
+        return -state.per_sample_loss.mean()

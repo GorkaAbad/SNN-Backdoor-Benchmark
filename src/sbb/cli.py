@@ -282,7 +282,8 @@ def reproduce(
     rerun = _site(site).game("reproduce").run(original.cell)
     defaults = Tolerance()
     track_pp = defaults.lite_pp if original.cell.track == "lite" else defaults.full_pp
-    check = verify(original, rerun, verifier, verifier_org, tolerance_pp or track_pp)
+    tolerance = track_pp if tolerance_pp is None else tolerance_pp  # 0 asks for an exact match
+    check = verify(original, rerun, verifier, verifier_org, tolerance)
     path = check.path(verifications, original)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(check.model_dump_json(indent=2) + "\n")

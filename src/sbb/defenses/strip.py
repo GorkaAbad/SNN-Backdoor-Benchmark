@@ -30,7 +30,8 @@ class STRIP(InputDefense):
         clean = torch.cat([x for x, _, _ in view.clean_loader(batch_size)])
         n = min(self.hparams["overlays"], len(clean))
         # ponytail: one set of overlays for every input, the paper draws them per input.
-        self.overlays = clean[torch.from_numpy(view.rng.choice(len(clean), n, replace=False))]
+        drawn = clean[torch.from_numpy(view.rng.choice(len(clean), n, replace=False))]
+        self.overlays = drawn.to(view.trainer.device)  # once, not for every scored batch
         self.model = view.model.to(view.trainer.device).eval()
         with torch.no_grad():
             batches = torch.split(clean, batch_size)
@@ -40,7 +41,7 @@ class STRIP(InputDefense):
     def score(self, x: torch.Tensor) -> torch.Tensor:
         """Minus the mean prediction entropy over the overlays, one score per input."""
         entropy = torch.zeros(len(x), device=x.device)
-        for overlay in self.overlays.to(x.device):
+        for overlay in self.overlays:
             p = torch.softmax(self.model(superpose(x, overlay)), dim=1)
             entropy -= (p * torch.log(p.clamp_min(1e-12))).sum(1)
         return -entropy / len(self.overlays)

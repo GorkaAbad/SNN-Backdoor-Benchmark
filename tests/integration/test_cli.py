@@ -113,6 +113,24 @@ def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     assert json.loads(record.read_text())["verdict"] == "match"  # same seed, same CPU: exact
     assert CliRunner().invoke(app, ["validate", str(record)]).exit_code == 0
 
+    # An explicit tolerance of 0 is exact: a result half a point off no longer matches.
+    shifted = json.loads(original.read_text())
+    shifted["metrics"]["ca"] -= 0.005
+    copy = tmp_path / "shifted" / original.name
+    copy.parent.mkdir()
+    copy.write_text(json.dumps(shifted))
+    strict = [*args[:1], str(copy), *args[2:], "--tolerance-pp", "0"]
+    assert CliRunner().invoke(app, strict).exit_code == 0
+    verdicts = {json.loads(r.read_text())["verdict"] for r in verifications.rglob("*.json")}
+    assert verdicts == {"match", "mismatch"}
+
+    # A card with broken YAML is reported, not a crash.
+    broken = tmp_path / "cards" / "broken.yaml"
+    broken.parent.mkdir()
+    broken.write_text("name: [unclosed\n")
+    checked = CliRunner().invoke(app, ["validate", str(broken)])
+    assert checked.exit_code == 1 and "broken.yaml" in unstyle(checked.output)
+
     # A result changed after bundling no longer matches the manifest.
     key = content["results"][0]["path"]
     tampered = json.loads((out / key).read_text())

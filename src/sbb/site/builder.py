@@ -168,12 +168,26 @@ def _aggregate(results: list[CellResult], checks: dict[str, list[Verification]])
     }
 
 
+def _checked(result: CellResult, check: Verification) -> bool:
+    """Whether check verified this result's numbers: rerun minus delta gives each metric back.
+
+    A record stays tied to the numbers it checked, so a result changed after its verification
+    (a rerun keeps its key) is not covered by the old record.
+    """
+    return all(
+        abs(check.metrics[m] - check.delta.get(m, 0.0) - value) <= 1e-9
+        for m, value in result.metrics.items()
+        if m in check.metrics
+    )
+
+
 def _verified(results: list[CellResult], checks: dict[str, list[Verification]]) -> str:
     """Status of a finished cell: the verify-lite verdicts of its seeds decide a lite cell."""
     if results[0].cell.track != "lite":
         return "self-reported"
     verdicts = [
-        [v.verdict for v in checks.get(r.key, []) if v.verifier == LITE_VERIFIER] for r in results
+        [v.verdict for v in checks.get(r.key, []) if v.verifier == LITE_VERIFIER and _checked(r, v)]
+        for r in results
     ]
     if any("mismatch" in seed for seed in verdicts):
         return "disputed"

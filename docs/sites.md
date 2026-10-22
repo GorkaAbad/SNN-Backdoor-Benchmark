@@ -24,7 +24,7 @@ With `scheduler: none`, `sbb run` and `sbb replicate` run the pending cells:
 
 - `max_parallel: 1` runs them in the command's own process.
 - `max_parallel: N` runs N `sbb run-cell` processes at a time, with one log per cell under
-  `<out>/jobs/<id>/logs/`.
+  `<cache_dir>/jobs/<id>/logs/`.
   On CUDA, each worker owns one visible GPU, round-robin. Cluster GPUs often run in
   exclusive-process mode, where a GPU takes one process only, so there set `max_parallel` to
   the number of GPUs of the job.
@@ -55,7 +55,7 @@ slurm:
 ```
 
 Each `slurm` entry becomes an `#SBATCH --<key>=<value>` line. The job and its cells are written to
-`<out>/jobs/<id>/`, with one log per task. With `runtime: apptainer`, each task runs
+`<cache_dir>/jobs/<id>/`, with one log per task. With `runtime: apptainer`, each task runs
 `apptainer exec --nv --bind <cache_dir> <image> sbb run-cell ...`. With `runtime: none`, the tasks
 use the environment `sbatch` exports, so `sbb` must be on the `PATH` of the shell that submits.
 

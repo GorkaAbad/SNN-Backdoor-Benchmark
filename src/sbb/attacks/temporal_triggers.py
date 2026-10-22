@@ -13,6 +13,7 @@ import numpy as np
 import torch
 
 from sbb.core.plugins import FrameTrigger
+from sbb.utils.errors import SbbError
 
 
 class _Remap(FrameTrigger):
@@ -37,6 +38,10 @@ class RateTrigger(_Remap):
 
     scale: float
 
+    def __post_init__(self) -> None:
+        if self.scale <= 0:
+            raise SbbError(f"a rate trigger needs a positive scale, not {self.scale}")
+
     def order(self, T: int) -> np.ndarray:
         """Indices of the rescaled sample."""
         order: np.ndarray = np.clip(np.arange(T) * self.scale, 0, T - 1).astype(np.int64)
@@ -52,6 +57,10 @@ class LatencyTrigger(_Remap):
     """
 
     delay: int
+
+    def __post_init__(self) -> None:
+        if self.delay < 0:
+            raise SbbError(f"a latency trigger needs a delay of at least 0, not {self.delay}")
 
     def order(self, T: int) -> np.ndarray:
         """Indices of the delayed sample."""
@@ -69,6 +78,10 @@ class JitterTrigger(_Remap):
     """
 
     pairs: int
+
+    def __post_init__(self) -> None:
+        if self.pairs < 1:
+            raise SbbError(f"a jitter trigger swaps at least one pair, not {self.pairs}")
 
     def order(self, T: int) -> np.ndarray:
         """Indices with the pairs swapped."""

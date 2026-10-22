@@ -21,6 +21,12 @@ adaptation_note: >
   DVS128 Gesture and 0.0155 for the 10 of CIFAR10-DVS. The lite network trains with
   cross-entropy and keeps 0.5.
 hparams:
-  default: {gamma: 0.5, isolation_ratio: 0.01, isolation_epochs: 1, unlearning_epochs: 5, unlearning_lr: 0.0005}
+  default:
+    gamma: 0.5
+    isolation_ratio: 0.01
+    isolation_epochs: 1
+    unlearning_epochs: 5
+    unlearning_lr: 0.0005
+    unlearning_weight_decay: 0.0001
   dvsgesture/dvsgesture_net: {gamma: 0.0141, isolation_epochs: 9}
   cifar10dvs/cifar10dvs_net: {gamma: 0.0155, isolation_epochs: 4}

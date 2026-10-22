@@ -95,6 +95,10 @@ def test_the_lite_verifier_sets_the_status_of_lite_cells() -> None:
     assert others["status"] == "self-reported"  # only the verify-lite workflow counts for lite
     assert cell(_check(full, "match"), attack="no_attack")["status"] == "self-reported"
 
+    # A record checked the numbers of the result it reran. Once the result changes, it is stale.
+    stale = _check(seed1, "match").model_copy(update={"delta": {"ca": 0.05}})
+    assert cell(_check(seed0, "match"), stale)["status"] == "self-reported"
+
 
 def test_model_auroc_ranks_backdoored_above_clean_models() -> None:
     # Clean models are the no_attack cells, backdoored ones the valid attack cells.
@@ -155,3 +159,16 @@ console.log(JSON.stringify(matrix(cells.slice(-1).concat(cells.slice(1)), "asr",
     ]
     assert m["defenses"] == ["no_defense", "fine_pruning", "strip"]
     assert m["text"][3][2] == "not-applicable" and m["z"][3][2] is None  # flashy x strip
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_page_opens_on_the_newest_version() -> None:
+    app = Path(__file__).parents[2] / "src" / "sbb" / "site" / "templates" / "app.js"
+    script = (
+        "const { newestFirst } = require(process.argv[1]);"
+        'console.log(JSON.stringify(newestFirst(["0.9.0", "0.10.0", "0.9.1"])));'
+    )
+    out = subprocess.run(
+        ["node", "-e", script, str(app)], capture_output=True, text=True, check=True
+    )
+    assert json.loads(out.stdout) == ["0.10.0", "0.9.1", "0.9.0"]

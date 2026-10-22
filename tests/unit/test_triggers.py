@@ -1,6 +1,7 @@
 """Shared triggers and selectors. Expected values follow the official code (docs/PLAN.md 12)."""
 
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pytest
@@ -304,3 +305,17 @@ def test_target_class_selector_picks_only_the_target_class() -> None:
     picked = TargetClassSelector().select(LABELS, 10, 0, np.array([3]), rng_for(0, 0))
     assert sorted(picked.tolist()) == [0, 6, 9]
     assert len(TargetClassSelector().select(LABELS, 2, 0, np.array([3]), rng_for(0, 0))) == 2
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: FlashTrigger(polarity=1, gap=0, duration=0),  # a flash every 0 frames
+        lambda: JitterTrigger(pairs=0),
+        lambda: RateTrigger(scale=0.0),
+        lambda: LatencyTrigger(delay=-1),
+    ],
+)
+def test_triggers_refuse_parameters_they_cannot_apply(build: Any) -> None:
+    with pytest.raises(SbbError):
+        build()

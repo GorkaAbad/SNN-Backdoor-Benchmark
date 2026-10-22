@@ -42,10 +42,13 @@ class SlurmExecutor(Executor):
             *(f"#SBATCH --{key}={value}" for key, value in options.items()),
             *self.site.slurm.get("extra", "").splitlines(),
             "set -euo pipefail",
+            f"cd {shlex.quote(str(job))}",
         ]
-        command = shlex.join(self.command(job, "INDEX", out_dir))
-        command = command.replace("INDEX", "${SLURM_ARRAY_TASK_ID}")
-        return "\n".join([*lines, f"{self.prefix()}{command}", ""])
+        # The task runs in its job folder, so the cell path holds no quoted part and the shell
+        # expands the array index whatever the job path is.
+        cell = 'cells/"${SLURM_ARRAY_TASK_ID}".json'
+        rest = shlex.join(["--site", "site.yaml", "--out", str(out_dir)])
+        return "\n".join([*lines, f"{self.prefix()}sbb run-cell {cell} {rest}", ""])
 
     def prefix(self) -> str:
         """The container part of the task command."""

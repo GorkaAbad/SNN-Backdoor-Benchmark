@@ -276,6 +276,10 @@ class FlashTrigger(FrameTrigger):
     gap: int = 0
     duration: int = 1
 
+    def __post_init__(self) -> None:
+        if self.gap + self.duration < 1:
+            raise SbbError("a flash trigger needs gap + duration >= 1, its flashes' spacing")
+
     def frames(self, T: int) -> list[int]:
         """The flashed frames of a sample with T frames."""
         end = self.end or T

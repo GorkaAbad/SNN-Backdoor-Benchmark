@@ -17,5 +17,5 @@ adaptation_note: >
   only the neurons are in train mode (for surrogate gradients), and batch norm and dropout are in
   eval mode. A network with a non-spiking readout uses its output as the potential.
 hparams:
-  default: {steps: 5000, inputs: 3, lr: 0.01}
+  default: {steps: 5000, inputs: 3, lr: 0.01, clamp: 10.0}  # inputs are clamped to [0, clamp]
   synthetic/tiny_lif_cnn: {steps: 5}

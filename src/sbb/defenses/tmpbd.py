@@ -13,6 +13,7 @@ from sbb.core.plugins import DetectionDefense
 from sbb.core.proxies import DefenderView
 from sbb.core.registry import DEFENSES
 from sbb.models.snn import SNNModel
+from sbb.utils.errors import SbbError
 
 
 def class_potentials(model: SNNModel, x: torch.Tensor) -> torch.Tensor:
@@ -58,6 +59,8 @@ class TMPBD(DetectionDefense):
 
     def verdict(self, view: DefenderView) -> float:
         """1 - p, higher for a likely backdoor."""
+        if self.hparams["steps"] < 1:
+            raise SbbError("TMPBD optimizes its inputs for at least one step")
         model = view.model.to(view.trainer.device).eval()
         for _, node in model.named_neurons():
             node.train()  # eval-mode SpikingJelly neurons have no surrogate gradient
@@ -71,12 +74,15 @@ class TMPBD(DetectionDefense):
     def _margin(
         self, model: SNNModel, k: int, classes: int, shape: tuple[int, ...], device: torch.device
     ) -> float:
-        """The best margin of class k over the other classes after the optimization."""
+        """The best margin of class k over the other classes after the optimization.
+
+        As in the official detect.py, the margin is the one of the last step, before its update.
+        """
         x = torch.rand(shape, device=device, requires_grad=True)
         other = torch.ones(classes, dtype=torch.bool, device=device)
         other[k] = False
         for _ in range(self.hparams["steps"]):
-            potentials = class_potentials(model, x.clamp(0, 10))
+            potentials = class_potentials(model, x.clamp(0, self.hparams["clamp"]))
             margin = potentials[:, k] - potentials[:, other].max(1).values
             x.grad = None
             (-margin.sum()).backward()  # type: ignore[no-untyped-call]

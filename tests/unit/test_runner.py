@@ -118,7 +118,8 @@ def test_slurm_executor_submits_one_array_job(
         slurm={"partition": "gpu", "time": "06:00:00", "extra": "#SBATCH --qos=normal"},
     )
     cells = Planner(SMOKE).cells()
-    assert executor_for(site).submit(cells, tmp_path / "out") == ["4242"]
+    out = tmp_path / "my results"  # a path the shell must quote
+    assert executor_for(site).submit(cells, out) == ["4242"]
     script = submitted.read_text()
     for line in [
         "#SBATCH --array=0-3%2",
@@ -129,8 +130,12 @@ def test_slurm_executor_submits_one_array_job(
         "docker://ghcr.io/org/sbb@sha256:abc",
     ]:
         assert line in script, line
-    assert "sbb run-cell" in script and str((tmp_path / "out").resolve()) in script
-    (job,) = (tmp_path / "out" / "jobs").iterdir()
+    # The task runs in its job folder, so the array index is never inside a quoted path.
+    (job,) = (tmp_path / "cache" / "jobs").iterdir()  # outside the results, which git tracks
+    assert f"cd {job}" in script
+    assert 'sbb run-cell cells/"${SLURM_ARRAY_TASK_ID}".json --site site.yaml' in script
+    assert f"--out '{out.resolve()}'" in script
+    assert not (out / "jobs").exists()
     written = [Cell.model_validate_json(p.read_text()) for p in sorted((job / "cells").iterdir())]
     assert sorted(c.key() for c in written) == sorted(c.key() for c in cells)
     assert SiteProfile.load(job / "site.yaml") == site

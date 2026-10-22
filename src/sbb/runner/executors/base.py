@@ -26,11 +26,15 @@ class Executor(ABC):
         """Start the cells, with their results going to out_dir, and return the job ids."""
 
     def write_job(self, cells: Sequence[Cell], out_dir: Path) -> Path:
-        """Write the cells and the site under <out_dir>/jobs/<hash of the cell keys>/.
+        """Write the cells and the site under <cache_dir>/jobs/<hash of the cells and out_dir>/.
 
-        Returns the job directory, with cells/<i>.json, site.yaml and logs/.
+        The job folder lives in the site's cache, never next to the results: site.yaml names the
+        site's paths and accounts, and the results directory is tracked by git. The cache is also
+        what a cluster shares with its tasks and binds into a container. Returns the job
+        directory, with cells/<i>.json, site.yaml and logs/.
         """
-        job = out_dir.resolve() / "jobs" / sha256_hex(sorted(c.key() for c in cells))[:12]
+        digest = sha256_hex([sorted(c.key() for c in cells), str(out_dir.resolve())])[:12]
+        job = self.site.cache_dir.expanduser().resolve() / "jobs" / digest
         (job / "cells").mkdir(parents=True, exist_ok=True)
         (job / "logs").mkdir(exist_ok=True)
         for i, cell in enumerate(cells):

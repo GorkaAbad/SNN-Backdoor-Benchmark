@@ -52,7 +52,7 @@ def validate(paths: Iterable[Path]) -> tuple[int, dict[Path, list[str]]]:
     for file in files:
         try:
             found = _check(file)
-        except (ValidationError, ValueError, KeyError) as error:
+        except (ValidationError, ValueError, KeyError, yaml.YAMLError) as error:
             found = [f"{type(error).__name__}: {error}"]
         if found is None:
             continue

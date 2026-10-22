@@ -51,6 +51,11 @@ function groupIndex(method, methods) {
   return i < 0 ? 98 : i;
 }
 
+function newestFirst(versions) {
+  // Numeric collation compares each run of digits as a number, so 0.10.0 is newer than 0.9.0.
+  return [...versions].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+}
+
 function isBaseline(name) {
   return name === "no_attack" || name === "no_defense";
 }
@@ -100,7 +105,7 @@ function matrix(cells, metric, methods) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { uniq, formatValue, formatStat, orderMethods, matrix };
+  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix };
 }
 
 // ---- Page ----
@@ -138,7 +143,7 @@ function visibleCells() {
 }
 
 function syncControls() {
-  state.version = setOptions($("version"), uniq(DATA.cells.map((c) => c.version)).sort().reverse(), state.version);
+  state.version = setOptions($("version"), newestFirst(uniq(DATA.cells.map((c) => c.version))), state.version);
   state.track = setOptions($("track"), uniq(DATA.cells.filter((c) => c.version === state.version).map((c) => c.track)), state.track);
   const cells = versionCells();
   state.dataset = setOptions($("dataset"), uniq(cells.map((c) => c.dataset)).sort(), state.dataset);
