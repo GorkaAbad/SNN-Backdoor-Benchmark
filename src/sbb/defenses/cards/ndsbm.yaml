@@ -1,5 +1,5 @@
 name: ndsbm
-version: 1.0.0
+version: 1.0.1
 title: NDSBM, neural dendrites suppression backdoor mitigation
 paper: "Li, Wu, Xia et al. Unsupervised Backdoor Detection and Mitigation for Spiking Neural Networks. arXiv 2510.06629"
 published: "2025-10"
@@ -7,11 +7,13 @@ code_reference: "https://github.com/alexjiachenli/TMPBD-NDSBM (mitigate.py, clam
 license_note: "The official code has no license. Re-implemented from the paper, checked against the code."
 # As in the official clamping algorithm (dual clamping, its default): bounds per time step and
 # channel starting at 1 +- 10 (1 +- 20 on CIFAR10-DVS), Adam with lr 0.1 for 50 epochs, batch 16,
-# c = 1e-5 (2e-5 on CIFAR10-DVS), on clean data without labels, in train mode like the official
-# code (SpikingJelly neurons pass surrogate gradients only there), so the batch-norm statistics
-# follow the clean data while the weights stay. Two differences: the official bounds also have a
-# batch dimension, here they are shared by the samples, and the official forward skips the
-# neurons of the second conv block (a commented-out call), the port keeps them.
+# c = 1e-5 (2e-5 on CIFAR10-DVS), on clean data without labels. Three differences. The official
+# code learns and evaluates the bounds in train mode (its evaluate has model.eval() commented out),
+# so batch norm uses each batch's statistics. Here the bounds are learned for the evaluated
+# forward pass, eval mode with only the spiking neurons in train mode for their surrogate
+# gradients, and the victim's statistics stay. The official bounds also have a batch dimension,
+# here they are shared by the samples. And the official forward skips the neurons of the second
+# conv block (a commented-out call), the port keeps them.
 stage: post_training
 view:
   resources: [model, clean_subset]

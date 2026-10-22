@@ -289,8 +289,8 @@ def test_ndsbm_narrows_the_clamps_and_keeps_the_weights(datamodule: DataModule) 
     view = _view(NDSBM, datamodule, model)
     defense = NDSBM({**NDSBM.card.hparams_for("synthetic", "tiny_lif_cnn"), "epochs": 2})
     repaired = defense.repair(view)
-    before, after = dict(model.named_parameters()), dict(repaired.named_parameters())
-    for name in before:  # the batch-norm statistics follow the clean data, as in the official code
+    before, after = model.state_dict(), repaired.state_dict()
+    for name in before:  # the weights and the batch-norm statistics stay the victim's
         torch.testing.assert_close(before[name], after[name])
     clamps = defense.extra(repaired)
     assert all((upper < 11.0).all() for upper in clamps.upper)  # the norm term pulls them in

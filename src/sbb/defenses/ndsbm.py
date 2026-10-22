@@ -31,12 +31,15 @@ class NDSBM(ModelDefense):
 
         The loss is the MSE between the mean over T of the last spiking layer's membrane potential
         with and without the clamps, plus c times the norms of the floors and ceilings, which
-        narrows them. As in the official code the model runs in train mode, because SpikingJelly
-        neurons pass surrogate gradients only there, so its batch-norm statistics follow the
-        clean data. Its weights stay as they are.
+        narrows them. The bounds are learned for the forward pass the Game evaluates: batch norm
+        with its running statistics and no dropout, so the model runs in eval mode, except its
+        spiking neurons, which pass surrogate gradients only in train mode. The model's weights
+        and statistics stay as they are.
         """
         h, device = self.hparams, view.trainer.device
-        model = view.model.to(device).train()
+        model = view.model.to(device).eval()
+        for _, neuron in model.named_neurons():
+            neuron.train()
         for parameter in model.parameters():
             parameter.requires_grad_(False)
         clamps = self.extra(model).to(device)
@@ -63,7 +66,7 @@ class NDSBM(ModelDefense):
                 handle.remove()
         for parameter in model.parameters():
             parameter.requires_grad_(True)
-        return model
+        return model.eval()
 
     def extra(self, model: SNNModel) -> "Clamps":
         """The clamps, sized for model, learned by repair or loaded by the Game."""
