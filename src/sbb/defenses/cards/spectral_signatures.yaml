@@ -1,0 +1,20 @@
+name: spectral_signatures
+version: 1.0.0
+title: Spectral signatures
+paper: "Tran, Li, Madry. Spectral Signatures in Backdoor Attacks. NeurIPS 2018"
+code_reference: "https://github.com/MadryLab/backdoor_data_poisoning (compute_corr.py)"
+license_note: "MIT"
+# The official code scores only the target label, which a defender does not know, so the port
+# scans every label, as Algorithm 1 of the paper does. As in the official code (and BackdoorBench),
+# the score is |<v, R(x)>| and the samples above the 85th percentile of their class are removed,
+# the paper's 1.5 epsilon for a bound epsilon = 0.1 on the poisoned share of a class.
+stage: pre_training
+view:
+  resources: [train_set]
+adaptation_note: >
+  A reference model of the scenario architecture is trained on the train set as received, with
+  the scenario recipe. The representation of a sample is the input of the readout, the last
+  linear layer, averaged over time (readout_inputs): the spike rates of the layer before the
+  readout, the SNN counterpart of the penultimate activations of the paper.
+hparams:
+  default: {percentile: 85}
