@@ -1,4 +1,6 @@
 import os
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -132,6 +134,30 @@ def test_slurm_executor_submits_one_array_job(
     written = [Cell.model_validate_json(p.read_text()) for p in sorted((job / "cells").iterdir())]
     assert sorted(c.key() for c in written) == sorted(c.key() for c in cells)
     assert SiteProfile.load(job / "site.yaml") == site
+
+
+@pytest.mark.parametrize("device", ["cuda", "cpu"])
+def test_local_executor_gives_each_worker_its_own_gpu(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, device: str
+) -> None:
+    # GPUs in exclusive-process mode (as on many clusters) take one process each.
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3,5")
+    lock, busy, used = threading.Lock(), set(), []
+
+    def fake_run(command: list[str], env: dict[str, str], **_: object) -> None:
+        gpu = env["CUDA_VISIBLE_DEVICES"]
+        with lock:
+            assert gpu not in busy or device == "cpu", f"two workers on GPU {gpu}"
+            busy.add(gpu)
+            used.append(gpu)
+        time.sleep(0.05)
+        with lock:
+            busy.discard(gpu)
+
+    monkeypatch.setattr("sbb.runner.executors.local.subprocess.run", fake_run)
+    site = SiteProfile(name="node", device=device, cache_dir=tmp_path, max_parallel=2)
+    executor_for(site).submit(Planner(SMOKE).cells(), tmp_path / "out")
+    assert sorted(used) == (["3", "3", "5", "5"] if device == "cuda" else ["3,5"] * 4)
 
 
 def test_slurm_needs_apptainer_or_no_container(tmp_path: Path) -> None:

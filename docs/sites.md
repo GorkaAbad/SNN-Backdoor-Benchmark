@@ -25,6 +25,9 @@ With `scheduler: none`, `sbb run` and `sbb replicate` run the pending cells:
 - `max_parallel: 1` runs them in the command's own process.
 - `max_parallel: N` runs N `sbb run-cell` processes at a time, with one log per cell under
   `<out>/jobs/<id>/logs/`.
+  On CUDA, each worker owns one visible GPU, round-robin. Cluster GPUs often run in
+  exclusive-process mode, where a GPU takes one process only, so there set `max_parallel` to
+  the number of GPUs of the job.
 
 ```bash
 uv run sbb run benchmarks/smoke.yaml --site sites/examples/local-cpu.yaml --out results
