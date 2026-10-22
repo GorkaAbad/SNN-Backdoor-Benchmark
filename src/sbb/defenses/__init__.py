@@ -3,6 +3,7 @@
 from sbb.defenses import (  # noqa: F401
     abl,
     activation_clustering,
+    anp,
     clp,
     fine_pruning,
     fine_tuning,

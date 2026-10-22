@@ -96,13 +96,14 @@ def reference_features(view: DefenderView) -> np.ndarray:
 
 
 def zero_channels(
-    module: nn.Conv2d | nn.BatchNorm2d, channels: Sequence[int] | torch.Tensor
+    module: nn.Conv2d | nn.BatchNorm2d, channels: Sequence[int] | torch.Tensor, bias: bool = True
 ) -> None:
     """Prune output channels of a convolution or a batch norm by zeroing their weight and bias.
 
     The pruning lives in the weights, so it survives the checkpoint the Game stores. Zeroing a
     batch norm's scale and shift silences the channel: its neurons get no input current. Zeroing
-    a convolution's channels keeps the shift of the batch norm after it.
+    a convolution's channels keeps the shift of the batch norm after it. With bias False only the
+    weight is zeroed, so a batch norm channel keeps its shift as a constant current (ANP).
     """
     if module.weight is None:
         raise SbbError(f"{type(module).__name__} has no weights to prune")
@@ -111,7 +112,7 @@ def zero_channels(
     if not isinstance(channels, torch.Tensor):
         channels = torch.tensor(list(channels), dtype=torch.long)
     with torch.no_grad():
-        for parameter in (module.weight, module.bias):
+        for parameter in (module.weight, module.bias if bias else None):
             if parameter is not None:
                 parameter[channels] = 0
 

@@ -1,0 +1,21 @@
+name: anp
+version: 1.0.0
+title: ANP, adversarial neuron pruning
+paper: "Wu, Wang. Adversarial Neuron Pruning Purifies Backdoored Deep Models. NeurIPS 2021"
+code_reference: "https://github.com/csdongxian/ANP_backdoor (optimize_mask_cifar.py, prune_neuron_cifar.py, models/anp_batchnorm.py)"
+license_note: "The official code has no license. Re-implemented from the paper, checked against the code."
+# As in the paper: masks optimized on 1% of clean data with eps 0.4 and alpha 0.2, SGD with a
+# constant learning rate of 0.2 and momentum 0.9, batch 128, 2000 iterations, then the neurons
+# with a mask below 0.2 pruned by zeroing the batch norm's scale (the official pruning keeps the
+# shift). The masks are optimized on a copy in train mode, and the original model is pruned.
+stage: post_training
+view:
+  resources: [model, clean_subset]
+  clean_fraction: 0.01
+adaptation_note: >
+  The neurons are the channels of the batch norm of each conv block, which feed the spiking
+  neurons: the mask and the perturbation scale the batch norm's scale and shift, as the paper's
+  NoisyBatchNorm2d does, applied to its output by a forward hook. The loss is the scenario's
+  (MSE on firing rates for the full-track networks) instead of cross-entropy.
+hparams:
+  default: {eps: 0.4, alpha: 0.2, lr: 0.2, iterations: 2000, batch_size: 128, threshold: 0.2}

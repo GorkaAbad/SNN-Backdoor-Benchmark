@@ -12,6 +12,7 @@ from sbb.core.trainer import Trainer, TrainSpec, TrainState, per_sample_loss
 from sbb.data.module import DataModule
 from sbb.defenses.abl import ABL
 from sbb.defenses.activation_clustering import small_clusters
+from sbb.defenses.anp import ANP, neuron_masks, perturb_bn
 from sbb.defenses.clp import CLP, channel_lipschitz
 from sbb.defenses.fine_pruning import FinePruning
 from sbb.defenses.nad import NAD, AttentionDistillation, attention_map
@@ -214,3 +215,48 @@ def test_nad_adds_attention_distillation_and_leaves_no_probe(datamodule: DataMod
     view = _view(NAD, datamodule, _model())
     repaired = NAD(NAD.card.hparams_for("synthetic", "tiny_lif_cnn")).repair(view)
     assert all(not m._forward_hooks for m in repaired.modules())
+
+
+def test_perturb_bn_matches_a_batch_norm_with_scaled_parameters() -> None:
+    bn = conv_blocks(_model())[0].bn.eval()
+    x = torch.randn(2, 3, 16, 8, 8)  # [T, B, C, H, W], as in multi-step mode
+    weight_coeff, bias_coeff = torch.rand(16), torch.rand(16) + 0.5
+    with torch.no_grad():
+        expected = F.batch_norm(
+            x.flatten(0, 1),
+            bn.running_mean,
+            bn.running_var,
+            bn.weight * weight_coeff,
+            bn.bias * bias_coeff,
+            False,
+            0.0,
+            bn.eps,
+        ).view_as(x)
+        torch.testing.assert_close(perturb_bn(bn(x), bn, weight_coeff, bias_coeff), expected)
+
+
+def test_anp_masks_lie_in_the_unit_interval_and_prune_only_the_scale(
+    datamodule: DataModule,
+) -> None:
+    model = _model()
+    view = _view(ANP, datamodule, model)
+    masks = neuron_masks(
+        copy.deepcopy(model),
+        view.clean_loader(8),
+        view.trainer,
+        eps=0.4,
+        alpha=0.2,
+        lr=0.2,
+        iterations=5,
+    )
+    assert [m.shape[0] for m in masks] == [b.bn.num_features for b in conv_blocks(model)]
+    assert all(((m >= 0) & (m <= 1)).all() for m in masks)
+    hparams = {
+        **ANP.card.hparams_for("synthetic", "tiny_lif_cnn"),
+        "iterations": 5,
+        "threshold": 1.01,
+    }
+    repaired = ANP(hparams).repair(view)  # a threshold above 1 prunes every channel
+    for block, original in zip(conv_blocks(repaired), conv_blocks(model), strict=True):
+        assert (block.bn.weight == 0).all()
+        torch.testing.assert_close(block.bn.bias, original.bn.bias)  # the shift stays
