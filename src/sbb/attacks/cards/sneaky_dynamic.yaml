@@ -1,5 +1,5 @@
 name: sneaky_dynamic
-version: 1.0.1
+version: 1.1.0
 title: Sneaky Spikes, dynamic trigger
 paper: "Abad, Ersoy, Picek, Urbieta. Sneaky Spikes: Uncovering Stealthy Backdoor Attacks in Spiking Neural Networks with Neuromorphic Data. NDSS 2024"
 published: "2023-02"
@@ -17,7 +17,14 @@ knowledge:
   data: full
   defense: oblivious
 hparams:
-  default: {alpha: 0.5, gamma: 0.01, channels: 128, autoencoder: default, generator_lr: 0.001, batch_size: 8}  # the official default
+  default:
+    alpha: 0.5
+    gamma: 0.01
+    channels: 128
+    autoencoder: default
+    generator_lr: 0.001
+    batch_size: 8  # the official default
+    selection_samples: 1000  # training samples the attacker scores its epochs on
   # As the official code, N-MNIST (34x34) uses AutoencoderMNIST.
   nmnist/nmnist_net: {autoencoder: mnist}
   nmnist/tiny_lif_cnn: {autoencoder: mnist}

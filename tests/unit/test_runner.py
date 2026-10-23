@@ -33,6 +33,18 @@ def test_planner_filters() -> None:
     assert [(c.attack, c.defense) for c in only] == [("static_patch", "fine_tuning")]
 
 
+def test_a_track_can_leave_out_methods_of_the_battery() -> None:
+    # An attack too slow for a CPU runner can stay out of the lite track and run in the full one.
+    spec = SMOKE.model_copy(deep=True)
+    spec.tracks["lite"].exclude = ["fine_tuning"]
+    cells = Planner(spec).cells()
+    assert {c.defense for c in cells} == {"no_defense"} and len(cells) == 2
+    data = SMOKE.model_dump()
+    data["tracks"]["lite"]["exclude"] = ["not_in_the_battery"]
+    with pytest.raises(ValueError, match="not_in_the_battery"):
+        BenchmarkSpec.model_validate(data)
+
+
 @pytest.mark.parametrize("path", sorted(BENCHMARKS.glob("*.yaml")), ids=lambda p: p.stem)
 def test_every_benchmark_names_registered_parts(path: Path) -> None:
     spec = BenchmarkSpec.load(path)

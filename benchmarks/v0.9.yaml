@@ -33,7 +33,9 @@ scenarios:
     train: {epochs: 28, batch_size: 16, loss: mse, optimizer: adam, lr: 0.001, schedule: cosine}
     budget: {poison_rate: 0.05, target: 0, defender_clean_fraction: 0.05, delta_pp: 3.0}
 tracks:
-  lite: {scenarios: [nmnist_tiny], seeds: [0, 1, 2]}
+  # sneaky_dynamic trains for hours even on a GPU, far beyond the 6 hours of a CPU runner, so it
+  # runs in the full track only and every lite cell can be verified on GitHub.
+  lite: {scenarios: [nmnist_tiny], seeds: [0, 1, 2], exclude: [sneaky_dynamic]}
   full: {scenarios: [dvsgesture_full, cifar10dvs_full], seeds: [0, 1, 2]}
 battery:
   # Group A, then group B. An attack stays only with replication status replicated or explained

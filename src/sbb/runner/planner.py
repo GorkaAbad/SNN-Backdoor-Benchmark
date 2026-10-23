@@ -37,6 +37,8 @@ class Planner:
             ):
                 if attack not in (None, a) or defense not in (None, d):
                     continue
+                if a in track_spec.exclude or d in track_spec.exclude:
+                    continue
                 cells.append(
                     Cell(
                         benchmark_version=self.spec.version,

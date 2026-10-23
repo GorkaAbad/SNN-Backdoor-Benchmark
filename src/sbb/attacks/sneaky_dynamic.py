@@ -83,10 +83,15 @@ class SneakyDynamic(ModelAttack):
     """Trains the model jointly with a spiking autoencoder whose output is the trigger.
 
     Every epoch has a fresh classifier optimizer, and the frozen copy of the generator that the
-    classifier sees is refreshed at the end, as in the official code. Then the classifier trains
-    one more epoch with the learned trigger, the official evaluation's step. The official code
-    keeps the epoch with the best test accuracies, which an attacker cannot see, so the last epoch
-    is kept here.
+    classifier sees is refreshed at the end, as in the official code. The attacker controls the
+    training, so like the official code it keeps the epoch whose clean and backdoor accuracy both
+    beat every earlier epoch. It scores the epochs on a fixed sample of its own training split,
+    since it never sees the test set, where the official code scores them. From that epoch's model
+    and generator the classifier trains one more epoch with the learned trigger, the official
+    evaluation's step.
+
+    Attributes:
+        best_epoch: The kept epoch, set by make_model.
     """
 
     card = AttackCard.load(Path(__file__).parent / "cards" / "sneaky_dynamic.yaml")
@@ -105,10 +110,42 @@ class SneakyDynamic(ModelAttack):
         optimizer = torch.optim.Adam(generator.parameters(), lr=self.hparams["generator_lr"])
         common = (self.hparams["gamma"], self.hparams["alpha"], self.target, trainer.spec.loss)
         joint = _JointTraining(generator, optimizer, frozen, *common)
-        loader = view.train_set.loader(self.hparams["batch_size"], shuffle=True)
-        for _ in range(trainer.spec.epochs):
+        batch_size = self.hparams["batch_size"]
+        loader = view.train_set.loader(batch_size, shuffle=True)
+        n = min(self.hparams["selection_samples"], len(view.train_set))
+        chosen = view.rng.choice(len(view.train_set), n, replace=False)
+        selection = view.train_set.loader(batch_size, indices=chosen)
+        best: tuple[tuple[float, float], dict[str, Any], dict[str, Any]] | None = None
+        for epoch in range(trainer.spec.epochs):
             trainer.fit(model, loader, hooks=[joint], epochs=1)
             frozen.load_state_dict(generator.state_dict())
+            scores = _accuracies(model, frozen, selection, self.hparams["gamma"], self.target)
+            if best is None or (scores[0] > best[0][0] and scores[1] > best[0][1]):
+                # Copies: the official code keeps state_dict() references, which later epochs
+                # overwrite, so it saves the last epoch while it reports the best one.
+                snapshot = copy.deepcopy(model.state_dict()), copy.deepcopy(frozen.state_dict())
+                best, self.best_epoch = (scores, *snapshot), epoch
+        assert best is not None
+        model.load_state_dict(best[1])
+        frozen.load_state_dict(best[2])
         trainer.fit(model, loader, hooks=[_Triggered(frozen, *common)], epochs=1)
         self.trigger.generator.load_state_dict(frozen.state_dict())
         return model
+
+
+@torch.no_grad()
+def _accuracies(
+    model: SNNModel, generator: nn.Module, loader: Any, gamma: float, target: int
+) -> tuple[float, float]:
+    """Clean accuracy and backdoor accuracy (triggered inputs classified as target) on loader."""
+    device = next(model.parameters()).device
+    training = model.training
+    model.eval()
+    clean = backdoor = total = 0
+    for x, y, _ in loader:
+        x, y = x.to(device), y.to(device)
+        clean += int((model(x).argmax(1) == y).sum())
+        backdoor += int((model(perturb(generator, x, gamma)).argmax(1) == target).sum())
+        total += len(y)
+    model.train(training)
+    return clean / max(total, 1), backdoor / max(total, 1)

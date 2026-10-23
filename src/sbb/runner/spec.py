@@ -28,10 +28,16 @@ class Tolerance(BaseModel):
 
 
 class TrackSpec(BaseModel):
-    """Scenarios and seeds of one track."""
+    """Scenarios and seeds of one track.
+
+    Attributes:
+        exclude: Methods of the battery this track leaves out, for example an attack too slow to
+            verify on a CPU runner in the lite track.
+    """
 
     scenarios: list[str]
     seeds: list[int]
+    exclude: list[str] = []
 
 
 class BenchmarkSpec(BaseModel):
@@ -52,6 +58,9 @@ class BenchmarkSpec(BaseModel):
         for track, spec in self.tracks.items():
             if unknown := set(spec.scenarios) - set(self.scenarios):
                 raise ValueError(f"track {track} uses unknown scenarios {sorted(unknown)}")
+            battery = {*self.battery.attacks, *self.battery.defenses}
+            if unknown := set(spec.exclude) - battery:
+                raise ValueError(f"track {track} excludes {sorted(unknown)}, not in the battery")
         return self
 
     @classmethod
