@@ -185,12 +185,12 @@ def replicate(
 
 zoo = typer.Typer(no_args_is_help=True, help="Share cached models through a Hugging Face Hub repo.")
 app.add_typer(zoo, name="zoo")
-# TODO([FILL]) default to <hf-org>/sbb-zoo once the organization exists (docs/PLAN.md 5.2).
-Repo = Annotated[str, typer.Option(help="Hub repository of the zoo, <hf-org>/sbb-zoo.")]
+ZOO = "SNN-Backdoor-Benchmark/sbb-zoo"
+Repo = Annotated[str, typer.Option(help="Hub repository of the zoo.")]
 
 
 @zoo.command("push")
-def zoo_push(version: str, repo: Repo, out: Out = Path("results"), site: Site = None) -> None:
+def zoo_push(version: str, repo: Repo = ZOO, out: Out = Path("results"), site: Site = None) -> None:
     """Upload, in one commit, the cached artifacts that the results of VERSION reference.
 
     Needs a Hub token with write access (HF_TOKEN, or hf auth login).
@@ -207,7 +207,7 @@ def zoo_push(version: str, repo: Repo, out: Out = Path("results"), site: Site = 
 @zoo.command("pull")
 def zoo_pull(
     version: str,
-    repo: Repo,
+    repo: Repo = ZOO,
     revision: Annotated[str, typer.Option(help="Commit or branch of the zoo.")] = "main",
     site: Site = None,
 ) -> None:

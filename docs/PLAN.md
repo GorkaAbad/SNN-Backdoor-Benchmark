@@ -623,6 +623,8 @@ sbb/                                  # repository root, name [DECIDE]
 | `<hf-org>/sbb-results` | dataset | read-only mirror of `results/` and `verifications/` | v2 |
 | `<hf-org>/sbb-leaderboard` | Space | optional mirror of the leaderboard | v2 |
 
+v1 note: `<hf-org>` is `SNN-Backdoor-Benchmark`, the organization named in the provenance of the published results. `sbb zoo` defaults to `SNN-Backdoor-Benchmark/sbb-zoo`, whose model card is `docs/hub/sbb-zoo.md`. A maintainer uploads the models from the site whose cache holds them, with a fine-grained token that writes only to the zoo.
+
 Rules: weights only as safetensors. Every Hub reference in a spec or manifest pins a commit revision. Free public storage on the Hub is best effort, which is enough because SNN checkpoints are small. Contributors may host their own models in their own Hub repos and reference them by revision and sha256 in their manifest.
 
 The leaderboard itself is a static site built from `results/` and served by GitHub Pages **[DECIDE]**.
@@ -851,7 +853,7 @@ class ArtifactCache:
     def get_or_build(self, key: str, build: Callable[[Path], None]) -> Path: ...   # local, then remote, then build
 ```
 
-v1 notes (task 7). `HubStore(repo_id, revision, prefix, repo_type)` keeps artifacts as `<prefix>/<key>/` folders, with the benchmark version as the zoo's prefix. It reads the repository's file list once, `keys()` lists the artifacts under the prefix, and `put_many` uploads several artifacts in one commit. `sbb zoo push VERSION --repo <hf-org>/sbb-zoo` uploads the cached artifacts that the results of VERSION reference (models as safetensors, verdicts as JSON), and `sbb zoo pull VERSION --repo ... --revision ...` copies them into the local cache, where every run looks first. The organization is still [FILL], so `--repo` has no default.
+v1 notes (task 7). `HubStore(repo_id, revision, prefix, repo_type)` keeps artifacts as `<prefix>/<key>/` folders, with the benchmark version as the zoo's prefix. It reads the repository's file list once, `keys()` lists the artifacts under the prefix, and `put_many` uploads several artifacts in one commit. `sbb zoo push VERSION --repo <hf-org>/sbb-zoo` uploads the cached artifacts that the results of VERSION reference (models as safetensors, verdicts as JSON), and `sbb zoo pull VERSION --repo ... --revision ...` copies them into the local cache, where every run looks first. The organization is `SNN-Backdoor-Benchmark` (5.2).
 
 ### 6.5 Attacks (`sbb.core.plugins`, implementations in `sbb.attacks`)
 

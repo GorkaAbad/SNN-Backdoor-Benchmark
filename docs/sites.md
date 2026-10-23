@@ -88,6 +88,10 @@ apptainer exec --nv --bind /scratch/<user>/sbb-cache \
 
 ## The model zoo
 
-`sbb zoo pull VERSION --repo <hf-org>/sbb-zoo --revision <commit>` copies the published models of a
-benchmark version into `cache_dir`, so a verifier reruns defense cells on exactly those models.
-`sbb zoo push` uploads yours, with a Hugging Face token that can write to the repository.
+The models behind the published results live on the Hugging Face Hub, in
+[SNN-Backdoor-Benchmark/sbb-zoo](https://huggingface.co/SNN-Backdoor-Benchmark/sbb-zoo), as
+`<version>/<key>/` folders named by the keys in each result's `artifacts`.
+`sbb zoo pull VERSION --revision <commit>` copies the models of a benchmark version into
+`cache_dir`, so a verifier reruns defense cells on exactly those models.
+`sbb zoo push VERSION --repo <your repo>` uploads yours, with a Hugging Face token that can write to
+that repository (`HF_TOKEN`, `HF_TOKEN_PATH` or `hf auth login`).
