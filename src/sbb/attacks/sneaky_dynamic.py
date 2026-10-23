@@ -1,6 +1,7 @@
 """Sneaky Spikes, dynamic trigger (port of the official dynamic.py, MIT)."""
 
 import copy
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from sbb.core.proxies import AttackerView
 from sbb.core.registry import ATTACKS
 from sbb.core.trainer import Loss, TrainerHooks, TrainState, per_sample_loss
 from sbb.models.snn import SNNModel, build_model
+
+log = logging.getLogger(__name__)
 
 
 class _Triggered(TrainerHooks):
@@ -83,12 +86,12 @@ class SneakyDynamic(ModelAttack):
     """Trains the model jointly with a spiking autoencoder whose output is the trigger.
 
     Every epoch has a fresh classifier optimizer, and the frozen copy of the generator that the
-    classifier sees is refreshed at the end, as in the official code. The attacker controls the
-    training, so like the official code it keeps the epoch whose clean and backdoor accuracy both
-    beat every earlier epoch. It scores the epochs on a fixed sample of its own training split,
-    since it never sees the test set, where the official code scores them. From that epoch's model
-    and generator the classifier trains one more epoch with the learned trigger, the official
-    evaluation's step.
+    classifier sees is refreshed at the end, as in the official code. Then, as the official
+    test(), a copy of the classifier trains one more epoch with that frozen generator, and the
+    epoch is scored on the copy. The attacker controls the training, so like the official code it
+    keeps the epoch whose clean and backdoor accuracy both beat every earlier epoch, and returns
+    that epoch's trained copy and generator. It scores the epochs on a fixed sample of its own
+    training split, since it never sees the test set, where the official code scores them.
 
     Attributes:
         best_epoch: The kept epoch, set by make_model.
@@ -119,17 +122,20 @@ class SneakyDynamic(ModelAttack):
         for epoch in range(trainer.spec.epochs):
             trainer.fit(model, loader, hooks=[joint], epochs=1)
             frozen.load_state_dict(generator.state_dict())
-            scores = _accuracies(model, frozen, selection, self.hparams["gamma"], self.target)
+            candidate = build_model(view.arch, view.scenario.input_shape, view.scenario.num_classes)
+            candidate.load_state_dict(model.state_dict())  # neuron states do not deepcopy
+            trainer.fit(candidate, loader, hooks=[_Triggered(frozen, *common)], epochs=1)
+            scores = _accuracies(candidate, frozen, selection, self.hparams["gamma"], self.target)
+            log.info("epoch %d: clean %.4f, backdoor %.4f on the attacker's sample", epoch, *scores)
             if best is None or (scores[0] > best[0][0] and scores[1] > best[0][1]):
                 # Copies: the official code keeps state_dict() references, which later epochs
                 # overwrite, so it saves the last epoch while it reports the best one.
-                snapshot = copy.deepcopy(model.state_dict()), copy.deepcopy(frozen.state_dict())
+                snapshot = copy.deepcopy(candidate.state_dict()), copy.deepcopy(frozen.state_dict())
                 best, self.best_epoch = (scores, *snapshot), epoch
         assert best is not None
+        log.info("kept epoch %d", self.best_epoch)
         model.load_state_dict(best[1])
-        frozen.load_state_dict(best[2])
-        trainer.fit(model, loader, hooks=[_Triggered(frozen, *common)], epochs=1)
-        self.trigger.generator.load_state_dict(frozen.state_dict())
+        self.trigger.generator.load_state_dict(best[2])
         return model
 
 

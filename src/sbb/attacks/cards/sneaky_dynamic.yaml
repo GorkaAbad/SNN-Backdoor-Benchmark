@@ -1,5 +1,5 @@
 name: sneaky_dynamic
-version: 1.1.0
+version: 1.2.0
 title: Sneaky Spikes, dynamic trigger
 paper: "Abad, Ersoy, Picek, Urbieta. Sneaky Spikes: Uncovering Stealthy Backdoor Attacks in Spiking Neural Networks with Neuromorphic Data. NDSS 2024"
 published: "2023-02"
