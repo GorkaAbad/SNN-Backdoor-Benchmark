@@ -9,7 +9,7 @@
 
 [![CI](https://github.com/GorkaAbad/SNN-Backdoor-Benchmark/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GorkaAbad/SNN-Backdoor-Benchmark/actions/workflows/ci.yml)
 [![Leaderboard](https://img.shields.io/badge/leaderboard-online-3559c7)](https://gorkaabad.github.io/SNN-Backdoor-Benchmark/)
-[![Models](https://img.shields.io/badge/%F0%9F%A4%97%20models-sbb--zoo-f5b800)](https://huggingface.co/SNN-Backdoor-Benchmark/sbb-zoo)
+[![Models](https://img.shields.io/badge/%F0%9F%A4%97%20models-sbb--zoo-f5b800)](https://huggingface.co/sbb-zoo/checkpoints)
 ![Python 3.11](https://img.shields.io/badge/python-3.11-3776ab)
 ![Status](https://img.shields.io/badge/status-public%20alpha-e0a64a)
 [![License: MIT](https://img.shields.io/badge/license-MIT-1f7a4d)](LICENSE)
@@ -148,7 +148,7 @@ python -m http.server -d _site 8000
 
 Each cell is written to `results/<version>/<key>.json`, and cells that already have a result are
 skipped. The trained models of the published results are on the Hugging Face Hub
-([sbb-zoo](https://huggingface.co/SNN-Backdoor-Benchmark/sbb-zoo)): `uv run sbb zoo pull 0.9.0`
+([sbb-zoo/checkpoints](https://huggingface.co/sbb-zoo/checkpoints)): `uv run sbb zoo pull 0.9.0`
 copies them into your cache, so defenses rerun on exactly those models. The full track needs a GPU. [docs/sites.md](docs/sites.md) covers workstations, Slurm
 clusters and the container image.
 

@@ -623,7 +623,7 @@ sbb/                                  # repository root, name [DECIDE]
 | `<hf-org>/sbb-results` | dataset | read-only mirror of `results/` and `verifications/` | v2 |
 | `<hf-org>/sbb-leaderboard` | Space | optional mirror of the leaderboard | v2 |
 
-v1 note: `<hf-org>` is `SNN-Backdoor-Benchmark`, the organization named in the provenance of the published results. `sbb zoo` defaults to `SNN-Backdoor-Benchmark/sbb-zoo`, whose model card is `docs/hub/sbb-zoo.md`. A maintainer uploads the models from the site whose cache holds them, with a fine-grained token that writes only to the zoo.
+v1 note: `<hf-org>` is the organization `sbb-zoo` (display name SNN-Backdoor-Benchmark, the organization named in the provenance of the published results). The zoo is `sbb-zoo/checkpoints`, the default of `sbb zoo`, and its model card is `docs/hub/checkpoints.md`. Later repositories follow the same pattern (`sbb-zoo/data`, `sbb-zoo/results`). A maintainer uploads the models from the site whose cache holds them, with a fine-grained token that writes only to the zoo.
 
 Rules: weights only as safetensors. Every Hub reference in a spec or manifest pins a commit revision. Free public storage on the Hub is best effort, which is enough because SNN checkpoints are small. Contributors may host their own models in their own Hub repos and reference them by revision and sha256 in their manifest.
 

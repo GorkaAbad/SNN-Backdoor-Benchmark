@@ -8,7 +8,7 @@ tags:
   - safetensors
 ---
 
-# sbb-zoo
+# sbb-zoo/checkpoints
 
 The trained models of the [SNN Backdoor Benchmark](https://github.com/GorkaAbad/SNN-Backdoor-Benchmark),
 a benchmark for backdoor attacks and defenses on spiking neural networks with neuromorphic data.

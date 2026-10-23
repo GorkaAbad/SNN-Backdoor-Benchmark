@@ -185,7 +185,7 @@ def replicate(
 
 zoo = typer.Typer(no_args_is_help=True, help="Share cached models through a Hugging Face Hub repo.")
 app.add_typer(zoo, name="zoo")
-ZOO = "SNN-Backdoor-Benchmark/sbb-zoo"
+ZOO = "sbb-zoo/checkpoints"
 Repo = Annotated[str, typer.Option(help="Hub repository of the zoo.")]
 
 

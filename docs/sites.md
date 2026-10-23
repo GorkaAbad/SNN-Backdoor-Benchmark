@@ -89,7 +89,7 @@ apptainer exec --nv --bind /scratch/<user>/sbb-cache \
 ## The model zoo
 
 The models behind the published results live on the Hugging Face Hub, in
-[SNN-Backdoor-Benchmark/sbb-zoo](https://huggingface.co/SNN-Backdoor-Benchmark/sbb-zoo), as
+[sbb-zoo/checkpoints](https://huggingface.co/sbb-zoo/checkpoints), as
 `<version>/<key>/` folders named by the keys in each result's `artifacts`.
 `sbb zoo pull VERSION --revision <commit>` copies the models of a benchmark version into
 `cache_dir`, so a verifier reruns defense cells on exactly those models.
