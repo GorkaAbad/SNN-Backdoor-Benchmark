@@ -208,13 +208,42 @@ def test_status_lists_every_planned_cell_with_its_state(tmp_path: Path) -> None:
 def test_page_exports_the_matrix_as_csv() -> None:
     app = Path(__file__).parents[2] / "src" / "sbb" / "site" / "templates" / "app.js"
     script = """
-const { matrixCsv, toCsv } = require(process.argv[1]);
+const { matrixCsv, toCsv, seedCount } = require(process.argv[1]);
 const m = { attacks: ["a", "b"], defenses: ["d1", "d,2"], z: [[12.345678, null], [0, 99.5]] };
-console.log(JSON.stringify([matrixCsv(m), toCsv([['say "hi"', 1]])]));
+const partial = { seeds: [0, 2], excluded: [{ seed: 1 }] };
+console.log(JSON.stringify([matrixCsv(m), toCsv([['say "hi"', 1]]), seedCount(partial)]));
 """
     out = subprocess.run(
         ["node", "-e", script, str(app)], capture_output=True, text=True, check=True
     )
-    matrix, quoted = json.loads(out.stdout)
+    matrix, quoted, seeds = json.loads(out.stdout)
+    assert seeds == "2 of 3"
     assert matrix == 'attack,d1,"d,2"\na,12.3457,\nb,0,99.5\n'  # empty where no value
     assert quoted == '"say ""hi""",1\n'
+
+
+def test_a_cell_averages_its_valid_seeds_and_lists_the_others(tmp_path: Path) -> None:
+    results = [
+        _result("static_patch", "no_defense", 0, ca=0.9, asr=1.0),
+        _result("static_patch", "no_defense", 1, "invalid_attack"),
+        _result("static_patch", "no_defense", 2, ca=0.8, asr=0.8),
+        _result("no_attack", "no_defense", 0, "invalid_attack"),
+    ]
+    builder = LeaderboardBuilder(results, [])
+    cells = {(c["attack"], c["defense"]): c for c in builder.data()["cells"]}
+    partial = cells[("static_patch", "no_defense")]
+    assert partial["status"] == "self-reported" and partial["seeds"] == [0, 2]
+    assert partial["metrics"]["ca"] == pytest.approx({"mean": 0.85, "std": 0.05})
+    assert partial["excluded"] == [{"seed": 1, "status": "invalid-attack", "reason": "a reason"}]
+    assert partial["reason"] is None
+    invalid = cells[("no_attack", "no_defense")]  # no valid seed: the whole cell is invalid
+    assert (invalid["status"], invalid["reason"], invalid["metrics"]) == (
+        "invalid-attack",
+        "a reason",
+        {},
+    )
+    assert invalid["seeds"] == [0] and invalid["excluded"] == []
+    builder.build(tmp_path)
+    with (tmp_path / "results.csv").open() as f:
+        row = next(r for r in csv.DictReader(f) if r["attack"] == "static_patch")
+    assert (row["seeds"], row["excluded"]) == ("0 2", "1: invalid-attack (a reason)")

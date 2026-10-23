@@ -58,7 +58,7 @@ Each cell is a security game. The harness plays the challenger:
 3. **Clean reference.** Get the clean model for this scenario and seed (cached, shared by all cells).
 4. **Attack.** The attacker acts within its capabilities through an AttackerView. A poisoning attack returns a PoisonSet and a trigger. A model attack returns a model and a trigger.
 5. **Victim.** For poisoning attacks, the harness trains the victim on the train split with the PoisonSet overlay, using the scenario recipe. The undefended backdoored model is cached and shared.
-6. **Attack validity.** `CA(backdoored) >= CA(clean) - delta`. Otherwise the result is `invalid_attack`.
+6. **Attack validity.** `CA(backdoored) >= CA(clean) - delta`. Otherwise the result is `invalid_attack`. v1 note (user decision of 2026-10-23): validity is judged per seed, and the leaderboard averages a cell over its valid seeds, lists the left-out seeds with their reasons, and shows the cell as invalid only when no seed is valid. On DVS128 Gesture, whose test set has 264 samples, the 3-point budget is 8 samples, close to the spread between seeds.
 7. **Defense.** The harness builds a DefenderView with exactly the declared resources. The defense acts according to its stage (3.3). Pre-training and in-training defenses trigger a new victim training run with the sanitized data or the hooks.
 8. **Metrics.** Compute the metrics (section 8) on the clean test set and on the triggered test set. Every metric but `asr_all` counts only triggered samples whose true label is not the target.
 

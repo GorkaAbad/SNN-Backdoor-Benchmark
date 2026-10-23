@@ -46,7 +46,7 @@
     <section data-view="matrix">
       <div id="matrix" class="plot"></div>
       <button type="button" class="csv" id="matrix-csv">Download this matrix (CSV)</button>
-      <p class="note">Rows are attacks and columns are defenses: the baselines first, then the oldest papers first. Each cell is the mean over seeds, with the standard deviation and the number of seeds. A grey cell is not applicable, invalid or failed: hover for the reason.</p>
+      <p class="note">Rows are attacks and columns are defenses: the baselines first, then the oldest papers first. Each cell is the mean over its valid seeds, with the standard deviation and the number of seeds. A seed is left out when its attack was invalid (the backdoor cost more clean accuracy than the budget allows) or the run failed, and the cell then shows, for example, 2 of 3: hover for the reason. A grey cell is not applicable, or invalid or failed on every seed.</p>
       <div id="model-auroc"></div>
     </section>
 

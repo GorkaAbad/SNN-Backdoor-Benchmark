@@ -76,6 +76,16 @@ function groupedMethods(names, methods) {
   return [...order].sort((a, b) => groupIndex(a, methods) - groupIndex(b, methods) || order.indexOf(a) - order.indexOf(b));
 }
 
+// The seeds a cell averages, "2 of 3" when some seeds were left out (an invalid attack, a failure).
+function seedCount(cell) {
+  const excluded = cell.excluded?.length ?? 0;
+  return excluded ? `${cell.seeds.length} of ${cell.seeds.length + excluded}` : String(cell.seeds.length);
+}
+
+function excludedText(cell, separator) {
+  return (cell.excluded ?? []).map((e) => `seed ${e.seed} left out: ${e.status}, ${e.reason}`).join(separator);
+}
+
 function matrix(cells, metric, methods) {
   const attacks = orderMethods(uniq(cells.map((c) => c.attack)), methods);
   const defenses = orderMethods(uniq(cells.map((c) => c.defense)), methods);
@@ -92,9 +102,9 @@ function matrix(cells, metric, methods) {
       const stat = cell ? cell.metrics[metric] : null;
       const scale = isPercent(metric) ? 100 : 1;
       zRow.push(stat ? stat.mean * scale : null);
-      textRow.push(stat ? `${formatValue(metric, stat.mean)}<br>±${formatValue(metric, stat.std)} (${cell.seeds.length})` : cell ? cell.status : "");
+      textRow.push(stat ? `${formatValue(metric, stat.mean)}<br>±${formatValue(metric, stat.std)} (${seedCount(cell)})` : cell ? cell.status : "");
       hoverRow.push(cell
-        ? `${attack} × ${defense}<br>${stat ? formatStat(metric, stat) : cell.status}${cell.reason ? `<br>${cell.reason}` : ""}<br>seeds ${cell.seeds.join(", ")} · ${cell.sites.join(", ")}`
+        ? `${attack} × ${defense}<br>${stat ? formatStat(metric, stat) : cell.status}${cell.reason ? `<br>${cell.reason}` : ""}${cell.excluded?.length ? `<br>${excludedText(cell, "<br>")}` : ""}<br>seeds ${cell.seeds.join(", ")} · ${cell.sites.join(", ")}`
         : `${attack} × ${defense}<br>no result`);
     }
     z.push(zRow);
@@ -119,7 +129,7 @@ function matrixCsv(m) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, toCsv, matrixCsv };
+  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, toCsv, matrixCsv };
 }
 
 // ---- Page ----
@@ -351,10 +361,10 @@ function downloadTable() {
   const rank = (c) => attacks.indexOf(c.attack) * defenses.length + defenses.indexOf(c.defense);
   const scale = (m, v) => (v === undefined ? "" : Number((v * (isPercent(m) ? 100 : 1)).toFixed(4)));
   const rows = [...cells].sort((a, b) => rank(a) - rank(b)).map((c) => [
-    c.attack, c.defense, c.seeds.join(" "), c.status,
+    c.attack, c.defense, c.seeds.join(" "), excludedText(c, "; "), c.status,
     ...metrics.flatMap((m) => [scale(m, c.metrics[m]?.mean), scale(m, c.metrics[m]?.std)]),
   ]);
-  const headers = ["attack", "defense", "seeds", "status", ...metrics.flatMap((m) => [`${m}_mean`, `${m}_std`])];
+  const headers = ["attack", "defense", "seeds", "excluded", "status", ...metrics.flatMap((m) => [`${m}_mean`, `${m}_std`])];
   download(selectionName("table"), toCsv([headers, ...rows]));
 }
 
@@ -377,7 +387,7 @@ function renderTable() {
     const order = typeof ka === "number" ? ka - kb : String(ka).localeCompare(String(kb));
     return state.sort.dir * order;
   });
-  const rows = sorted.map((c) => [c.attack, c.defense, c.seeds.length, badge(c.status), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
+  const rows = sorted.map((c) => [c.attack, c.defense, seedCount(c), badge(c.status), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
   $("table").replaceChildren(table(headers, rows, true));
   const log = cells.flatMap((c) => c.verifications.map((v) => [c.attack, c.defense, v.seed, v.verifier, v.verifier_org, v.site, v.device, v.date, v.verdict]));
   if (!log.length) return empty($("verification-log"), "No verification of these cells yet.");

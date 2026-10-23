@@ -131,16 +131,21 @@ class LeaderboardBuilder:
 
 
 def _aggregate(results: list[CellResult], checks: dict[str, list[Verification]]) -> dict[str, Any]:
-    """One row of the site: the cell over its seeds, metrics as mean and population std."""
+    """One row of the site: the cell over its valid seeds, metrics as mean and population std.
+
+    Attack validity (PLAN rule 6) is judged per seed. Seeds that did not end ok are left out of
+    the metrics and listed in excluded, with their reason (user decision of 2026-10-23). A cell
+    takes the most serious outcome of its seeds only when no seed ended ok.
+    """
     first = results[0].cell
+    valid = [r for r in results if r.outcome == "ok"]
     severity = list(_STATUS)
     bad = sorted((r for r in results if r.outcome != "ok"), key=lambda r: severity.index(r.outcome))
-    status = _STATUS[bad[0].outcome] if bad else _verified(results, checks)
+    status = _verified(valid, checks) if valid else _STATUS[bad[0].outcome]
     metrics = {}
-    if not bad:  # metrics only when every seed finished
-        for name in sorted({name for r in results for name in r.metrics}):
-            values = np.array([r.metrics[name] for r in results if name in r.metrics])
-            metrics[name] = {"mean": float(values.mean()), "std": float(values.std())}
+    for name in sorted({name for r in valid for name in r.metrics}):
+        values = np.array([r.metrics[name] for r in valid if name in r.metrics])
+        metrics[name] = {"mean": float(values.mean()), "std": float(values.std())}
     return {
         "version": first.benchmark_version,
         "track": first.track,
@@ -150,9 +155,14 @@ def _aggregate(results: list[CellResult], checks: dict[str, list[Verification]])
         "T": first.scenario.repr.T,
         "attack": first.attack,
         "defense": first.defense,
-        "seeds": sorted(r.cell.seed for r in results),
+        "seeds": sorted(r.cell.seed for r in valid or results),
+        "excluded": [
+            {"seed": r.cell.seed, "status": _STATUS[r.outcome], "reason": r.reason}
+            for r in sorted(bad, key=lambda r: r.cell.seed)
+            if valid
+        ],
         "status": status,
-        "reason": bad[0].reason if bad else None,
+        "reason": None if valid else bad[0].reason,
         "metrics": metrics,
         "sites": sorted({r.provenance.site for r in results}),
         "devices": sorted({r.provenance.device for r in results}),
@@ -175,7 +185,7 @@ def _aggregate(results: list[CellResult], checks: dict[str, list[Verification]])
 def _csv(cells: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
     """The site's cells as CSV rows and columns, for analysis outside the page.
 
-    One row per cell, the mean and standard deviation over its seeds for each metric.
+    One row per cell, the mean and standard deviation over its valid seeds for each metric.
     """
     known = [m for m in METRICS if any(m in c["metrics"] for c in cells)]
     names = known + sorted({m for c in cells for m in c["metrics"]} - set(METRICS))
@@ -187,11 +197,14 @@ def _csv(cells: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
         for name, stat in cell["metrics"].items():
             row[f"{name}_mean"] = percent(name, stat["mean"])
             row[f"{name}_std"] = percent(name, stat["std"])
+        row["excluded"] = "; ".join(
+            f"{e['seed']}: {e['status']} ({e['reason']})" for e in cell["excluded"]
+        )
         row["sites"], row["devices"] = "; ".join(cell["sites"]), "; ".join(cell["devices"])
         row["reason"] = cell["reason"] or ""
         rows.append(row)
     stats = [f"{name}_{s}" for name in names for s in ("mean", "std")]
-    return rows, [*keys, "seeds", *stats, "sites", "devices", "reason"]
+    return rows, [*keys, "seeds", "excluded", *stats, "sites", "devices", "reason"]
 
 
 def _checked(result: CellResult, check: Verification) -> bool:
