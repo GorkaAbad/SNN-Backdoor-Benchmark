@@ -203,6 +203,12 @@ function plotLayout(extra) {
   };
 }
 
+function clearMessage(element) {
+  // Remove the message empty() left, and nothing else: Plotly keeps its figure in the element,
+  // and Plotly.react only updates it, so removing Plotly's own children leaves a blank plot.
+  element.querySelector(":scope > .empty")?.remove();
+}
+
 function empty(element, message) {
   if (window.Plotly) Plotly.purge(element);
   element.replaceChildren(Object.assign(document.createElement("div"), { className: "empty", textContent: message }));
@@ -212,7 +218,7 @@ function renderMatrix() {
   const element = $("matrix");
   const cells = visibleCells();
   if (!cells.length) return empty(element, "No results for this selection yet.");
-  element.replaceChildren();
+  clearMessage(element);
   const m = matrix(cells, state.metric, DATA.methods);
   const percent = isPercent(state.metric);
   Plotly.react(element, [{
@@ -256,7 +262,7 @@ function renderCompare() {
   const items = orderMethods(uniq(cells.map((c) => c[by])), DATA.methods);
   state.compareItem = setOptions($("compare-item"), items, state.compareItem);
   if (!cells.length || state.compareItem === null) return empty(element, "No results for this selection yet.");
-  element.replaceChildren();
+  clearMessage(element);
   const other = by === "attack" ? "defense" : "attack";
   const rows = cells.filter((c) => c[by] === state.compareItem && c.metrics[state.metric]);
   const names = orderMethods(rows.map((c) => c[other]), DATA.methods);
@@ -358,7 +364,7 @@ function renderReplications() {
   if (!plotted.length) {
     empty(element, `No replication target reports ${metricLabel(metric)}. Choose clean accuracy or ASR.`);
   } else {
-    element.replaceChildren();
+    clearMessage(element);
     const x = plotted.map((r) => `${r.record.method}<br>${r.target.dataset}`);
     Plotly.react(element, [
       { type: "bar", name: "Paper", x, y: plotted.map((r) => r.reported), marker: { color: css("--muted") } },
