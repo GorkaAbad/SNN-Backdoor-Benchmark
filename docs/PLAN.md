@@ -1,6 +1,6 @@
 # SNN Backdoor Benchmark: design and implementation plan
 
-Working name: `sbb` (placeholder, see section 16). Scope: versions v0 to v3. Last updated: 2026-10-15.
+Working name: `sbb` (placeholder, see section 16). Scope: versions v0 to v5. Last updated: 2026-10-23.
 
 ## 0. How to use this document
 
@@ -24,7 +24,7 @@ Principles:
 5. **Modular and non-repetitive.** One base class per role, plugins registered by name, one training loop, one data pipeline.
 6. **Reproducible.** Pinned environment, deterministic runs, a replication record for every ported method.
 
-Out of scope until v3: federated learning, ANN-to-SNN conversion, static-image datasets, physical recordings, deployment on neuromorphic hardware.
+Out of scope until v5: federated learning, ANN-to-SNN conversion, static-image datasets, physical recordings, deployment on neuromorphic hardware.
 
 ## 2. Glossary
 
@@ -69,7 +69,7 @@ Scenario kinds:
 - `data_poisoning`: modifies up to `poison_rate x |train|` samples outside the defender pool. Labels may change (dirty-label) or not (clean-label). The victim trains.
 - `training_control`: controls training (loss, schedule, neuron hyperparameters) for the scenario architecture and returns weights.
 - `supply_chain`: receives a clean trained model from the zoo, modifies its weights, returns weights. Neuron parameters can change only where they are weights, such as the trainable time constant of PLIF neurons (v1 clarification: the victim is stored as a state dict and rebuilt from the scenario's `ArchSpec`).
-- `federated` (v3): controls k of n clients.
+- `federated` (v5): controls k of n clients.
 
 Other capability fields:
 
@@ -112,7 +112,7 @@ The shared `Trainer`, a seeded RNG and the public scenario description (architec
 | `data_poisoning` | yes | yes | yes | yes |
 | `training_control` | no | no | yes | yes |
 | `supply_chain` | no | no | yes | yes |
-| `federated` (v3) | no | server only | yes | yes |
+| `federated` (v5) | no | server only | yes | yes |
 
 The available clean fraction is the scenario budget `defender_clean_fraction`.
 
@@ -640,7 +640,7 @@ class ScenarioKind(StrEnum):
     DATA_POISONING = "data_poisoning"
     TRAINING_CONTROL = "training_control"
     SUPPLY_CHAIN = "supply_chain"
-    FEDERATED = "federated"            # v3
+    FEDERATED = "federated"            # v5
 
 class Stage(StrEnum):
     PRE_TRAINING = "pre_training"
@@ -691,7 +691,7 @@ class AttackCard(CardBase):
 class DefenseCard(CardBase):
     stage: Stage
     view: View
-    input_repr: Literal["frames"] = "frames"                  # raw-event input defenses in v3
+    input_repr: Literal["frames"] = "frames"                  # raw-event input defenses in v5
     adaptation_note: str | None = None                        # how an ANN defense was adapted
 
 def compatible(attack: AttackCard, defense: DefenseCard, budget: "Budget") -> tuple[bool, list[str]]: ...
@@ -1225,7 +1225,7 @@ class Registry(Generic[T]):
     def register(self, name: str) -> Callable[[type[T]], type[T]]: ...   # fails on duplicate names
     def get(self, name: str) -> type[T]: ...
     def names(self) -> list[str]: ...
-    def load_entry_points(self, group: str) -> None: ...                 # v3, third-party plugins
+    def load_entry_points(self, group: str) -> None: ...                 # v5, third-party plugins
 
 # Module-level registries: ATTACKS, DEFENSES, METRICS (sbb.core.registry), DATASETS (sbb.data.sample),
 # ARCHITECTURES (sbb.models.snn). TRIGGERS and EXECUTORS arrive with v1.
@@ -1534,7 +1534,9 @@ v1 decision on `sneaky_dynamic` (user, 2026-10-23): an attacker that controls tr
 
 v1 code review (2026-10-22). Fixed: the Game reseeds before building the attack, because a learned trigger's initial weights came from an RNG state that depended on whether the clean model was cached; executors write job folders under `<cache_dir>/jobs/`, never next to the tracked results, since `site.yaml` names the site's paths and accounts; Slurm array scripts `cd` into the job folder so no path is quoted around the array index; `sbb reproduce --tolerance-pp 0` asks for an exact match; `sbb validate` reports YAML syntax errors; the site sorts benchmark versions numerically; triggers refuse parameters they cannot apply; TMPBD refuses `steps: 0` and takes its input clamp from the card; ABL's unlearning runs through the Trainer with its weight decay in the card (bit-identical weights); STRIP moves its overlays to the device once; a verification counts on the site only while the result still has the numbers it checked. Deferred to v1.x: reusing the cached victim as the reference model of spectral signatures and activation clustering (the same training, run twice), a lock per cache key against parallel cells building the same model, and a batched dynamic trigger on the GPU.
 
-Order: group A first (methods the maintainers authored, where fidelity is easiest to judge, plus the defenses needed to exercise every stage), then group B.
+Order: group A first (methods the maintainers authored, where fidelity is easiest to judge, plus the defenses needed to exercise every stage), then group B. Group C lands in v2, group D in v3 and group E in v5 (13.5).
+
+Rule for sbb variants (2026-10-23) **[DECIDE]**: an ANN attack carried over to event data, or a new event-native attack, is an sbb variant like `static_patch`. Its card names the source method and states the adaptation in `adaptation_note`. It has no replication record, since the paper's setting does not exist on events, and it enters the battery like a baseline. Published SNN attacks stay ports with a replication record.
 
 | Group | Method | Kind or stage | Implementation on shared parts | Replication target | Official code |
 |---|---|---|---|---|---|
@@ -1550,28 +1552,41 @@ Order: group A first (methods the maintainers authored, where fidelity is easies
 | A | TMPBD | model_detection | `DetectionDefense` with view `{model}`, membrane probe with gradients (`tmpbd`) | none (section 12) | github.com/alexjiachenli/TMPBD-NDSBM (no license) |
 | A | STRIP | inference | `InputDefense` with view `{model, clean_subset}`, frame superposition (`superpose`, as Flashy's SNN STRIP) (`strip`) | none (section 12) | github.com/garrisongys/STRIP (no license) |
 | B | T-Backdoor (rate, latency, jitter) | data_poisoning | `DirtyLabelPoisoning` with `RateTrigger`, `LatencyTrigger` and `JitterTrigger` (`tbackdoor_rate`, `tbackdoor_latency`, `tbackdoor_jitter`) | Figure 4, single target, p = 0.1, official default parameters, N-MNIST and CIFAR10-DVS (proposed, read from the plot) | github.com/SiSL-URI/T-Backdoor (no license) |
-| B | Temporal clean-label poisoning | data_poisoning | `EventRedistributionTrigger`, `TargetClassSelector`, `CleanLabel` | moved to a later version (user decision of 2026-10-22: unpublished, and clean-label attacks get their own version) | the maintainer's own code |
+| B | Temporal clean-label poisoning | data_poisoning | `EventRedistributionTrigger`, `TargetClassSelector`, `CleanLabel` | moved to v3, group D (user decision of 2026-10-22: unpublished, and clean-label attacks get their own version) | the maintainer's own code |
 | B | BadSNN | training_control | `ModelAttack` with `TrainerHooks` that change neuron hyperparameters during training, plus trigger optimization | waits for the official code (user decision of 2026-10-22): the repository only says the code is coming, and the paper leaves T, epochs, learning rate and the frame encoding of N-MNIST open. The deployment threshold can be folded into the weights, so no core change is needed | github.com/SiSL-URI/BadSNN (no code yet) |
 | B | NAD | post_training | `ModelDefense`, distillation loss through `TrainerHooks`, attention maps from probes | [FILL] | [FILL] |
 | B | ANP | post_training | `ModelDefense`, neuron masks over `named_neurons()` | [FILL] | [FILL] |
 | B | NDSBM | post_training | `ModelDefense`, membrane probe, clamping | [FILL] | [FILL] |
 | B | ABL | in_training | `TrainingDefense` using per-sample losses from `TrainState` | [FILL] | [FILL] |
 | B | Spectral signatures, activation clustering | pre_training | `DataDefense`, reference model trained with the `Trainer`, probes | [FILL] | [FILL] |
+| C | Hot pixel, polarity flip, flicker | data_poisoning | sbb variants: `DirtyLabelPoisoning` with a stuck-pixel trigger, a polarity flip on a region, and a light blinking at a fixed rate | none (sbb variants) | none |
+| C | Blend, WaNet, BppAttack as events | data_poisoning | sbb variants: event superposition (Blend, Chen et al. 2017), warped event coordinates (WaNet, Nguyen and Tran, ICLR 2021), quantized timestamps (BppAttack, Wang et al., CVPR 2022) | none (sbb variants) | [FILL] |
+| C | Adap-Blend, Adap-Patch | data_poisoning, adaptive track | sbb variants of Qi et al., ICLR 2023, with conservative poisoned samples that keep their labels | none (sbb variants) | [FILL] |
+| C | Neural Cleanse, MM-BD | model_detection | `DetectionDefense`. Neural Cleanse reverse-engineers a frame trigger (S&P 2019). MM-BD scores the maximum margin per class without a trigger (S&P 2024) | none (section 12) | [FILL] |
+| C | RNP, FST, SAU, I-BAU, BTI-DBF | post_training | `ModelDefense` on the defender pool: RNP (ICML 2023), FST (NeurIPS 2023), SAU (NeurIPS 2023), I-BAU (ICLR 2022), BTI-DBF (ICLR 2024) | none (section 12) | [FILL] |
+| C | SCALE-UP, TeCo, IBD-PSC | inference | `InputDefense`. SCALE-UP scales the event rate (ICLR 2023), TeCo uses corruptions of events (CVPR 2023), IBD-PSC scales parameters (ICML 2024) | none (section 12) | [FILL] |
+| C | DBD, ASD | in_training | `TrainingDefense` through `TrainerHooks`: DBD (ICLR 2022) needs self-supervised pretraining on events, ASD (CVPR 2023) splits the data adaptively | none (section 12) | [FILL] |
+| C | Fewer time steps, threshold recalibration | post_training | sbb SNN-native baselines. A `ModelDefense` that keeps the first k time steps at inference, or rescales the firing thresholds on the defender pool. Both store their state like NDSBM's extra state | none | none |
+| D | SIG, Narcissus as events | data_poisoning, clean-label | sbb variants with `TargetClassSelector` and `CleanLabel`: a periodic temporal signal (SIG, Barni et al., ICIP 2019), a trigger optimized on the target class (Narcissus, Zeng et al., CCS 2023) | none (sbb variants) | [FILL] |
+| E | Neuron-parameter tampering | supply_chain | sbb variant: changes thresholds, leak or reset of the clean model. Needs neuron parameters stored with the model | none (sbb variant) | none |
+| E | NeuroAttack, TBT, handcrafted backdoors | supply_chain | `ModelAttack` on weight bits or weights: NeuroAttack (Venceslai et al., IJCNN 2020), TBT (Rakin et al., CVPR 2020), handcrafted (Hong et al., NeurIPS 2022) | [FILL] | [FILL] |
+| E | Learning-rule poisoning | data_poisoning | Jin et al. 2024, attacks on learning rules other than surrogate gradients. Needs those rules in the `Trainer` | [FILL] | [FILL] |
+| E | MNTD | model_detection | `DetectionDefense` with a meta-classifier over shadow models trained on the defender pool (Xu et al., S&P 2021) | none (section 12) | [FILL] |
 
 ## 13. Roadmap
 
 ### 13.1 Overview
 
-| Area | v0 toy | v1 public alpha | v2 verified | v3 extensions |
-|---|---|---|---|---|
-| Datasets | SyntheticEvents, N-MNIST | + DVS128 Gesture, CIFAR10-DVS | same | + static images with encoders |
-| Architectures | tiny_lif_cnn | + dvsgesture_net, cifar10dvs_net (the papers' networks) | same | as needed |
-| Scenario kinds | data_poisoning | + training_control, supply_chain | same | + federated, ANN-to-SNN conversion |
-| Defense stages | post_training | all five | same | + raw-event input defenses |
-| Methods | static_patch, fine_tuning, baselines | group A ports, group B during v1.x | group B finished, adaptive track | community |
-| Executors | in-process | LocalExecutor, SlurmExecutor | + HFJobsExecutor (optional) | + others on demand |
-| Results | JSON and Markdown table | bundles, zoo on the Hub, leaderboard | statuses from verifications, DOI, Hub mirror | entry-point plugins |
-| Verification | determinism and golden tests | lite track on GitHub runners | independent reproduction, spot checks, disputes | automated assignment |
+| Area | v0 toy | v1 public alpha | v2 verified | v3 clean-label | v4 architectures and data | v5 extensions |
+|---|---|---|---|---|---|---|
+| Datasets | SyntheticEvents, N-MNIST | + DVS128 Gesture, CIFAR10-DVS | same | same | + N-Caltech101, N-CARS, ASL-DVS, SHD, SSC | + static images with encoders, large event datasets |
+| Architectures | tiny_lif_cnn | + dvsgesture_net, cifar10dvs_net (the papers' networks) | same | same | + architecture track: SEW-ResNet, spiking transformers, recurrent SNN | as needed |
+| Scenario kinds | data_poisoning | + training_control, supply_chain | same | same | same | + federated, ANN-to-SNN conversion |
+| Defense stages | post_training | all five | same | same | same | + raw-event input defenses |
+| Methods | static_patch, fine_tuning, baselines | group A ports, group B during v1.x | group B finished, group C, adaptive track | group D (clean-label) | defense utilities for every layer kind | group E, community |
+| Executors | in-process | LocalExecutor, SlurmExecutor | + HFJobsExecutor (optional) | same | same | + others on demand |
+| Results | JSON and Markdown table | bundles, zoo on the Hub, leaderboard | statuses from verifications, DOI, Hub mirror | + label-policy filter | + architecture filter | entry-point plugins |
+| Verification | determinism and golden tests | lite track on GitHub runners | independent reproduction, spot checks, disputes | same | same | automated assignment |
 
 ### 13.2 v0: toy (internal)
 
@@ -1644,12 +1659,13 @@ Tasks, in order:
 
 1. VerificationPolicy: independence, spot checks, disputes, status computation. Full-track verification flow with `sbb reproduce` and Verification pull requests.
 2. Leaderboard: statuses with sites and devices, method pages with "broken by" links, Pareto fronts per threat-model class.
-3. Adaptive track: attacks with `aware:<defense_id>`.
+3. Adaptive track: attacks with `aware:<defense_id>`. The first ones are event variants of Adap-Blend and Adap-Patch (Qi et al., ICLR 2023), which break the latent separability that spectral signatures and activation clustering rely on (group C, section 12).
 4. Seeds and intervals in every table. Activity metrics, reusing NeuroBench where possible.
 5. HFJobsExecutor (optional).
 6. Delayed battery: private repository for pending attacks, one release cycle before publication.
 7. Group B ports finished.
-8. Freeze `benchmarks/v1.0.yaml`, tag the release, mint a DOI through the Zenodo GitHub integration, mirror results to `<hf-org>/sbb-results`.
+8. Group C (section 12) lands as v2.x releases: published defenses and event-native attack variants that need no core change, and two SNN-native defenses (fewer time steps at inference, threshold recalibration) that store their state like NDSBM's extra state. A method joins `benchmarks/v1.0.yaml` if it is ready at the freeze (attacks `replicated` or `explained`, sbb variants with their cards), otherwise the next benchmark version.
+9. Freeze `benchmarks/v1.0.yaml`, tag the release, mint a DOI through the Zenodo GitHub integration, mirror results to `<hf-org>/sbb-results`.
 
 Definition of done:
 
@@ -1657,12 +1673,52 @@ Definition of done:
 - A seeded mismatch in the tests yields `disputed`.
 - Release tagged with a DOI, results mirrored on the Hub.
 
-### 13.5 v3: extensions
+### 13.5 Later versions: v3 to v5
+
+Order (2026-10-23): clean-label attacks first, because they need no core change and test the battery under a new threat. Then new architectures and datasets, which need the defense utilities generalized. The extensions come last, since most need core or Trainer changes.
+
+#### v3: clean-label attacks
+
+Goal: measure whether the defenses of v1 and v2, built and tuned against dirty-label poisoning, still hold when every poisoned label is correct.
+
+Tasks, in order:
+
+1. Group D ports (section 12): the maintainers' temporal clean-label poisoning (moved here from group B, once published), and event variants of SIG and Narcissus. They use `TargetClassSelector` and `CleanLabel` from v1, so the core does not change.
+2. Clean-label budget. The Budget stays a fraction of the train set (3.2). Default **[DECIDE]**: half of the target class outside the defender pool.
+3. A clean-label scenario in the next benchmark version, run against the whole defense battery. The site filters by label policy.
+
+Definition of done:
+
+- Every group D attack has status `replicated` or `explained`, or is an sbb variant with its card.
+- `sbb plan` lists the clean-label cells with N/A reasons.
+
+#### v4: architectures and datasets
+
+Goal: test whether the results hold across network families, neuron models and sensors. The full track keeps its networks (D6), so its results stay comparable with the literature. New networks run in a separate architecture track.
+
+Tasks, in order:
+
+1. Defense utilities for every layer kind. `sbb.defenses.utils` ranks, probes and prunes units of conv channels, attention heads, MLP hidden units and recurrent units. Fine-pruning, CLP, ANP, NAD and TMPBD then run on every registered architecture, and a contract test checks every pair.
+2. Architectures (13.6), each rebuilt from its official code and checked against it like `voting_cnn`: `sew_resnet18`, `spikformer`, `spike_driven_v2` and `qkformer`. They run on SpikingJelly's torch backend, since cupy is not deterministic (v0, task 14). The official DVS settings of each network are compared with D7 **[FILL]**.
+3. Neuron models as a second axis on the papers' networks: LIF, PLIF, IF and ALIF through `NeuronSpec`. Membrane-based defenses such as TMPBD and NDSBM depend on the neuron model.
+4. Datasets (13.6): N-Caltech101, N-CARS, ASL-DVS, SHD and SSC, with SpikingJelly's conventions where it has an adapter. SHD and SSC are audio events, encoded as `[T, 1, 1, 700]` so the tensor layout stays `[B, T, P, H, W]`. They need a recurrent network (`srnn_alif`) and triggers on frequency channels.
+5. An architecture track in the benchmark spec: the battery of the latest benchmark version for each architecture on DVS128 Gesture and CIFAR10-DVS, 3 seeds (D11). The site filters by architecture.
+
+Definition of done:
+
+- Every defense runs on every registered architecture (contract test).
+- Every new architecture matches its official code in a unit test, as `voting_cnn` does.
+- `sbb plan` lists the architecture-track cells with N/A reasons.
+
+#### v5: extensions
 
 - Federated scenario kind with server-side defenses.
 - ANN-to-SNN conversion track.
 - Static-image datasets with rate and direct encoders (new Representation classes).
-- Raw-event input defenses (`input_repr: raw_events`).
+- Raw-event input defenses (`input_repr: raw_events`). First ones: the background-activity and refractory filters that event cameras already use, and random event dropping, which can also give certified bounds.
+- Group E (section 12), methods that need core or Trainer changes: neuron-parameter tampering (thresholds, leak and reset stored with the model), bit-flip and handcrafted weight backdoors, poisoning of learning rules other than surrogate gradients (a new Trainer rule), and MNTD, whose meta-classifier trains on many shadow models.
+- Energy backdoors: the trigger raises the spike count or the latency instead of changing the label. The card gains an attack goal, and a metric compares the activity metrics (v2) of clean and triggered inputs.
+- Large event datasets, full track only: HARDVS, DailyDVS-200 and N-ImageNet.
 - Third-party plugins through Python entry points.
 - Private recorded DVS test split and a physical-trigger track.
 - Automated verifier assignment.
@@ -1676,6 +1732,10 @@ Definition of done:
 | N-MNIST | `NMNIST` | (34, 34, 2) | 10 | official train and test | lite track |
 | DVS128 Gesture | `DVSGesture` | (128, 128, 2) | 11 | official train and test (by subject) | downloaded from IBM Box or a Dropbox mirror, manual fallback |
 | CIFAR10-DVS | `CIFAR10DVS` | (128, 128, 2) | 10 | SpikingJelly's ordered 9:1 | no official split |
+| N-Caltech101 (v4) | `NCaltech101` | (240, 180, 2) | 101 | seeded stratified 8:2 split file **[DECIDE]** | Orchard et al. 2015, recorded with saccades like N-MNIST, no official split |
+| N-CARS (v4) | `NCARS` | (120, 100, 2) | 2 | official train and test | Sironi et al., CVPR 2018, real driving recordings |
+| ASL-DVS (v4) | `ASLDVS` | (240, 180, 2) | 24 | **[FILL]** | Bi et al., ICCV 2019 |
+| SHD, SSC (v4) | `SHD`, `SSC` | (700, 1, 1) | 20, 35 | official train and test | Cramer et al., TNNLS 2020, audio events on 700 channels |
 
 Adapters read raw events and reproduce SpikingJelly's dataset conventions exactly, because every ported paper loads its data through SpikingJelly: the index order, the labels and, for CIFAR10-DVS, its coordinate convention. If a dataset needs a manual download, `prepare()` stops with clear instructions. Dataset licenses decide whether a mirror on the Hub is allowed **[FILL]**. DVS128 Gesture and CIFAR10-DVS are CC BY 4.0.
 
@@ -1686,6 +1746,11 @@ v1 change: adapters decode the raw files themselves instead of wrapping SpikingJ
 | `tiny_lif_cnn` | lite track, tests | in-house: two conv blocks (16 and 32 channels) with LIF neurons and pooling, flatten size computed from the input, linear readout |
 | `dvsgesture_net` | full track, DVS128 Gesture | SpikingJelly's `parametric_lif_net.DVSGestureNet`: five conv blocks of 128 channels and a voting readout |
 | `cifar10dvs_net` | full track, CIFAR10-DVS | SpikingJelly's `parametric_lif_net.CIFAR10DVSNet`: four conv blocks of 128 channels and a voting readout |
+| `sew_resnet18` (v4) | architecture track | SEW-ResNet, Fang et al., NeurIPS 2021, SpikingJelly's `sew_resnet` |
+| `spikformer` (v4) | architecture track | Spikformer, Zhou et al., ICLR 2023 |
+| `spike_driven_v2` (v4) | architecture track | Spike-driven Transformer V2 (Meta-SpikeFormer), Yao et al., ICLR 2024 |
+| `qkformer` (v4) | architecture track | QKFormer, Zhou et al., NeurIPS 2024 |
+| `srnn_alif` (v4) | SHD and SSC | recurrent SNN with adaptive LIF neurons, Yin et al., Nature Machine Intelligence 2021 |
 
 Full-track defaults: T = 16 at 128x128, no downsampling, for both datasets. This is the setting of the ported papers (Sneaky Spikes, Flashy Backdoor, TMPBD), which train these two networks with LIF neurons, the ATan surrogate and `detach_reset=True`, and an MSE loss between the firing rate and the one-hot label.
 
@@ -1750,7 +1815,7 @@ Limits to design for: a job on a GitHub-hosted runner runs at most 6 hours, the 
 2. Pull request workflows get no secrets. `HF_TOKEN` and write permissions exist only in workflows that run on `main`.
 3. Post-merge workflows run reviewed code from `main`, so a pull request cannot change the harness that verifies it.
 4. Artifacts: safetensors for weights, npz with `allow_pickle=False` for arrays, JSON for metadata. `load_checkpoint` rebuilds the model from the ArchSpec and never unpickles. Never call `torch.load` on downloaded files.
-5. Proxies stop accidental threat-model violations, not deliberate cheating. Code review is the control for cheating, for example an input detector that flags anything not identical to the public test set. A private recorded test split (v3) closes that case fully.
+5. Proxies stop accidental threat-model violations, not deliberate cheating. Code review is the control for cheating, for example an input detector that flags anything not identical to the public test set. A private recorded test split (v5) closes that case fully.
 6. Pending attacks of the delayed battery never leave the maintainers.
 
 ## 16. Open decisions
