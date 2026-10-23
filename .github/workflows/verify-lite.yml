@@ -2,11 +2,17 @@ name: verify-lite
 
 # Reruns every lite result on main that has no record of this workflow yet, one GitHub-hosted
 # runner per cell, then opens a pull request with the Verification records (docs/PLAN.md 10).
+# Run by hand with collect_run_id to open the pull request of an earlier run's records instead.
 on:
   push:
     branches: [main]
     paths: ["results/**"]
   workflow_dispatch:
+    inputs:
+      collect_run_id:
+        description: "Only open the pull request with the records of this earlier run"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -21,6 +27,7 @@ env:
 
 jobs:
   plan:
+    if: ${{ !inputs.collect_run_id }}
     runs-on: ubuntu-latest
     outputs:
       cells: ${{ steps.pending.outputs.cells }}
@@ -80,36 +87,48 @@ jobs:
 
   records:
     needs: [plan, verify]
-    if: ${{ !cancelled() && needs.plan.outputs.cells != '[]' }}
+    if: ${{ !cancelled() && (inputs.collect_run_id || needs.plan.outputs.cells != '[]') }}
     runs-on: ubuntu-latest
     permissions:
+      actions: read # to read another run's artifacts
       contents: write
       pull-requests: write
     steps:
+      # The branch starts from the latest main, so it only adds records. Built on the commit the
+      # run started from, it would differ from main in any workflow changed since, and GitHub
+      # refuses workflow changes pushed with GITHUB_TOKEN.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
       - uses: actions/download-artifact@v8
         with:
           pattern: verification-*
           path: verifications
           merge-multiple: true
+          run-id: ${{ inputs.collect_run_id || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Open a pull request with the records
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: verify-lite/${{ github.run_id }}
+          SOURCE_RUN: ${{ inputs.collect_run_id || github.run_id }} # the run that reran the cells
         run: |
           git add verifications
           if git diff --cached --quiet; then echo "No record was written."; exit 0; fi
           git switch -c "$BRANCH"
           git -c user.name="github-actions[bot]" \
             -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "Add the verify-lite records of run $GITHUB_RUN_ID"
+            commit -q -m "Add the verify-lite records of run $SOURCE_RUN"
           git push -q origin "$BRANCH"
+          git diff --name-only HEAD~1 > "$RUNNER_TEMP/records.txt"
           {
-            echo "Reruns of lite cells on GitHub-hosted runners, run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+            echo "Reruns of lite cells on GitHub-hosted runners, run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN."
             echo
-            git diff --name-only HEAD~1 | while read -r f; do echo "- $(jq -r .verdict "$f") \`$f\`"; done
+            xargs jq -r .verdict < "$RUNNER_TEMP/records.txt" | sort | uniq -c | sed 's/^ */- /'
+            echo
+            while read -r f; do echo "- $(jq -r .verdict "$f") \`$f\`"; done < "$RUNNER_TEMP/records.txt"
             echo
             echo "A pull request opened with GITHUB_TOKEN does not start CI. Close and reopen it to run CI."
           } > "$RUNNER_TEMP/body.md"
           gh pr create --base main --head "$BRANCH" \
-            --title "verify-lite records of run $GITHUB_RUN_ID" --body-file "$RUNNER_TEMP/body.md"
+            --title "verify-lite records of run $SOURCE_RUN" --body-file "$RUNNER_TEMP/body.md"
