@@ -35,7 +35,7 @@ _STATUS = {
     "invalid_attack": "invalid-attack",
     "not_applicable": "not-applicable",
 }
-_TEMPLATES = ("index.html", "app.js", "style.css")
+_TEMPLATES = ("index.html", "app.js", "style.css", "favicon.png")
 
 
 class LeaderboardBuilder:

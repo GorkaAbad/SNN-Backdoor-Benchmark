@@ -12,6 +12,7 @@ from sbb.results.replication import ReplicationRecord
 from sbb.results.verification import LITE_VERIFIER, Verification
 from sbb.runner.planner import Planner
 from sbb.site.builder import LeaderboardBuilder
+from sbb.site.status import status_rows, write_csv
 from tests.unit.test_runner import SMOKE
 
 PROVENANCE = collect_provenance(torch.device("cpu"), "laptop", "test", datetime.now(UTC), 0.0)
@@ -172,3 +173,22 @@ def test_page_opens_on_the_newest_version() -> None:
         ["node", "-e", script, str(app)], capture_output=True, text=True, check=True
     )
     assert json.loads(out.stdout) == ["0.10.0", "0.9.1", "0.9.0"]
+
+
+def test_status_lists_every_planned_cell_with_its_state(tmp_path: Path) -> None:
+    cells = Planner(SMOKE).cells()
+    done = _result("static_patch", "no_defense", 0, ca=0.9, asr=1.0)
+    na = _result("no_attack", "fine_tuning", 0, "not_applicable")
+    rows = status_rows(cells, [done, na], [_check(done, "match")])
+    by_pair = {(r["attack"], r["defense"]): r for r in rows}
+    assert len(rows) == len(cells)
+    assert by_pair[("static_patch", "no_defense")]["state"] == "ok"
+    assert by_pair[("static_patch", "no_defense")]["verification"] == "match"
+    assert by_pair[("static_patch", "no_defense")]["ca"] == 90.0  # percent
+    assert by_pair[("no_attack", "fine_tuning")]["state"] == "not_applicable"
+    assert by_pair[("no_attack", "fine_tuning")]["reason"] == "a reason"
+    assert by_pair[("no_attack", "no_defense")]["state"] == "missing"
+    path = tmp_path / "status.csv"
+    write_csv(rows, path)
+    lines = path.read_text().splitlines()
+    assert lines[0].startswith("version,track,scenario") and len(lines) == len(cells) + 1

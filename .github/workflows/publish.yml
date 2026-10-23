@@ -28,6 +28,8 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --frozen --no-dev
       - run: uv run sbb site build --out _site
+      # Every cell of the latest benchmark spec, done or missing, linked from the footer.
+      - run: uv run sbb plan "$(ls benchmarks/v*.yaml | sort -V | tail -1)" --csv _site/status.csv
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

@@ -1,6 +1,9 @@
 <div align="center">
 
-# SNN Backdoor Benchmark
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.png">
+  <img alt="SNN Backdoor Benchmark" src="docs/assets/logo.png" width="560">
+</picture>
 
 **A reproducible benchmark for backdoor attacks and defenses on spiking neural networks with neuromorphic data.**
 
@@ -124,6 +127,9 @@ List the cells of the v0.9 benchmark, with the reason for each cell that is not 
 ```bash
 uv run sbb plan benchmarks/v0.9.yaml
 ```
+
+Add `--csv status.csv` to write every cell with its state (done, missing, not applicable or
+failed), its verification and its metrics. The leaderboard publishes the same file for main.
 
 Run the lite track on N-MNIST (downloaded on first use), then build the leaderboard locally:
 

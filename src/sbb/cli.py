@@ -33,6 +33,7 @@ from sbb.runner.planner import Planner
 from sbb.runner.site import SiteProfile
 from sbb.runner.spec import BenchmarkSpec, Tolerance
 from sbb.site.builder import LeaderboardBuilder
+from sbb.site.status import status_rows, summary, write_csv
 from sbb.utils.errors import SbbError
 from sbb.utils.storage import ArtifactCache, HubStore, LocalStore
 
@@ -41,6 +42,7 @@ console = Console()
 
 Site = Annotated[Path | None, typer.Option(help="SiteProfile YAML. Default: local, ~/.cache/sbb.")]
 Out = Annotated[Path, typer.Option(help="Results directory.")]
+Checks = Annotated[Path, typer.Option(help="Root of the verification records.")]
 TrackFilter = Annotated[str | None, typer.Option("--track", help="Only this track.")]
 AttackFilter = Annotated[str | None, typer.Option("--attack", help="Only this attack.")]
 DefenseFilter = Annotated[str | None, typer.Option("--defense", help="Only this defense.")]
@@ -292,6 +294,10 @@ def reproduce(
     console.print(f"record written to {path}")
 
 
+def _verifications(root: Path) -> list[Verification]:
+    return [Verification.model_validate_json(p.read_text()) for p in sorted(root.rglob("*.json"))]
+
+
 site_app = typer.Typer(no_args_is_help=True, help="The leaderboard site.")
 app.add_typer(site_app, name="site")
 
@@ -301,16 +307,11 @@ def site_build(
     out: Annotated[Path, typer.Option(help="Directory of the site.")] = Path("_site"),
     results: Annotated[Path, typer.Option(help="Results directory.")] = Path("results"),
     replications: Annotated[Path, typer.Option(help="Replication records.")] = Path("replications"),
-    verifications: Annotated[Path, typer.Option(help="Verification records.")] = Path(
-        "verifications"
-    ),
+    verifications: Checks = Path("verifications"),
 ) -> None:
     """Build the static, interactive leaderboard into OUT, for GitHub Pages."""
     records = [ReplicationRecord.load(p) for p in sorted(replications.glob("*.yaml"))]
-    checks = [
-        Verification.model_validate_json(p.read_text())
-        for p in sorted(verifications.rglob("*.json"))
-    ]
+    checks = _verifications(verifications)
     builder = LeaderboardBuilder(LocalResultStore(results).query(), records, checks)
     builder.build(out)
     console.print(
@@ -326,9 +327,22 @@ def plan(
     attack: AttackFilter = None,
     defense: DefenseFilter = None,
     out: Out = Path("results"),
+    csv: Annotated[
+        Path | None, typer.Option(help="Write every cell, its state and metrics to this CSV.")
+    ] = None,
+    verifications: Checks = Path("verifications"),
 ) -> None:
-    """List the cells of SPEC with their status and N/A reasons."""
+    """List the cells of SPEC with their status and N/A reasons, or write them to a CSV."""
     store = LocalResultStore(out)
+    if csv:
+        cells = Planner(BenchmarkSpec.load(spec)).cells(track, attack, defense)
+        rows = status_rows(cells, store.query(), _verifications(verifications))
+        write_csv(rows, csv)
+        for name, counts in summary(rows).items():
+            states = ", ".join(f"{n} {state}" for state, n in counts.most_common())
+            console.print(f"{name}: {sum(counts.values())} cells, {states}")
+        console.print(f"written to {csv}")
+        return
     table = Table("cell", "track", "scenario", "attack", "defense", "seed", "status")
     for cell in Planner(BenchmarkSpec.load(spec)).cells(track, attack, defense):
         attack_card, defense_card = ATTACKS.get(cell.attack).card, DEFENSES.get(cell.defense).card
