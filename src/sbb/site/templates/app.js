@@ -104,8 +104,22 @@ function matrix(cells, metric, methods) {
   return { attacks, defenses, z, text, hover };
 }
 
+function toCsv(rows) {
+  const field = (value) => {
+    const text = value === null || value === undefined ? "" : String(value);
+    return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  };
+  return rows.map((row) => row.map(field).join(",")).join("\n") + "\n";
+}
+
+// The shown matrix: one row per attack, one column per defense, the means. Empty without a value.
+function matrixCsv(m) {
+  const value = (v) => (v === null ? "" : Number(v.toFixed(4)));
+  return toCsv([["attack", ...m.defenses], ...m.attacks.map((a, i) => [a, ...m.z[i].map(value)])]);
+}
+
 if (typeof module !== "undefined") {
-  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix };
+  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, toCsv, matrixCsv };
 }
 
 // ---- Page ----
@@ -315,6 +329,35 @@ function badge(status) {
   return Object.assign(document.createElement("span"), { className: `badge ${status}`, textContent: status });
 }
 
+function download(name, csv) {
+  const href = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
+  Object.assign(document.createElement("a"), { href, download: name }).click();
+}
+
+function selectionName(kind) {
+  return `sbb-${state.version}-${state.track}-${state.scenario}-${kind}.csv`;
+}
+
+function downloadMatrix() {
+  download(selectionName(`${state.metric}-matrix`), matrixCsv(matrix(visibleCells(), state.metric, DATA.methods)));
+}
+
+// The shown cells, one row each, with the mean and std of every metric, in the matrix order.
+function downloadTable() {
+  const cells = visibleCells();
+  const metrics = METRIC_ORDER.filter((m) => cells.some((c) => c.metrics[m]));
+  const attacks = orderMethods(uniq(cells.map((c) => c.attack)), DATA.methods);
+  const defenses = orderMethods(uniq(cells.map((c) => c.defense)), DATA.methods);
+  const rank = (c) => attacks.indexOf(c.attack) * defenses.length + defenses.indexOf(c.defense);
+  const scale = (m, v) => (v === undefined ? "" : Number((v * (isPercent(m) ? 100 : 1)).toFixed(4)));
+  const rows = [...cells].sort((a, b) => rank(a) - rank(b)).map((c) => [
+    c.attack, c.defense, c.seeds.join(" "), c.status,
+    ...metrics.flatMap((m) => [scale(m, c.metrics[m]?.mean), scale(m, c.metrics[m]?.std)]),
+  ]);
+  const headers = ["attack", "defense", "seeds", "status", ...metrics.flatMap((m) => [`${m}_mean`, `${m}_std`])];
+  download(selectionName("table"), toCsv([headers, ...rows]));
+}
+
 function renderTable() {
   const cells = visibleCells();
   if (!cells.length) return empty($("table"), "No results for this selection yet.");
@@ -470,6 +513,8 @@ async function main() {
       render();
     });
   }
+  $("matrix-csv").addEventListener("click", downloadMatrix);
+  $("table-csv").addEventListener("click", downloadTable);
   $("compare-by").addEventListener("change", (event) => {
     state.compareBy = event.target.value;
     state.compareItem = null;
@@ -490,7 +535,8 @@ async function main() {
     });
   }
   $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. Lite cells are verified on GitHub runners after merge. Full-track cells are self-reported until independent verification (v2). `;
-  $("footer").append(Object.assign(document.createElement("a"), { href: "status.csv", textContent: "Run status of every cell (CSV)" }), ".");
+  const link = (href, textContent) => Object.assign(document.createElement("a"), { href, textContent });
+  $("footer").append("Download ", link("results.csv", "all results"), " (mean and std over seeds) or ", link("status.csv", "the run status of every cell"), ", as CSV.");
   render();
 }
 

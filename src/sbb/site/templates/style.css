@@ -139,3 +139,16 @@ tbody tr:hover { background: var(--accent-soft); }
 
 h2 { font-size: 1.05rem; margin: 24px 0 8px; }
 footer.wrap { color: var(--muted); font-size: 0.8rem; padding: 24px 16px 40px; }
+.csv {
+  margin: 10px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: var(--panel);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.csv:hover { background: var(--accent-soft); }
+.csv:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

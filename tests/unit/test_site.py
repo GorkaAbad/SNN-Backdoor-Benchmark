@@ -1,3 +1,4 @@
+import csv
 import json
 import shutil
 import subprocess
@@ -118,6 +119,15 @@ def test_build_writes_a_site_with_the_data(tmp_path: Path) -> None:
     assert {"dataset", "arch", "reported", "ours"} <= target.keys()
     html = (tmp_path / "index.html").read_text()
     assert "app.js" in html and "style.css" in html
+    with (tmp_path / "results.csv").open() as f:
+        rows = {(r["attack"], r["defense"]): r for r in csv.DictReader(f)}
+    assert len(rows) == len(data["cells"])
+    cell = rows[("static_patch", "no_defense")]
+    assert (cell["status"], cell["seeds"]) == ("self-reported", "0 1")
+    assert (float(cell["ca_mean"]), float(cell["ca_std"])) == (85.0, 5.0)  # percent
+    assert float(cell["verdict_mean"]) == 0.75  # a raw score
+    na = rows[("no_attack", "fine_tuning")]
+    assert (na["status"], na["reason"], na["ca_mean"]) == ("not-applicable", "a reason", "")
     if shutil.which("node"):  # the page's script parses
         subprocess.run(["node", "--check", str(tmp_path / "app.js")], check=True)
 
@@ -192,3 +202,19 @@ def test_status_lists_every_planned_cell_with_its_state(tmp_path: Path) -> None:
     write_csv(rows, path)
     lines = path.read_text().splitlines()
     assert lines[0].startswith("version,track,scenario") and len(lines) == len(cells) + 1
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_page_exports_the_matrix_as_csv() -> None:
+    app = Path(__file__).parents[2] / "src" / "sbb" / "site" / "templates" / "app.js"
+    script = """
+const { matrixCsv, toCsv } = require(process.argv[1]);
+const m = { attacks: ["a", "b"], defenses: ["d1", "d,2"], z: [[12.345678, null], [0, 99.5]] };
+console.log(JSON.stringify([matrixCsv(m), toCsv([['say "hi"', 1]])]));
+"""
+    out = subprocess.run(
+        ["node", "-e", script, str(app)], capture_output=True, text=True, check=True
+    )
+    matrix, quoted = json.loads(out.stdout)
+    assert matrix == 'attack,d1,"d,2"\na,12.3457,\nb,0,99.5\n'  # empty where no value
+    assert quoted == '"say ""hi""",1\n'

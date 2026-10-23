@@ -33,6 +33,11 @@ COLUMNS = (
 )
 
 
+def percent(name: str, value: float) -> float:
+    """A metric as the CSVs show it: in percent, except the detection verdict, a raw score."""
+    return round(value if name == "verdict" else 100 * value, 4)
+
+
 def status_rows(
     cells: Sequence[Cell], results: Sequence[CellResult], checks: Sequence[Verification]
 ) -> list[dict[str, Any]]:
@@ -65,7 +70,7 @@ def status_rows(
         if result:
             for name, value in result.metrics.items():
                 if name in METRIC_COLUMNS:
-                    row[name] = round(value if name == "verdict" else 100 * value, 2)
+                    row[name] = percent(name, value)
             row["site"] = result.provenance.site
             row["device"] = result.provenance.device
             row["minutes"] = round(result.provenance.duration_s / 60, 1)
@@ -87,10 +92,10 @@ def summary(rows: Sequence[dict[str, Any]]) -> dict[str, Counter[str]]:
     return counts
 
 
-def write_csv(rows: Sequence[dict[str, Any]], path: Path) -> None:
-    """Write the rows with every column, empty where a cell has no value."""
+def write_csv(rows: Sequence[dict[str, Any]], path: Path, columns: Sequence[str] = COLUMNS) -> None:
+    """Write the rows with every column, empty where a row has no value."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=COLUMNS, restval="")
+        writer = csv.DictWriter(f, fieldnames=columns, restval="")
         writer.writeheader()
         writer.writerows(rows)

@@ -45,6 +45,7 @@
 
     <section data-view="matrix">
       <div id="matrix" class="plot"></div>
+      <button type="button" class="csv" id="matrix-csv">Download this matrix (CSV)</button>
       <p class="note">Rows are attacks and columns are defenses: the baselines first, then the oldest papers first. Each cell is the mean over seeds, with the standard deviation and the number of seeds. A grey cell is not applicable, invalid or failed: hover for the reason.</p>
       <div id="model-auroc"></div>
     </section>
@@ -59,6 +60,7 @@
 
     <section data-view="table" hidden>
       <div id="table" class="scroll"></div>
+      <button type="button" class="csv" id="table-csv">Download this table (CSV)</button>
       <h2>Verification log</h2>
       <p class="note">Every rerun of a shown cell. The verify-lite workflow reruns each lite cell on a GitHub runner after merge: a match within the lite tolerance makes the cell reproduced, a mismatch disputed.</p>
       <div id="verification-log" class="scroll"></div>

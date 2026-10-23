@@ -53,6 +53,12 @@ attack, defense and metric, then explore:
 - each ported attack against the numbers of its paper,
 - the card of every method, with its paper, code and SNN adaptation.
 
+Every view can be downloaded as CSV for your own analysis: the shown matrix or table, all results
+with the mean and standard deviation over seeds
+([results.csv](https://gorkaabad.github.io/SNN-Backdoor-Benchmark/results.csv)), and the run
+status of every cell with its per-seed metrics
+([status.csv](https://gorkaabad.github.io/SNN-Backdoor-Benchmark/status.csv)).
+
 ## Methods
 
 Methods are listed oldest first, as on the leaderboard. Each one is a plugin with a YAML card that

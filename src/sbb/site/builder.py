@@ -17,6 +17,7 @@ from sbb.core.result import CellResult
 from sbb.metrics.detection import auroc
 from sbb.results.replication import ReplicationRecord
 from sbb.results.verification import LITE_VERIFIER, Verification
+from sbb.site.status import percent, write_csv
 
 # Labels and direction of the metrics the site shows. A metric not listed keeps its name.
 METRICS = {
@@ -64,9 +65,12 @@ class LeaderboardBuilder:
             self.checks[check.result_key].append(check)
 
     def build(self, out: Path) -> None:
-        """Write data.json and the page into out."""
+        """Write data.json, results.csv and the page into out."""
         out.mkdir(parents=True, exist_ok=True)
-        (out / "data.json").write_text(json.dumps(self.data(), indent=1))
+        data = self.data()
+        (out / "data.json").write_text(json.dumps(data, indent=1))
+        rows, columns = _csv(data["cells"])
+        write_csv(rows, out / "results.csv", columns)
         templates = files("sbb.site") / "templates"
         for name in _TEMPLATES:
             with (templates / name).open("rb") as source, (out / name).open("wb") as target:
@@ -166,6 +170,28 @@ def _aggregate(results: list[CellResult], checks: dict[str, list[Verification]])
             for v in checks.get(r.key, [])
         ],
     }
+
+
+def _csv(cells: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The site's cells as CSV rows and columns, for analysis outside the page.
+
+    One row per cell, the mean and standard deviation over its seeds for each metric.
+    """
+    known = [m for m in METRICS if any(m in c["metrics"] for c in cells)]
+    names = known + sorted({m for c in cells for m in c["metrics"]} - set(METRICS))
+    keys = ["version", "track", "scenario", "dataset", "arch", "T", "attack", "defense", "status"]
+    rows = []
+    for cell in sorted(cells, key=lambda c: [str(c[k]) for k in keys]):
+        row = {k: cell[k] for k in keys}
+        row["seeds"] = " ".join(map(str, cell["seeds"]))
+        for name, stat in cell["metrics"].items():
+            row[f"{name}_mean"] = percent(name, stat["mean"])
+            row[f"{name}_std"] = percent(name, stat["std"])
+        row["sites"], row["devices"] = "; ".join(cell["sites"]), "; ".join(cell["devices"])
+        row["reason"] = cell["reason"] or ""
+        rows.append(row)
+    stats = [f"{name}_{s}" for name in names for s in ("mean", "std")]
+    return rows, [*keys, "seeds", *stats, "sites", "devices", "reason"]
 
 
 def _checked(result: CellResult, check: Verification) -> bool:
