@@ -1,5 +1,5 @@
 name: anp
-version: 1.0.0
+version: 1.1.0
 title: ANP, adversarial neuron pruning
 paper: "Wu, Wang. Adversarial Neuron Pruning Purifies Backdoored Deep Models. NeurIPS 2021"
 published: "2021-10"
@@ -20,3 +20,7 @@ adaptation_note: >
   (MSE on firing rates for the full-track networks) instead of cross-entropy.
 hparams:
   default: {eps: 0.4, alpha: 0.2, lr: 0.2, iterations: 2000, batch_size: 128, threshold: 0.2}
+  # 1.1.0: 1% of CIFAR10-DVS's 9 000 training samples is 90, one batch that needs about 97 GB at
+  # 128x128 and T = 16, more than a 95 GB GPU. Two batches of 45 halve that. The masks are
+  # optimized in train mode, so the batch norms use the statistics of these batches.
+  cifar10dvs/cifar10dvs_net: {batch_size: 45}
