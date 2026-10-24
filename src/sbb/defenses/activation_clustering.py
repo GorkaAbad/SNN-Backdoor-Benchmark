@@ -35,24 +35,42 @@ def small_clusters(
 
     Each class's features are reduced to dims independent components (FastICA, with the
     max_iter and tol of ART), then split by 2-means. The smaller cluster counts as poisoned when
-    it holds at most max_share of the class, the paper's relative size analysis. A class gets no
-    more components than the rank of its centered features: FastICA divides by the spread of each
-    component, which is zero beyond the rank. A class whose features do not vary keeps every
-    sample.
+    it holds at most max_share of the class, the paper's relative size analysis. The features are
+    whitened here rather than by FastICA (see _whitened), with no more directions than they vary
+    in. A class whose features do not vary keeps every sample.
     """
     removed = [np.empty(0, dtype=np.int64)]
     for label in np.unique(labels):
         members = np.flatnonzero(labels == label)
-        class_features = features[members].astype(np.float64)
-        rank = np.linalg.matrix_rank(class_features - class_features.mean(axis=0))
-        components = min(dims, int(rank))
-        if components == 0:
+        white = _whitened(features[members].astype(np.float64), dims)
+        if white.shape[1] == 0:
             continue
-        ica = FastICA(n_components=components, max_iter=1000, tol=0.005, random_state=seed)
-        reduced = ica.fit_transform(class_features)
+        ica = FastICA(whiten=False, max_iter=1000, tol=0.005, random_state=seed)
+        reduced = ica.fit_transform(white)
         clusters = KMeans(n_clusters=2, n_init=10, random_state=seed).fit_predict(reduced)
         sizes = np.bincount(clusters, minlength=2)
         small = int(np.argmin(sizes))
         if sizes[small] <= max_share * len(members):
             removed.append(members[clusters == small])
     return np.sort(np.concatenate(removed))
+
+
+def _whitened(features: np.ndarray, dims: int) -> np.ndarray:
+    """The centered features on their top principal directions, at most dims, with unit variance.
+
+    This is FastICA's own whitening with another sign convention. FastICA signs each direction by
+    its loading on the first feature, which is exactly zero when that feature does not vary (a
+    neuron that never fires for the class), and a zero sign turned the run into NaN on the
+    cluster's LAPACK. Here a direction's largest loading is positive, and directions without
+    variance (as numpy's matrix_rank counts them) are left out.
+    """
+    centered = features - features.mean(axis=0)
+    eigvals, eigvecs = np.linalg.eigh(centered.T @ centered)
+    tol = np.sqrt(max(eigvals.max(), 0.0)) * max(centered.shape) * np.finfo(np.float64).eps
+    order = np.argsort(eigvals)[::-1]
+    order = order[eigvals[order] > tol**2][:dims]
+    directions = eigvecs[:, order]
+    largest = np.abs(directions).argmax(axis=0)
+    directions *= np.sign(directions[largest, np.arange(len(order))])
+    whitened: np.ndarray = centered @ directions / np.sqrt(eigvals[order] / len(features))
+    return whitened

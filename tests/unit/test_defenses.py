@@ -1,9 +1,11 @@
 """Defense-specific logic. The registered defenses also meet tests/contracts."""
 
 import copy
+from typing import Any
 
 import numpy as np
 import pytest
+import scipy.linalg
 import torch
 import torch.nn.functional as F
 
@@ -302,3 +304,25 @@ def test_small_clusters_reduces_no_further_than_the_rank_of_a_class() -> None:
     features = np.vstack([np.zeros((11, 64)), np.eye(1, 64), np.ones((12, 64))])
     labels = np.array([0] * 12 + [1] * 12)
     assert list(small_clusters(features, labels, dims=10, max_share=0.35, seed=0)) == [11]
+
+
+def test_small_clusters_ignores_features_that_do_not_vary(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Neurons that never fire for a class have loadings of exactly 0, as the cluster's LAPACK
+    # returns them, and FastICA's sign convention (the sign of the first feature's loadings) then
+    # turned the run into NaN. They must not change which samples are removed.
+    svd = scipy.linalg.svd
+
+    def exact(a: np.ndarray, *args: Any, **kwargs: Any) -> Any:
+        out = svd(a, *args, **kwargs)
+        out[0][~a.any(axis=1)] = 0.0
+        return out
+
+    monkeypatch.setattr(scipy.linalg, "svd", exact)
+    rng = np.random.default_rng(0)
+    features = rng.integers(0, 3, (60, 24)).astype(float)
+    features[:6] += 8.0  # a small, distinct cluster
+    labels = np.zeros(60, dtype=int)
+    padded = np.hstack([np.zeros((60, 3)), features])
+    removed = small_clusters(features, labels, dims=10, max_share=0.35, seed=0)
+    assert list(removed) == list(range(6))
+    assert list(small_clusters(padded, labels, dims=10, max_share=0.35, seed=0)) == list(removed)

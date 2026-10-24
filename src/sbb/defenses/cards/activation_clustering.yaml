@@ -1,5 +1,5 @@
 name: activation_clustering
-version: 1.1.0
+version: 1.2.0
 title: Activation clustering
 paper: "Chen, Carvalho, Baracaldo, Ludwig, Edwards, Lee, Molloy, Srivastava. Detecting Backdoor Attacks on Deep Neural Networks by Activation Clustering. arXiv 1811.03728"
 published: "2018-11"
@@ -19,6 +19,7 @@ adaptation_note: >
   are the inputs of the readout averaged over time (readout_inputs), the spike rates of the
   layer before the readout.
 hparams:
-  # 1.1.0: a class gets at most as many components as the rank of its features. On
-  # CIFAR10-DVS some classes span fewer than 10 directions, and FastICA then divided by zero.
+  # 1.2.0: the features are whitened before FastICA, at most dims directions and only those
+  # that vary. FastICA's own whitening signs each direction by the first feature's loading,
+  # exactly zero for a neuron that never fires, which gave NaN on three CIFAR10-DVS cells.
   default: {dims: 10, max_share: 0.35}
