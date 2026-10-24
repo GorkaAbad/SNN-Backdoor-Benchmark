@@ -295,3 +295,10 @@ def test_ndsbm_narrows_the_clamps_and_keeps_the_weights(datamodule: DataModule) 
     clamps = defense.extra(repaired)
     assert all((upper < 11.0).all() for upper in clamps.upper)  # the norm term pulls them in
     assert all(not m._forward_hooks for m in repaired.modules())  # the Game attaches them
+
+
+def test_small_clusters_reduces_no_further_than_the_rank_of_a_class() -> None:
+    # A class whose features span one direction: ten FastICA components divide by zero.
+    features = np.vstack([np.zeros((11, 64)), np.eye(1, 64), np.ones((12, 64))])
+    labels = np.array([0] * 12 + [1] * 12)
+    assert list(small_clusters(features, labels, dims=10, max_share=0.35, seed=0)) == [11]

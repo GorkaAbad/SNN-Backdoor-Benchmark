@@ -35,16 +35,19 @@ def small_clusters(
 
     Each class's features are reduced to dims independent components (FastICA, with the
     max_iter and tol of ART), then split by 2-means. The smaller cluster counts as poisoned when
-    it holds at most max_share of the class, the paper's relative size analysis. A class whose
-    features do not vary keeps every sample.
+    it holds at most max_share of the class, the paper's relative size analysis. A class gets no
+    more components than the rank of its centered features: FastICA divides by the spread of each
+    component, which is zero beyond the rank. A class whose features do not vary keeps every
+    sample.
     """
     removed = [np.empty(0, dtype=np.int64)]
     for label in np.unique(labels):
         members = np.flatnonzero(labels == label)
         class_features = features[members].astype(np.float64)
-        if len(members) < 2 or not np.ptp(class_features, axis=0).any():
+        rank = np.linalg.matrix_rank(class_features - class_features.mean(axis=0))
+        components = min(dims, int(rank))
+        if components == 0:
             continue
-        components = min(dims, *class_features.shape)
         ica = FastICA(n_components=components, max_iter=1000, tol=0.005, random_state=seed)
         reduced = ica.fit_transform(class_features)
         clusters = KMeans(n_clusters=2, n_init=10, random_state=seed).fit_predict(reduced)

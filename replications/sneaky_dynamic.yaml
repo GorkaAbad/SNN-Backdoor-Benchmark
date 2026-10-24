@@ -54,11 +54,11 @@ targets:
     asr_all: 100.0
   ours:
     ca:
-      mean: 98.27333333333333
-      std: 0.6388705311372201
+      mean: 98.56333333333335
+      std: 0.07586537784493726
     asr_all:
-      mean: 100.0
-      std: 0.0
+      mean: 99.98333333333333
+      std: 0.023570226039550245
 - setting:
     name: sneaky_spikes_cifar10dvs
     data:
@@ -102,11 +102,11 @@ targets:
     asr_all: 100.0
   ours:
     ca:
-      mean: 14.833333333333334
-      std: 6.128258770283412
+      mean: 45.199999999999996
+      std: 3.2751590292177686
     asr_all:
-      mean: 91.60000000000001
-      std: 11.314003122974059
+      mean: 99.93333333333334
+      std: 0.04714045207910049
 - setting:
     name: sneaky_spikes_dvsgesture
     data:
@@ -150,10 +150,15 @@ targets:
     asr_all: 100.0
   ours:
     ca:
-      mean: 78.58796296296296
-      std: 8.228181753322325
+      mean: 85.99537037037037
+      std: 2.6945478534312097
     asr_all:
-      mean: 99.88425925925925
-      std: 0.16368212527466006
-status: failed
-explanation: null
+      mean: 99.53703703703705
+      std: 0.16368212527466675
+status: explained
+explanation: 'N-MNIST and CIFAR10-DVS are within 3 points. On DVS128 Gesture clean
+  accuracy misses by 5.0 points (seeds 0, 1 and 2: 89.2, 86.1 and 82.6), ASR matches.
+  The official code keeps the epoch with the best accuracies on the test set, an optimistic
+  choice; the port''s attacker never sees the test set and scores its epochs on 1000
+  samples of its own training data. On the 264-sample Gesture test set one sample
+  is 0.38 points. Version 1.2.0. Accepted as reproduced by the maintainer on 2026-10-24.'
