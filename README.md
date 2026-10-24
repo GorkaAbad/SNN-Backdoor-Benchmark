@@ -71,7 +71,7 @@ declares its threat model and hyperparameters.
 | Sneaky Spikes, static (`sneaky_static`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | static patch in every frame | replicated |
 | Sneaky Spikes, moving (`sneaky_moving`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | patch moving across frames | explained |
 | Sneaky Spikes, smart (`sneaky_smart`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | patch in the most active region | explained |
-| Sneaky Spikes, dynamic (`sneaky_dynamic`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | training control | learned, input-specific | running |
+| Sneaky Spikes, dynamic (`sneaky_dynamic`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | training control | learned, input-specific | explained |
 | Static patch on raw events (`static_patch`) | variant of Sneaky Spikes | data poisoning | patch added to the event stream | not applicable |
 | Flashy Backdoor (`flashy`) | [Riaño et al., 2024](https://arxiv.org/abs/2411.03022) | data poisoning | full-frame flash | explained |
 | T-Backdoor, rate, latency and jitter (`tbackdoor_*`) | [Miah et al., 2026](https://arxiv.org/abs/2609.30119) | data poisoning | reordered frames only | pending |
