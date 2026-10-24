@@ -1123,7 +1123,7 @@ class Battery(BaseModel):
     dev: list[str] = []                 # public dev battery used to tune hyperparameters
 
 class Tolerance(BaseModel):
-    lite_pp: float = 1.0
+    lite_pp: float = 3.0               # v1: was 1.0, see 10.2
     full_pp: float = 2.0
     full_sigma: float = 2.0             # full tolerance = max(full_pp, full_sigma x seed std)
 
@@ -1467,7 +1467,7 @@ There are two separate guarantees.
 
 Statuses are computed by `VerificationPolicy` from CellResults and Verification records. Nobody sets them by hand.
 
-- **Lite track.** After a pull request is merged, the `verify-lite` workflow reruns every new lite cell on GitHub-hosted runners, with the reviewed code from `main`. A match within `lite_pp` makes the cell `reproduced`. This costs nothing: standard runners are free for public repositories.
+- **Lite track.** After a pull request is merged, the `verify-lite` workflow reruns every new lite cell on GitHub-hosted runners, with the reviewed code from `main`. A match within `lite_pp` makes the cell `reproduced`. This costs nothing: standard runners are free for public repositories. v1 note (user decision of 2026-10-24): `lite_pp` is 3.0, the replication tolerance. At 1.0, 38 of the first 210 records mismatched: the lite results were produced on GH200 GPUs and rerun on GitHub CPUs, and defenses that make discrete choices (fine-pruning's neuron ranking, ANP's masks, TMPBD's p-value) flip on small float differences. `Verification.judged(original, tolerance_pp)` rejudges a record from its deltas, and the existing records were rejudged at 3.0. Producing the lite results on GitHub runners, the verifiers' kind of machine, is a v1.x item.
 - **Full track.** A cell becomes `reproduced` when at least one independent Verification matches within tolerance. Independent means the verifier's organization differs from the submitter's. Maintainers decide in doubtful cases.
 - **Disputes.** A cell is `disputed` while it has at least as many independent mismatches as matches.
 - **Spot checks.** Verifiers do not rerun everything. `VerificationPolicy.sample` picks k = 3 random full-track cells per submission **[DECIDE]**, seeded by the manifest hash so anyone can recompute the choice. If half the cells of a submission were wrong, three random checks would catch it 87.5% of the time. Defense cells are cheap to check because they rerun on pinned zoo checkpoints. Attack cells and in-training defense cells need retraining.

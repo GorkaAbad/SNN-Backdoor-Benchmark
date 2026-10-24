@@ -38,6 +38,6 @@
     "ra": -0.0009977827050997798,
     "tpr": -0.008869179600886918
   },
-  "verdict": "mismatch",
+  "verdict": "match",
   "notes": null
 }

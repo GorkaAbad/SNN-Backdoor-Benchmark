@@ -62,4 +62,4 @@ battery:
     - nad
     - anp
   dev: [static_patch]
-tolerance: {lite_pp: 1.0, full_pp: 2.0, full_sigma: 2.0}
+tolerance: {lite_pp: 3.0, full_pp: 2.0, full_sigma: 2.0}

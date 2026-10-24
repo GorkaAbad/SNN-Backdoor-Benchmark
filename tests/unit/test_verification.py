@@ -36,3 +36,12 @@ def test_verdict_follows_the_tolerance(rerun: CellResult, verdict: str) -> None:
     assert check.verdict == verdict and check.result_key == CELL.key()
     if verdict == "match":
         assert check.delta == pytest.approx({"ca": -0.005, "asr": -0.005})
+
+
+def test_a_record_is_rejudged_from_its_deltas() -> None:
+    original = _result(ca=0.99, asr=1.0)
+    moved = verify(original, _result(ca=0.97, asr=1.0), "alice", "lab", tolerance_pp=1.0)
+    assert moved.verdict == "mismatch"
+    assert moved.judged(original, tolerance_pp=3.0).verdict == "match"  # CA moved 2 pp
+    other = verify(original, _result("failed"), "alice", "lab", tolerance_pp=1.0)
+    assert other.judged(original, tolerance_pp=100.0).verdict == "mismatch"  # another outcome

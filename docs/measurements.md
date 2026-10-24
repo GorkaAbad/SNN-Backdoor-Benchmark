@@ -69,7 +69,7 @@ GPU (GH200):
 | static_patch | CA 98.66 · ASR 100.00 · RA 0.00 | CA 98.45 · ASR 99.93 · RA 0.07 |
 
 CPU and GPU differ by at most 0.10 percentage points (CA of `no_attack` x `fine_tuning`), inside
-the lite tolerance of 1.0.
+the lite tolerance (1.0 at the time, 3.0 since 2026-10-24).
 
 On the GPU, the whole toy benchmark ran a second time from an empty cache at commit 70aae88, which
 differs from 3daea23 only in provenance code, comments and docs. Both runs gave the same metrics in

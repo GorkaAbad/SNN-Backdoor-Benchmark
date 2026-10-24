@@ -36,6 +36,15 @@ class Verification(BaseModel, frozen=True):
     verdict: Literal["match", "mismatch"]
     notes: str | None = None
 
+    def judged(self, original: CellResult, tolerance_pp: float) -> "Verification":
+        """The record with the verdict its deltas give under tolerance_pp.
+
+        A rerun that ended with another outcome, noted as "outcome <outcome>", stays a mismatch.
+        """
+        outcome = self.notes.removeprefix("outcome ") if self.notes else original.outcome
+        verdict = "match" if _matches(original, outcome, self.delta, tolerance_pp) else "mismatch"
+        return self.model_copy(update={"verdict": verdict})
+
     def path(self, root: Path, original: CellResult) -> Path:
         """<root>/<benchmark version>/<cell key>/<verifier>-<UTC time of the rerun>.json."""
         stamp = self.provenance.started_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -60,11 +69,7 @@ def verify(
         for name, value in original.metrics.items()
         if name in rerun.metrics
     }
-    match = (
-        rerun.outcome == original.outcome
-        and delta.keys() == original.metrics.keys()
-        and all(abs(d) <= tolerance_pp / 100 for d in delta.values())
-    )
+    match = _matches(original, rerun.outcome, delta, tolerance_pp)
     return Verification(
         result_key=original.key,
         verifier=verifier,
@@ -74,4 +79,15 @@ def verify(
         delta=delta,
         verdict="match" if match else "mismatch",
         notes=None if rerun.outcome == original.outcome else f"outcome {rerun.outcome}",
+    )
+
+
+def _matches(
+    original: CellResult, outcome: str, delta: dict[str, float], tolerance_pp: float
+) -> bool:
+    """Same outcome, a delta for every metric of the original, each within tolerance_pp."""
+    return (
+        outcome == original.outcome
+        and delta.keys() == original.metrics.keys()
+        and all(abs(d) <= tolerance_pp / 100 for d in delta.values())
     )

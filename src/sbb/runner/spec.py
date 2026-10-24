@@ -22,7 +22,7 @@ class Battery(BaseModel):
 class Tolerance(BaseModel):
     """Reproduction tolerances in percentage points."""
 
-    lite_pp: float = 1.0
+    lite_pp: float = 3.0
     full_pp: float = 2.0
     full_sigma: float = 2.0
 
