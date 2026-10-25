@@ -1,5 +1,5 @@
 {
-  "key": "e9d714189edd294d43dbfe0975b5aac2aa59d79e20190ca706c91ef4d168e8e2",
+  "key": "25164188725d4aabf317adab23af3f75613f904fbf7e59a4d5f56e042ad21423",
   "cell": {
     "benchmark_version": "0.9.0",
     "track": "full",
@@ -48,20 +48,30 @@
         "delta_pp": 3.0
       }
     },
-    "attack": "sneaky_dynamic",
-    "attack_version": "1.2.0",
+    "attack": "no_attack",
+    "attack_version": "1.0.0",
     "defense": "activation_clustering",
-    "defense_version": "1.1.0",
+    "defense_version": "1.2.0",
     "seed": 2,
     "attack_hparams": {}
   },
-  "outcome": "not_applicable",
-  "reason": "needs train_set, which this threat model does not leave to the defender",
-  "metrics": {},
-  "artifacts": {},
+  "outcome": "ok",
+  "reason": null,
+  "metrics": {
+    "asr": 0.041666666666666664,
+    "asr_all": 0.11458333333333333,
+    "ca": 0.8958333333333334,
+    "ra": 0.8939393939393939
+  },
+  "artifacts": {
+    "clean_model": "a703892323295b3656fa5b7cad0f75bc049d8bfc7a1c723e47b024ef679b1d22",
+    "poison_set": "fdce6d083ef10c6d8ce57a527d1d6f41284117afa77fbebb59efdbbc0774ed1b",
+    "model": "43ea53b55e143617eff3723a032e3786d7f75b0466519d94e3d9f06373a23e47",
+    "defended_model": "66dedaec2b11e7963a661f941895925b8359c3af5a885a8e3ef3eff74bca71d5"
+  },
   "provenance": {
     "sbb_version": "0.1.0",
-    "git_commit": "7aed71e420447db77dbf4b00d3557edb604d8a23",
+    "git_commit": "c475e16acfe6a0c80742de5b3351948673700de3",
     "image_digest": null,
     "lockfile_sha256": "5f2811709d21ce6ce46a7489a66d325c649d686014847956767c68a3765f5801",
     "python": "3.11.11",
@@ -71,10 +81,10 @@
     "device": "NVIDIA GH200 120GB",
     "site": "gh200-cluster",
     "executor": "in-process",
-    "deterministic": false,
+    "deterministic": true,
     "submitter": "GorkaAbad",
     "submitter_org": "SNN-Backdoor-Benchmark",
-    "started_at": "2026-10-24T19:24:54.629608Z",
-    "duration_s": 0.000021151965484023094
+    "started_at": "2026-10-25T00:08:55.318251Z",
+    "duration_s": 1543.597599992063
   }
 }

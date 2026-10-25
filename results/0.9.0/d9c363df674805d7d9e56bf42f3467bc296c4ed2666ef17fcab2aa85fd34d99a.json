@@ -1,13 +1,13 @@
 {
-  "key": "63a1355e5cc26809991a46f57440348bfa6841ef48bb6b87e95a96736278d3c3",
+  "key": "d9c363df674805d7d9e56bf42f3467bc296c4ed2666ef17fcab2aa85fd34d99a",
   "cell": {
     "benchmark_version": "0.9.0",
     "track": "full",
     "scenario": {
-      "name": "cifar10dvs_full",
+      "name": "dvsgesture_full",
       "data": {
-        "name": "cifar10dvs",
-        "split": "cifar10dvs_9to1_v1",
+        "name": "dvsgesture",
+        "split": "dvsgesture_official_v1",
         "revision": null
       },
       "repr": {
@@ -17,7 +17,7 @@
         "downsample": 1
       },
       "arch": {
-        "name": "cifar10dvs_net",
+        "name": "dvsgesture_net",
         "T": 16,
         "neuron": {
           "model": "lif",
@@ -31,7 +31,7 @@
         "kwargs": {}
       },
       "train": {
-        "epochs": 28,
+        "epochs": 64,
         "batch_size": 16,
         "loss": "mse",
         "optimizer": "adam",
@@ -48,11 +48,11 @@
         "delta_pp": 3.0
       }
     },
-    "attack": "finetune_injection",
-    "attack_version": "1.0.0",
+    "attack": "sneaky_dynamic",
+    "attack_version": "1.2.0",
     "defense": "activation_clustering",
-    "defense_version": "1.1.0",
-    "seed": 2,
+    "defense_version": "1.2.0",
+    "seed": 1,
     "attack_hparams": {}
   },
   "outcome": "not_applicable",
@@ -61,7 +61,7 @@
   "artifacts": {},
   "provenance": {
     "sbb_version": "0.1.0",
-    "git_commit": "7aed71e420447db77dbf4b00d3557edb604d8a23",
+    "git_commit": "c475e16acfe6a0c80742de5b3351948673700de3",
     "image_digest": null,
     "lockfile_sha256": "5f2811709d21ce6ce46a7489a66d325c649d686014847956767c68a3765f5801",
     "python": "3.11.11",
@@ -74,7 +74,7 @@
     "deterministic": false,
     "submitter": "GorkaAbad",
     "submitter_org": "SNN-Backdoor-Benchmark",
-    "started_at": "2026-10-24T19:24:38.491193Z",
-    "duration_s": 0.000016798963770270348
+    "started_at": "2026-10-24T22:54:44.493106Z",
+    "duration_s": 0.000023134984076023102
   }
 }

@@ -1,5 +1,5 @@
 {
-  "key": "5ea86155ce6c446119de63fb795cbe8afe79100f84bd071fa744bff4cef6edc2",
+  "key": "ffc4bef8e484c5b212c6355d3d45c7a66cc8d6877df6ec8db4b50acc87ab7b39",
   "cell": {
     "benchmark_version": "0.9.0",
     "track": "full",
@@ -48,11 +48,11 @@
         "delta_pp": 3.0
       }
     },
-    "attack": "sneaky_dynamic",
-    "attack_version": "1.2.0",
+    "attack": "finetune_injection",
+    "attack_version": "1.0.0",
     "defense": "activation_clustering",
-    "defense_version": "1.1.0",
-    "seed": 2,
+    "defense_version": "1.2.0",
+    "seed": 1,
     "attack_hparams": {}
   },
   "outcome": "not_applicable",
@@ -61,7 +61,7 @@
   "artifacts": {},
   "provenance": {
     "sbb_version": "0.1.0",
-    "git_commit": "7aed71e420447db77dbf4b00d3557edb604d8a23",
+    "git_commit": "c475e16acfe6a0c80742de5b3351948673700de3",
     "image_digest": null,
     "lockfile_sha256": "5f2811709d21ce6ce46a7489a66d325c649d686014847956767c68a3765f5801",
     "python": "3.11.11",
@@ -74,7 +74,7 @@
     "deterministic": false,
     "submitter": "GorkaAbad",
     "submitter_org": "SNN-Backdoor-Benchmark",
-    "started_at": "2026-10-24T19:24:54.635782Z",
-    "duration_s": 0.000020319013856351376
+    "started_at": "2026-10-24T22:54:26.107995Z",
+    "duration_s": 0.00001702294684946537
   }
 }
