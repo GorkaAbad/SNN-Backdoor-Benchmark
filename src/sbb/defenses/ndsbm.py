@@ -1,5 +1,7 @@
 """NDSBM, neural dendrites suppression backdoor mitigation (Li et al., arXiv 2510.06629)."""
 
+from collections import Counter
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -45,10 +47,11 @@ class NDSBM(ModelDefense):
         clamps = self.extra(model).to(device)
         last = list(model.named_neurons())[-1][0]
         optimizer = torch.optim.Adam(clamps.parameters(), lr=h["lr"])
+        batches = _clean_batches(view, h["batch_size"], h.get("samples_per_class"))
         handles = clamps.attach(model)
         try:
             for _ in range(h["epochs"]):
-                for x, _, _ in view.clean_loader(h["batch_size"]):  # the labels are not used
+                for x in batches():
                     x = x.to(device)
                     clamps.enabled = False
                     with torch.no_grad(), model.probe(last, "membrane") as free:
@@ -78,6 +81,35 @@ class NDSBM(ModelDefense):
         """Clamp the model loaded back from the checkpoint."""
         assert isinstance(extra, Clamps)
         extra.attach(model)
+
+
+def _clean_batches(
+    view: DefenderView, batch_size: int, per_class: int | None
+) -> Callable[[], Iterator[torch.Tensor]]:
+    """One epoch of clean input batches. The labels only pick the samples, the loss ignores them.
+
+    With per_class, the first per_class samples of each class in the clean subset, as the official
+    nsample, kept in memory and reshuffled every epoch. Adam moves the bounds by about lr per step
+    whatever c is, so the number of steps, set by the number of samples, decides how far they
+    shrink. None uses the whole clean subset.
+    """
+    if per_class is None:
+        return lambda: (x for x, _, _ in view.clean_loader(batch_size))
+    kept: list[torch.Tensor] = []
+    counts: Counter[int] = Counter()
+    for x, y, _ in view.clean_loader(batch_size):
+        for sample, label in zip(x, y.tolist(), strict=True):
+            if counts[label] < per_class:
+                counts[label] += 1
+                kept.append(sample)
+    inputs = torch.stack(kept)
+    generator = torch.Generator().manual_seed(int(view.rng.integers(2**31)))
+
+    def epoch() -> Iterator[torch.Tensor]:
+        order = torch.randperm(len(inputs), generator=generator)
+        return (inputs[order[i : i + batch_size]] for i in range(0, len(order), batch_size))
+
+    return epoch
 
 
 class Clamps(nn.Module):
