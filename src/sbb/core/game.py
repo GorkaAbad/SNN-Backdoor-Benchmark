@@ -199,7 +199,8 @@ class Game:
             seed,
             Trainer(scenario.train, self.device),
             victim,
-            TrainSetView(data, poison),
+            # Only a poisoning victim trained on the split with the scenario recipe and seed.
+            TrainSetView(data, poison, victim if poisoning else None),
             data,
             scenario.arch,
         )

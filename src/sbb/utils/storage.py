@@ -1,11 +1,13 @@
 """Content-addressed artifact storage (docs/PLAN.md section 6.4)."""
 
+import fcntl
 import logging
 import os
 import shutil
 import tempfile
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 from huggingface_hub import HfApi
@@ -129,8 +131,18 @@ class ArtifactCache:
         self.remote = remote
 
     def get_or_build(self, key: str, build: Callable[[Path], None]) -> Path:
-        """Return the artifact directory of key. build(directory) writes it if it is missing."""
+        """Return the artifact directory of key. build(directory) writes it if it is missing.
+
+        Processes that share the local store take a lock per key, so parallel cells that need the
+        same model wait for one build instead of each training it.
+        """
         if path := self.local.get(key):
+            return path
+        with self._lock(key):
+            return self._fetch_or_build(key, build)
+
+    def _fetch_or_build(self, key: str, build: Callable[[Path], None]) -> Path:
+        if path := self.local.get(key):  # built by another process while this one waited
             return path
         if self.remote and (remote_path := self.remote.get(key)):
             staging = self._staging()
@@ -145,6 +157,18 @@ class ArtifactCache:
         finally:
             shutil.rmtree(staging, ignore_errors=True)
         return self.local.root / key
+
+    @contextmanager
+    def _lock(self, key: str) -> Iterator[None]:
+        """Hold an exclusive flock on <root>/.locks/<key>. The kernel releases it if we crash."""
+        locks = self.local.root / ".locks"
+        locks.mkdir(parents=True, exist_ok=True)
+        with open(locks / key, "w") as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX)
+            except OSError as error:  # a file system without flock, such as some network mounts
+                log.warning("no lock for %s (%s), parallel cells may build it twice", key, error)
+            yield
 
     def _staging(self) -> Path:
         self.local.root.mkdir(parents=True, exist_ok=True)

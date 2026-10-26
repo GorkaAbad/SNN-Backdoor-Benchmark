@@ -26,9 +26,9 @@ from sbb.core.plugins import (
     PoisoningAttack,
     TrainingDefense,
 )
-from sbb.core.proxies import AttackerView, DefenderView
+from sbb.core.proxies import AttackerView, DefenderView, TrainSetView
 from sbb.core.registry import ATTACKS, DEFENSES
-from sbb.core.trainer import TrainerHooks, TrainState
+from sbb.core.trainer import Trainer, TrainerHooks, TrainState
 from sbb.data.module import DataModule
 from sbb.data.poison import Budget, PoisonSet
 from sbb.models.checkpoint import load_checkpoint
@@ -55,6 +55,28 @@ def test_same_seed_gives_identical_results(tmp_path: Path) -> None:
         make_cell("static_patch", "fine_tuning"), tmp_path, torch.device("cpu")
     )
     assert first.metrics == second.metrics and first_weights == second_weights
+
+
+@pytest.mark.parametrize("defense", ["spectral_signatures", "activation_clustering"])
+@pytest.mark.parametrize("attack", ["no_attack", "static_patch"])
+def test_reference_model_reuses_the_victim(
+    attack: str, defense: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fits = []
+    fit = Trainer.fit
+
+    def counted(self: Trainer, *args: Any, **kwargs: Any) -> SNNModel:
+        fits.append(1)
+        return fit(self, *args, **kwargs)
+
+    monkeypatch.setattr(Trainer, "fit", counted)
+    cell, cpu = make_cell(attack, defense), torch.device("cpu")
+    [(reused, reused_weights)] = run_in_fresh_caches(cell, tmp_path / "reused", cpu, runs=1)
+    reused_fits = len(fits)
+    monkeypatch.setattr(TrainSetView, "trained_model", lambda self: None)
+    [(trained, trained_weights)] = run_in_fresh_caches(cell, tmp_path / "trained", cpu, runs=1)
+    assert len(fits) - reused_fits == reused_fits + 1  # the reference model trained again
+    assert reused.metrics == trained.metrics and reused_weights == trained_weights
 
 
 class _Peeking(ModelDefense):

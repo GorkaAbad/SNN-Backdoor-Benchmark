@@ -89,8 +89,13 @@ def reference_features(view: DefenderView) -> np.ndarray:
     analyze learned representations, such as spectral signatures, start from them.
     """
     batch_size = view.trainer.spec.batch_size
+    # Built even when the Game's model is reused, so the global RNG moves as if it trained, and
+    # whatever the defense initializes next gets the same weights.
     model = build_model(view.arch, view.scenario.input_shape, view.scenario.num_classes)
-    view.trainer.fit(model, view.train_set.loader(batch_size, shuffle=True))
+    if (trained := view.train_set.trained_model()) is not None:
+        model = trained
+    else:
+        view.trainer.fit(model, view.train_set.loader(batch_size, shuffle=True))
     loader = view.train_set.loader(batch_size)
     return readout_inputs(model, loader, view.trainer.device).numpy()
 

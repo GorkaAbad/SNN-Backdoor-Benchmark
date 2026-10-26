@@ -132,7 +132,7 @@ def test_frame_cache_is_reused(
         seed=0,
     )
     assert torch.equal(again.cached_frames(0), datamodule.encode(synthetic[0]))
-    assert len(list(cache.local.root.iterdir())) == 1
+    assert len([p for p in cache.local.root.iterdir() if p.name != ".locks"]) == 1
 
 
 def test_clean_subset_fits_a_pool_rounded_down_per_class(

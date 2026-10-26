@@ -41,11 +41,16 @@ class TrainSetView:
     Args:
         data: The scenario's DataModule.
         overlay: The poison set applied to the split, or None for the clean split.
+        trained: The model the Game trained on exactly this split with the scenario architecture,
+            recipe and seed (the victim of a data poisoning cell), or None.
     """
 
-    def __init__(self, data: DataModule, overlay: PoisonSet | None) -> None:
+    def __init__(
+        self, data: DataModule, overlay: PoisonSet | None, trained: SNNModel | None = None
+    ) -> None:
         self._data = data
         self._overlay = overlay
+        self._trained = trained
         self._poisoned = {} if overlay is None else overlay.by_index()
         self.indices = np.asarray(data.split.train)
 
@@ -77,6 +82,14 @@ class TrainSetView:
     ) -> DataLoader[Any]:
         """Loader over the given positions, or all of them."""
         return self._data.train_loader(self._overlay, batch_size, keep=indices, shuffle=shuffle)
+
+    def trained_model(self) -> SNNModel | None:
+        """A copy of the model the scenario recipe trains on this split, if the Game has one.
+
+        It is the model a defense would get by training the scenario architecture on loader(
+        shuffle=True) with view.trainer, from the cell seed, so the defense can skip that training.
+        """
+        return None if self._trained is None else copy.deepcopy(self._trained)
 
 
 def _require(value: T | None, resource: str, owner: str) -> T:
