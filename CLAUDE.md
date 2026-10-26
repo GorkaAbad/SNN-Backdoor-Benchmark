@@ -6,7 +6,7 @@
 
 The full design and roadmap is in `docs/PLAN.md`. Before writing code, read sections 0 to 6 (section 4.8 lists the design rules). Before starting a task, read the section of the current version.
 
-**Current target: v1** (`docs/PLAN.md`, section 13.3), on the `v1` branch. Do not implement features of later versions.
+**Current target: v2** (`docs/PLAN.md`, section 13.4), on the `v2` branch. Do not implement features of later versions.
 
 ## Invariants
 

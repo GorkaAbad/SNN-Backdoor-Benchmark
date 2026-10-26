@@ -1,6 +1,6 @@
 # SNN Backdoor Benchmark: design and implementation plan
 
-Working name: `sbb` (placeholder, see section 16). Scope: versions v0 to v5. Last updated: 2026-10-23.
+Working name: `sbb` (placeholder, see section 16). Scope: versions v0 to v5. Last updated: 2026-10-26.
 
 ## 0. How to use this document
 
@@ -1584,7 +1584,7 @@ Rule for sbb variants (2026-10-23) **[DECIDE]**: an ANN attack carried over to e
 | Scenario kinds | data_poisoning | + training_control, supply_chain | same | same | same | + federated, ANN-to-SNN conversion |
 | Defense stages | post_training | all five | same | same | same | + raw-event input defenses |
 | Methods | static_patch, fine_tuning, baselines | group A ports, group B during v1.x | group B finished, group C, adaptive track | group D (clean-label) | defense utilities for every layer kind | group E, community |
-| Executors | in-process | LocalExecutor, SlurmExecutor | + HFJobsExecutor (optional) | same | same | + others on demand |
+| Executors | in-process | LocalExecutor, SlurmExecutor | same (HFJobsExecutor deferred) | same | same | + others on demand |
 | Results | JSON and Markdown table | bundles, zoo on the Hub, leaderboard | statuses from verifications, DOI, Hub mirror | + label-policy filter | + architecture filter | entry-point plugins |
 | Verification | determinism and golden tests | lite track on GitHub runners | independent reproduction, spot checks, disputes | same | same | automated assignment |
 
@@ -1653,24 +1653,50 @@ Definition of done:
 
 ### 13.4 v2: verified (benchmark spec 1.0)
 
-Goal: trust for full-track results through independent reproduction.
+Goal: trust for full-track results through independent reproduction, and a frozen benchmark `benchmarks/v1.0.yaml` released with a DOI.
+
+v2 plan (2026-10-26, proposed, awaiting the user's review). v2 starts from `main` at v1.0.0, on branch `v2`. Every task that changes what a cell computes or reports (tasks 1 to 6) lands before the v1.0 run (task 10), so the grid runs once. The GPU work of task 2 runs on the maintainers' cluster while tasks 3 to 7 are coded. For scale: the 528 full cells of v0.9 took 184 GPU hours (30 minutes per CIFAR10-DVS cell, 12 per DVS128 Gesture cell, cached models reused), and a battery twice as large stays within a few hundred GPU hours.
 
 Tasks, in order:
 
-1. VerificationPolicy: independence, spot checks, disputes, status computation. Full-track verification flow with `sbb reproduce` and Verification pull requests.
-2. Leaderboard: statuses with sites and devices, method pages with "broken by" links, Pareto fronts per threat-model class.
-3. Adaptive track: attacks with `aware:<defense_id>`. The first ones are event variants of Adap-Blend and Adap-Patch (Qi et al., ICLR 2023), which break the latent separability that spectral signatures and activation clustering rely on (group C, section 12).
-4. Seeds and intervals in every table. Activity metrics, reusing NeuroBench where possible.
-5. HFJobsExecutor (optional).
-6. Delayed battery: private repository for pending attacks, one release cycle before publication.
-7. Group B ports finished.
-8. Group C (section 12) lands as v2.x releases: published defenses and event-native attack variants that need no core change, and two SNN-native defenses (fewer time steps at inference, threshold recalibration) that store their state like NDSBM's extra state. A method joins `benchmarks/v1.0.yaml` if it is ready at the freeze (attacks `replicated` or `explained`, sbb variants with their cards), otherwise the next benchmark version.
-9. Freeze `benchmarks/v1.0.yaml`, tag the release, mint a DOI through the Zenodo GitHub integration, mirror results to `<hf-org>/sbb-results`.
+1. Leftovers of v1. The maintainer confirms the targets of the eight replication records (`confirmed: true`) **[FILL]**. The deferred items of the v1 code review (section 12): spectral signatures and activation clustering reuse the cached victim as their reference model instead of training it twice, a lock per cache key stops parallel cells from building the same model, and the dynamic trigger runs batched on the GPU. Each is checked by a test that the metrics do not change.
+2. Group B finished. The three T-Backdoor records run on the maintainers' cluster and the attacks join the battery if `replicated` or `explained`. NDSBM: fix the CA collapse noted in section 12 (Adam steps that do not shrink with c, a loss on mean membrane potentials that a clamped layer matches without spiking), with the approved extra-state change, so that CA stays within 3 points of the undefended model on the toy check. Then it joins the battery. BadSNN is ported only if its official code appears before the freeze, otherwise it waits for the next benchmark version.
+3. VerificationPolicy in `sbb.results.policy`, the single source of statuses (section 10). The site's lite rule moves into it, so `sbb site build` and `sbb plan --csv` call the policy and nothing else. Rules:
+   - Lite: `reproduced` when the `github-actions` record matches, `disputed` when it mismatches. A rerun on a separate runner counts as independent.
+   - Full: a record is independent when `verifier_org` differs from the result's `submitter_org`. `reproduced` with at least one independent match, `disputed` while the independent mismatches are at least as many as the matches.
+   - Full tolerance `max(full_pp, full_sigma x seed std)` per metric, the std over the cell's valid seeds. v2 change to 6.10: `status` also takes the cell's other seeds, since one result alone has no seed std.
+   - A cell over its seeds is `disputed` if one seed is, `reproduced` if every checked seed is and at least one is checked, and the site says how many seeds were checked.
+   - `sample(cells, seed)` picks k = 3 results per manifest, seeded by its `bundle_id`. `sbb spot-check MANIFEST` prints them, so anyone recomputes the choice.
+   - Tests: a seeded mismatch yields `disputed`, a match from the submitter's own organization stays `self-reported`, and the spot-check choice is stable.
+4. Full-track verification flow. `docs/verifying.md`: pull the zoo, `sbb spot-check`, `sbb reproduce` on each pick (defense cells rerun on the pinned zoo checkpoints, attack cells retrain), open a pull request with the records under `verifications/`. CI already validates the records. Reciprocity and open challenges go in `contributing.md`. The DoD needs one independent group to verify a full-track submission **[FILL]**: the maintainer names the group and asks it early, since it is the longest wait of v2.
+5. Seeds, intervals and activity.
+   - Tables and CSVs show the mean, the population std, the number of valid seeds and a 95% t-interval over the seeds **[DECIDE]**. With 3 seeds the interval is wide, which is the honest picture.
+   - Activity metrics (section 8): `spike_rate` (mean over spiking neurons and time steps, on clean and on triggered test inputs) and `synops` (synaptic operations per sample, a raw count like `verdict`), following NeuroBench's definitions (activation sparsity, synaptic operations). Default **[DECIDE]**: implemented in `sbb.metrics` on the model's probes, without the NeuroBench dependency, and a unit test compares them with NeuroBench on a toy model if it installs next to the pinned torch and SpikingJelly.
+   - The golden `smoke.json` gains these keys with unchanged values, which needs the maintainer's approval (testing rules).
+6. Adaptive track. `Knowledge.defense` already exists in the card. It gains validation (`oblivious` or `aware:<registered defense>`). The Planner pairs an aware attack with its defense and with `no_defense` only (3.5), so the undefended cell gives its validity and DER. Adaptive attacks are not a separate track: they run in the lite and full tracks, and the site groups them as adaptive. First aware attacks, chosen from the v0.9 results, where only activation clustering (mean ASR 32.6 against 95.2 undefended), STRIP (65.1) and fine-pruning (76.8) lower the full-track ASR, and only STRIP (16.4) the lite one:
+   - Event variants of Adap-Blend and Adap-Patch (Qi et al., ICLR 2023), `aware:activation_clustering`, which they were designed to break (group C).
+   - One attack `aware:strip` that keeps the prediction entropy high under superposition **[FILL]**: the maintainer picks the method.
+7. Leaderboard.
+   - Every status lists its sites and devices: the result's, and the verifier, organization, site, device and verdict of each record.
+   - Method pages: a defense page lists as "broken by" the aware attacks whose mean ASR against it is at least 50% on valid seeds **[DECIDE]**.
+   - A Pareto view (`#pareto`) per scenario and attack kind: one point per defense, CA after the defense against 100 minus ASR, averaged over the attacks of that kind, with the front marked.
+   - No Hub Space mirror of the site (D13) **[DECIDE]**: GitHub Pages is enough.
+8. Delayed battery (section 10). A private repository, a fork of the public one that is never made public, holds pending attacks. The maintainers run them with the same harness on their own sites, and keep the results private. At publication the plugin lands on `main` by pull request, and the results are committed as they are, since identical code gives the same cell keys. Default **[DECIDE]**: every attack that arrives after the v1.0 freeze goes through it for one benchmark version. Which attacks are pending is the maintainer's call per release **[FILL]**.
+9. Group C (section 12) as v2.x releases, in this order: the SNN-native baselines (fewer time steps, threshold recalibration), then the defenses (Neural Cleanse, MM-BD, RNP, FST, SAU, I-BAU, BTI-DBF, SCALE-UP, TeCo, IBD-PSC, DBD, ASD), then the event attack variants. A method joins `benchmarks/v1.0.yaml` if it is ready at the freeze, otherwise the next benchmark version. The freeze does not wait for group C.
+10. Freeze and release.
+    - `benchmarks/v1.0.yaml`: the v0.9 scenarios and tracks, the battery of v0.9, group B and the group C methods that are ready, and the adaptive attacks.
+    - Lite results are produced on hosted runners by a workflow on `main` (the v1.x item), and verify-lite checks them on other runners. If they reproduce within 1.0 pp, `lite_pp` returns to 1.0 (D10), otherwise it stays 3.0.
+    - Full results are produced on the maintainers' cluster and spot-checked by the independent group (task 4).
+    - Tag v2.0.0 (sbb 2.0.0, benchmark 1.0.0). The maintainer enables the Zenodo integration before the tag **[FILL]**, and the release mints the DOI.
+    - Results and verification records are mirrored to the Hub dataset `sbb-zoo/sbb-results` from a job on `main`. The models stay in `sbb-zoo/checkpoints`.
+11. HFJobsExecutor: skipped in v2 **[DECIDE]**. The maintainers' cluster and hosted runners cover every run, and HF Jobs is paid. It comes back if an independent verifier has no GPUs.
 
 Definition of done:
 
-- At least one full-track submission reproduced by an independent group.
-- A seeded mismatch in the tests yields `disputed`.
+- At least one full-track submission reproduced by an independent group: every spot check of its manifest has an independent match.
+- A seeded mismatch in the tests yields `disputed`, and every status on the site comes from the VerificationPolicy.
+- Every replication record is confirmed, and every attack of `benchmarks/v1.0.yaml` is `replicated`, `explained` or an sbb variant with its card.
+- Every cell of `benchmarks/v1.0.yaml` has a result, and every lite cell a verify-lite record.
 - Release tagged with a DOI, results mirrored on the Hub.
 
 ### 13.5 Later versions: v3 to v5
@@ -1823,7 +1849,7 @@ Limits to design for: a job on a GitHub-hosted runner runs at most 6 hours, the 
 | ID | Decision | Default |
 |---|---|---|
 | D1 | Project and package name | `sbb` |
-| D2 | GitHub and Hugging Face organizations | [FILL] |
+| D2 | GitHub and Hugging Face organizations | GitHub `GorkaAbad/SNN-Backdoor-Benchmark`, Hugging Face `sbb-zoo` (decided 2026-10-23) |
 | D3 | License | MIT |
 | D4 | SNN framework | SpikingJelly on PyTorch, versions pinned in v0 |
 | D5 | Python version | 3.11 |
@@ -1831,10 +1857,10 @@ Limits to design for: a job on a GitHub-hosted runner runs at most 6 hours, the 
 | D7 | Full-track T and downsampling | T = 16 at 128x128, no downsampling, the papers' setting (decided 2026-10-16) |
 | D8 | Poison rates | 10% lite, 5% full |
 | D9 | Validity delta | 3 percentage points |
-| D10 | Tolerances | lite 1.0 pp, full max(2.0 pp, 2 x seed std) |
+| D10 | Tolerances | lite 3.0 pp (decided 2026-10-24, back to 1.0 if the v2 lite results reproduce there), full max(2.0 pp, 2 x seed std) |
 | D11 | Seeds | 1 in v0, 3 from v1 |
 | D12 | Spot checks | k = 3 cells per submission |
-| D13 | Leaderboard host | GitHub Pages, optional Hub Space mirror in v2 |
+| D13 | Leaderboard host | GitHub Pages, no Hub Space mirror (v2 default) |
 | D14 | Maintainers in CODEOWNERS | [FILL] |
 
 Other [FILL] items to collect before the matching task starts: official code URLs and licenses, replication targets (table and row) for every port, trigger hyperparameters from the papers, dataset licenses for Hub mirrors.
