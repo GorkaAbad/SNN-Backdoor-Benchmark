@@ -19,6 +19,7 @@ const state = {
   seen: { attack: new Set(), defense: new Set() }, // methods offered before, to keep unticked ones
   compareBy: "attack",
   compareItem: null,
+  replicationDataset: "", // "" shows every dataset
   sort: { key: -1, dir: 1 }, // column index and direction of the table, -1 for the default order
 };
 let DATA = null;
@@ -410,7 +411,9 @@ function replicationRows() {
 }
 
 function renderReplications() {
-  const rows = replicationRows();
+  const datasets = uniq(DATA.replications.flatMap((r) => r.targets.map((t) => t.dataset))).sort();
+  state.replicationDataset = setOptions($("replication-dataset"), ["", ...datasets], state.replicationDataset, (d) => d || "All datasets");
+  const rows = replicationRows().filter((r) => !state.replicationDataset || r.target.dataset === state.replicationDataset);
   const metric = state.metric === "asr" ? "asr_all" : state.metric;
   const plotted = rows.filter((r) => r.metric === metric);
   const element = $("replication-plot");
@@ -525,6 +528,10 @@ async function main() {
   }
   $("matrix-csv").addEventListener("click", downloadMatrix);
   $("table-csv").addEventListener("click", downloadTable);
+  $("replication-dataset").addEventListener("change", (event) => {
+    state.replicationDataset = event.target.value;
+    render();
+  });
   $("compare-by").addEventListener("change", (event) => {
     state.compareBy = event.target.value;
     state.compareItem = null;

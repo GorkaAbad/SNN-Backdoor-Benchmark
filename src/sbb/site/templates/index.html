@@ -67,7 +67,8 @@
     </section>
 
     <section data-view="replications" hidden>
-      <p class="note">Each ported attack reruns the setting of its paper with three seeds. The papers report ASR over every test sample, the target class included, so replications compare ASR (target class included).</p>
+      <p class="note">Each ported attack reruns the setting of its paper with three seeds: the paper's dataset, network and training recipe, separate from the benchmark tracks. That is why N-MNIST appears here with the papers' <code>nmnist_net</code>, while the benchmark runs N-MNIST in the lite track only. The papers report ASR over every test sample, the target class included, so replications compare ASR (target class included).</p>
+      <label>Dataset <select id="replication-dataset"></select></label>
       <div id="replication-plot" class="plot"></div>
       <div id="replication-table" class="scroll"></div>
     </section>
