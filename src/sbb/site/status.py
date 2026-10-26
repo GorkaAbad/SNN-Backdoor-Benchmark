@@ -1,7 +1,7 @@
 """The run status of a benchmark: one row per planned cell, done or missing, with its metrics."""
 
 import csv
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -10,7 +10,9 @@ from sbb.core.cards import compatible
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
-from sbb.results.verification import LITE_VERIFIER, Verification
+from sbb.results.policy import VerificationPolicy
+from sbb.results.verification import Verification
+from sbb.runner.spec import Tolerance
 
 METRIC_COLUMNS = ("ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict")
 COLUMNS = (
@@ -39,17 +41,24 @@ def percent(name: str, value: float) -> float:
 
 
 def status_rows(
-    cells: Sequence[Cell], results: Sequence[CellResult], checks: Sequence[Verification]
+    cells: Sequence[Cell],
+    results: Sequence[CellResult],
+    checks: Sequence[Verification],
+    policy: VerificationPolicy | None = None,
 ) -> list[dict[str, Any]]:
     """One row per cell, in plan order.
 
     state is the result's outcome. A cell without a result is missing, or not_applicable with
     the reason when the threat models do not fit, since such a cell never trains anything.
-    verification is the verdict of the verify-lite record, if any. Metrics are in percent,
-    except the detection verdict, a raw score.
+    verification is the VerificationPolicy's status of a result that ended ok. Metrics are in
+    percent, except the detection verdict, a raw score.
     """
+    policy = policy or VerificationPolicy(Tolerance())
     by_key = {r.key: r for r in results}
-    verdicts = {v.result_key: v.verdict for v in checks if v.verifier == LITE_VERIFIER}
+    seeds: dict[str, list[CellResult]] = defaultdict(list)  # a cell's results over its seeds
+    for r in results:
+        if r.outcome == "ok":
+            seeds[_unseeded(r.cell)].append(r)
     rows = []
     for cell in cells:
         key = cell.key()
@@ -64,10 +73,12 @@ def status_rows(
             "defense": cell.defense,
             "seed": cell.seed,
             "state": result.outcome if result else "missing",
-            "verification": verdicts.get(key, ""),
+            "verification": "",
             "key": key,
         }
         if result:
+            if result.outcome == "ok":
+                row["verification"] = str(policy.status(result, checks, seeds[_unseeded(cell)]))
             for name, value in result.metrics.items():
                 if name in METRIC_COLUMNS:
                     row[name] = percent(name, value)
@@ -82,6 +93,11 @@ def status_rows(
                 row["state"], row["reason"] = "not_applicable", "; ".join(reasons)
         rows.append(row)
     return rows
+
+
+def _unseeded(cell: Cell) -> str:
+    """The key of a cell without its seed, shared by the cell's results over its seeds."""
+    return cell.model_copy(update={"seed": 0}).key()
 
 
 def summary(rows: Sequence[dict[str, Any]]) -> dict[str, Counter[str]]:

@@ -22,7 +22,8 @@ from sbb.core.game import Game
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
-from sbb.results.bundle import make_manifest
+from sbb.results.bundle import Manifest, check_manifest, make_manifest
+from sbb.results.policy import VerificationPolicy
 from sbb.results.replication import ReplicationRecord
 from sbb.results.store import LocalResultStore, ResultStore
 from sbb.results.table import markdown_table
@@ -294,6 +295,35 @@ def reproduce(
     console.print(f"record written to {path}")
 
 
+@app.command("spot-check")
+def spot_check(
+    manifest_json: Path,
+    k: Annotated[int, typer.Option(help="How many results to pick.")] = 3,
+) -> None:
+    """Print the full-track results of MANIFEST_JSON that a verifier reruns.
+
+    The choice is seeded by the bundle id, so anyone recomputes it (docs/PLAN.md section 10).
+    """
+    if problems := check_manifest(manifest_json):
+        for problem in problems:
+            console.print(f"[red]{manifest_json}[/]: {problem}")
+        raise typer.Exit(1)
+    manifest = Manifest.model_validate_json(manifest_json.read_text())
+    root = manifest_json.parent.parent
+    paths = {}
+    for entry in manifest.results:
+        result = CellResult.model_validate_json((root / entry["path"]).read_text())
+        if result.outcome == "ok" and result.cell.track not in ("lite", "replication"):
+            paths[result.key] = (result.cell, root / entry["path"])
+    cells = [cell for cell, _ in paths.values()]
+    picked = VerificationPolicy(Tolerance(), k).sample(cells, int(manifest.bundle_id, 16))
+    if not picked:
+        console.print("no full-track result ended ok, nothing to spot-check")
+    for cell in picked:
+        description = f"{cell.scenario.name} {cell.attack} x {cell.defense} seed {cell.seed}"
+        console.print(f"sbb reproduce {paths[cell.key()][1]}  # {description}")
+
+
 def _verifications(root: Path) -> list[Verification]:
     return [Verification.model_validate_json(p.read_text()) for p in sorted(root.rglob("*.json"))]
 
@@ -336,7 +366,8 @@ def plan(
     store = LocalResultStore(out)
     if csv:
         cells = Planner(BenchmarkSpec.load(spec)).cells(track, attack, defense)
-        rows = status_rows(cells, store.query(), _verifications(verifications))
+        policy = VerificationPolicy(BenchmarkSpec.load(spec).tolerance)
+        rows = status_rows(cells, store.query(), _verifications(verifications), policy)
         write_csv(rows, csv)
         for name, counts in summary(rows).items():
             states = ", ".join(f"{n} {state}" for state, n in counts.most_common())

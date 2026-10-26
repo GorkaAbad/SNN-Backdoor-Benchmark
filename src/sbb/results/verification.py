@@ -1,5 +1,6 @@
 """Verification records: a cell rerun elsewhere, compared with its result (docs/PLAN.md 7.8)."""
 
+from collections.abc import Mapping
 from datetime import UTC
 from pathlib import Path
 from typing import Literal
@@ -41,8 +42,7 @@ class Verification(BaseModel, frozen=True):
 
         A rerun that ended with another outcome, noted as "outcome <outcome>", stays a mismatch.
         """
-        outcome = self.notes.removeprefix("outcome ") if self.notes else original.outcome
-        verdict = "match" if _matches(original, outcome, self.delta, tolerance_pp) else "mismatch"
+        verdict = "match" if matches(original, self.delta, tolerance_pp, self.notes) else "mismatch"
         return self.model_copy(update={"verdict": verdict})
 
     def path(self, root: Path, original: CellResult) -> Path:
@@ -69,7 +69,8 @@ def verify(
         for name, value in original.metrics.items()
         if name in rerun.metrics
     }
-    match = _matches(original, rerun.outcome, delta, tolerance_pp)
+    notes = None if rerun.outcome == original.outcome else f"outcome {rerun.outcome}"
+    match = matches(original, delta, tolerance_pp, notes)
     return Verification(
         result_key=original.key,
         verifier=verifier,
@@ -78,16 +79,27 @@ def verify(
         metrics=rerun.metrics,
         delta=delta,
         verdict="match" if match else "mismatch",
-        notes=None if rerun.outcome == original.outcome else f"outcome {rerun.outcome}",
+        notes=notes,
     )
 
 
-def _matches(
-    original: CellResult, outcome: str, delta: dict[str, float], tolerance_pp: float
+def matches(
+    original: CellResult,
+    delta: Mapping[str, float],
+    tolerance_pp: float | Mapping[str, float],
+    notes: str | None = None,
 ) -> bool:
-    """Same outcome, a delta for every metric of the original, each within tolerance_pp."""
+    """Same outcome, a delta for every metric of the original, each within its tolerance.
+
+    tolerance_pp is one value for every metric, or one per metric. A rerun that ended with
+    another outcome is noted as "outcome <outcome>".
+    """
+    prefix = "outcome "
+    outcome = notes[len(prefix) :] if notes and notes.startswith(prefix) else original.outcome
+    if not isinstance(tolerance_pp, Mapping):
+        tolerance_pp = dict.fromkeys(delta, tolerance_pp)
     return (
         outcome == original.outcome
         and delta.keys() == original.metrics.keys()
-        and all(abs(d) <= tolerance_pp / 100 for d in delta.values())
+        and all(abs(d) <= tolerance_pp[m] / 100 for m, d in delta.items())
     )

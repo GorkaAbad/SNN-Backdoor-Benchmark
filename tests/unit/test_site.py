@@ -66,8 +66,8 @@ def _check(result: CellResult, verdict: str, verifier: str = LITE_VERIFIER) -> V
         verifier=verifier,
         verifier_org=verifier,
         provenance=PROVENANCE,
-        metrics=result.metrics,
-        delta={},
+        metrics={m: v + (0.0 if verdict == "match" else 0.5) for m, v in result.metrics.items()},
+        delta={m: 0.0 if verdict == "match" else 0.5 for m in result.metrics},
         verdict=verdict,  # type: ignore[arg-type]
     )
 
@@ -95,7 +95,9 @@ def test_the_lite_verifier_sets_the_status_of_lite_cells() -> None:
     assert cell(_check(seed0, "match"), _check(seed1, "mismatch"))["status"] == "disputed"
     others = cell(_check(seed0, "match", "someone"), _check(seed1, "match", "someone"))
     assert others["status"] == "self-reported"  # only the verify-lite workflow counts for lite
-    assert cell(_check(full, "match"), attack="no_attack")["status"] == "self-reported"
+    # A full cell counts a match from another organization than the submitter's (v2).
+    assert cell(attack="no_attack")["status"] == "self-reported"
+    assert cell(_check(full, "match"), attack="no_attack")["status"] == "reproduced"
 
     # A record checked the numbers of the result it reran. Once the result changes, it is stale.
     stale = _check(seed1, "match").model_copy(update={"delta": {"ca": 0.05}})
@@ -193,7 +195,7 @@ def test_status_lists_every_planned_cell_with_its_state(tmp_path: Path) -> None:
     by_pair = {(r["attack"], r["defense"]): r for r in rows}
     assert len(rows) == len(cells)
     assert by_pair[("static_patch", "no_defense")]["state"] == "ok"
-    assert by_pair[("static_patch", "no_defense")]["verification"] == "match"
+    assert by_pair[("static_patch", "no_defense")]["verification"] == "reproduced"
     assert by_pair[("static_patch", "no_defense")]["ca"] == 90.0  # percent
     assert by_pair[("no_attack", "fine_tuning")]["state"] == "not_applicable"
     assert by_pair[("no_attack", "fine_tuning")]["reason"] == "a reason"

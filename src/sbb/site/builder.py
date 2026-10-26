@@ -15,8 +15,10 @@ from sbb import __version__
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.metrics.detection import auroc
+from sbb.results.policy import OUTCOME_STATUS, VerificationPolicy
 from sbb.results.replication import ReplicationRecord
-from sbb.results.verification import LITE_VERIFIER, Verification
+from sbb.results.verification import Verification
+from sbb.runner.spec import Tolerance
 from sbb.site.status import percent, write_csv
 
 # Labels and direction of the metrics the site shows. A metric not listed keeps its name.
@@ -30,26 +32,19 @@ METRICS = {
     "auroc": ("Input AUROC", "higher"),
     "verdict": ("Detection verdict", "none"),
 }
-# What a cell shows when its seeds did not all end ok, the most serious first.
-_STATUS = {
-    "failed": "failed",
-    "invalid_attack": "invalid-attack",
-    "not_applicable": "not-applicable",
-}
 _TEMPLATES = ("index.html", "app.js", "style.css", "favicon.png")
 
 
 class LeaderboardBuilder:
     """Builds the site from results, replication records and verification records.
 
-    A finished lite cell is reproduced when the verify-lite workflow matched every seed, and
-    disputed when it mismatched one. Every other finished cell is self-reported in v1. The
-    full-track statuses land with the VerificationPolicy in v2.
+    Statuses come from the VerificationPolicy (docs/PLAN.md section 10).
 
     Args:
         results: Cell results of any benchmark versions. Replication cells are left out.
         replications: The replication records.
         verifications: The verification records.
+        policy: The policy that computes the statuses, by default with the spec's tolerances.
     """
 
     def __init__(
@@ -57,8 +52,10 @@ class LeaderboardBuilder:
         results: Sequence[CellResult],
         replications: Sequence[ReplicationRecord],
         verifications: Sequence[Verification] = (),
+        policy: VerificationPolicy | None = None,
     ) -> None:
         self.results = [r for r in results if r.cell.track != "replication"]
+        self.policy = policy or VerificationPolicy(Tolerance())
         self.replications = replications
         self.checks: dict[str, list[Verification]] = defaultdict(list)
         for check in verifications:
@@ -83,7 +80,9 @@ class LeaderboardBuilder:
             "sbb_version": __version__,
             "metrics": {k: {"label": label, "better": d} for k, (label, d) in METRICS.items()},
             "methods": _methods(),
-            "cells": [_aggregate(group, self.checks) for group in self._groups().values()],
+            "cells": [
+                _aggregate(group, self.checks, self.policy) for group in self._groups().values()
+            ],
             "model_auroc": self._model_auroc(),
             "replications": [_replication(r) for r in self.replications],
         }
@@ -130,7 +129,9 @@ class LeaderboardBuilder:
         return rows
 
 
-def _aggregate(results: list[CellResult], checks: dict[str, list[Verification]]) -> dict[str, Any]:
+def _aggregate(
+    results: list[CellResult], checks: dict[str, list[Verification]], policy: VerificationPolicy
+) -> dict[str, Any]:
     """One row of the site: the cell over its valid seeds, metrics as mean and population std.
 
     Attack validity (PLAN rule 6) is judged per seed. Seeds that did not end ok are left out of
@@ -139,9 +140,9 @@ def _aggregate(results: list[CellResult], checks: dict[str, list[Verification]])
     """
     first = results[0].cell
     valid = [r for r in results if r.outcome == "ok"]
-    severity = list(_STATUS)
+    severity = list(OUTCOME_STATUS)
     bad = sorted((r for r in results if r.outcome != "ok"), key=lambda r: severity.index(r.outcome))
-    status = _verified(valid, checks) if valid else _STATUS[bad[0].outcome]
+    status = str(policy.cell_status(results, [v for r in results for v in checks.get(r.key, [])]))
     metrics = {}
     for name in sorted({name for r in valid for name in r.metrics}):
         values = np.array([r.metrics[name] for r in valid if name in r.metrics])
@@ -157,7 +158,7 @@ def _aggregate(results: list[CellResult], checks: dict[str, list[Verification]])
         "defense": first.defense,
         "seeds": sorted(r.cell.seed for r in valid or results),
         "excluded": [
-            {"seed": r.cell.seed, "status": _STATUS[r.outcome], "reason": r.reason}
+            {"seed": r.cell.seed, "status": OUTCOME_STATUS[r.outcome], "reason": r.reason}
             for r in sorted(bad, key=lambda r: r.cell.seed)
             if valid
         ],
@@ -205,32 +206,6 @@ def _csv(cells: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
         rows.append(row)
     stats = [f"{name}_{s}" for name in names for s in ("mean", "std")]
     return rows, [*keys, "seeds", "excluded", *stats, "sites", "devices", "reason"]
-
-
-def _checked(result: CellResult, check: Verification) -> bool:
-    """Whether check verified this result's numbers: rerun minus delta gives each metric back.
-
-    A record stays tied to the numbers it checked, so a result changed after its verification
-    (a rerun keeps its key) is not covered by the old record.
-    """
-    return all(
-        abs(check.metrics[m] - check.delta.get(m, 0.0) - value) <= 1e-9
-        for m, value in result.metrics.items()
-        if m in check.metrics
-    )
-
-
-def _verified(results: list[CellResult], checks: dict[str, list[Verification]]) -> str:
-    """Status of a finished cell: the verify-lite verdicts of its seeds decide a lite cell."""
-    if results[0].cell.track != "lite":
-        return "self-reported"
-    verdicts = [
-        [v.verdict for v in checks.get(r.key, []) if v.verifier == LITE_VERIFIER and _checked(r, v)]
-        for r in results
-    ]
-    if any("mismatch" in seed for seed in verdicts):
-        return "disputed"
-    return "reproduced" if all(verdicts) else "self-reported"
 
 
 def _methods() -> dict[str, dict[str, Any]]:

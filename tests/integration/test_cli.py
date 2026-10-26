@@ -84,6 +84,23 @@ def test_run_with_a_process_pool(tmp_path: Path) -> None:
     assert "no_attack" in (out / "smoke-0.1.0" / "table.md").read_text()
 
 
+def test_spot_check_picks_full_results_from_the_bundle_id(tmp_path: Path) -> None:
+    out, site = tmp_path / "results", _site(tmp_path)
+    spec = yaml.safe_load(SMOKE.read_text())
+    spec["tracks"] = {"full": spec["tracks"]["lite"]}  # spot checks are for the full track
+    full = tmp_path / "full.yaml"
+    full.write_text(yaml.safe_dump(spec))
+    ran = CliRunner().invoke(app, ["run", str(full), "--site", str(site), "--out", str(out)])
+    assert ran.exit_code == 0, ran.output
+    bundled = CliRunner().invoke(app, ["bundle", "--plugin", "static_patch", "--out", str(out)])
+    assert bundled.exit_code == 0, bundled.output
+    (manifest,) = (out / "manifests").iterdir()
+    picked = [CliRunner().invoke(app, ["spot-check", str(manifest), "--k", "1"]) for _ in range(2)]
+    assert picked[0].exit_code == 0, picked[0].output
+    lines = [line for line in unstyle(picked[0].output).splitlines() if "sbb reproduce" in line]
+    assert len(lines) == 1 and picked[0].output == picked[1].output
+
+
 def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     out, site = tmp_path / "results", _site(tmp_path)
     assert (
