@@ -140,6 +140,9 @@ class AttackCard(CardBase, frozen=True):
     kind: ScenarioKind
     capabilities: Capabilities
     knowledge: Knowledge
+    # False for an attack that trades clean accuracy for its backdoor by design. Its cells skip
+    # the attack validity check (PLAN rule 6) and report both clean accuracies.
+    keeps_clean_accuracy: bool = True
 
     @model_validator(mode="after")
     def _poisoning_declares_labels(self) -> Self:

@@ -58,7 +58,7 @@ Each cell is a security game. The harness plays the challenger:
 3. **Clean reference.** Get the clean model for this scenario and seed (cached, shared by all cells).
 4. **Attack.** The attacker acts within its capabilities through an AttackerView. A poisoning attack returns a PoisonSet and a trigger. A model attack returns a model and a trigger.
 5. **Victim.** For poisoning attacks, the harness trains the victim on the train split with the PoisonSet overlay, using the scenario recipe. The undefended backdoored model is cached and shared.
-6. **Attack validity.** `CA(backdoored) >= CA(clean) - delta`. Otherwise the result is `invalid_attack`. v1 note (user decision of 2026-10-23): validity is judged per seed, and the leaderboard averages a cell over its valid seeds, lists the left-out seeds with their reasons, and shows the cell as invalid only when no seed is valid. On DVS128 Gesture, whose test set has 264 samples, the 3-point budget is 8 samples, close to the spread between seeds.
+6. **Attack validity.** `CA(backdoored) >= CA(clean) - delta`. Otherwise the result is `invalid_attack`. v1 note (user decision of 2026-10-23): validity is judged per seed, and the leaderboard averages a cell over its valid seeds, lists the left-out seeds with their reasons, and shows the cell as invalid only when no seed is valid. On DVS128 Gesture, whose test set has 264 samples, the 3-point budget is 8 samples, close to the spread between seeds. v2 change (user decision of 2026-10-26): an attack whose card sets `keeps_clean_accuracy: false` trades clean accuracy for its backdoor by design, and its cells skip this check. They run the defense like any valid cell and report `ca_clean` and `ca_backdoored` next to the defended metrics. `sneaky_dynamic` is the only one: its joint training with the generator costs clean accuracy in the paper too (CIFAR10-DVS 44 against about 68 clean), and every one of its full-track seeds of 0.9.0 failed the check (drops of 3.5 to 11.8 points on DVS128 Gesture, 20 to 29 on CIFAR10-DVS). Its implementation does not change, so it stays at version 1.2.0, its cell keys and cached victims stay the same, and only the 48 invalid results of 0.9.0 rerun, from the defense step on.
 7. **Defense.** The harness builds a DefenderView with exactly the declared resources. The defense acts according to its stage (3.3). Pre-training and in-training defenses trigger a new victim training run with the sanitized data or the hooks.
 8. **Metrics.** Compute the metrics (section 8) on the clean test set and on the triggered test set. Every metric but `asr_all` counts only triggered samples whose true label is not the target.
 
@@ -686,6 +686,7 @@ class AttackCard(CardBase):
     kind: ScenarioKind
     capabilities: Capabilities
     knowledge: Knowledge
+    keeps_clean_accuracy: bool = True                         # v2: False skips rule 6 (4.8)
     def avail(self, budget: "Budget") -> View: ...           # Avail table of section 3.4
 
 class DefenseCard(CardBase):

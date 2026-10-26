@@ -185,10 +185,11 @@ class Game:
         test = data.test_loader(bs)
         ca_clean = trainer.evaluate(clean, test, ties)["accuracy"]
         ca_victim = trainer.evaluate(victim, test, ties)["accuracy"]
-        if ca_victim < ca_clean - budget.delta_pp / 100:
+        validity = {"ca_clean": ca_clean, "ca_backdoored": ca_victim}
+        keeps_ca = attack_cls.card.keeps_clean_accuracy
+        if keeps_ca and ca_victim < ca_clean - budget.delta_pp / 100:
             reason = f"CA dropped from {ca_clean:.4f} to {ca_victim:.4f}"
-            metrics = {"ca_clean": ca_clean, "ca_backdoored": ca_victim}
-            return _Report("invalid_attack", reason, metrics, artifacts)
+            return _Report("invalid_attack", reason, validity, artifacts)
 
         # 7. Defense
         defense_hparams = defense_cls.card.hparams_for(dataset.name, scenario.arch.name)
@@ -245,6 +246,8 @@ class Game:
             if stage in (metric := METRICS.get(name)).stages
         }
         metrics.update(defended.metrics)
+        if not keeps_ca:  # the price of the backdoor stays visible
+            metrics.update(validity)
         return _Report("ok", None, metrics, artifacts)
 
     def _poisoned_victim(

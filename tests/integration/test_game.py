@@ -144,6 +144,22 @@ def test_attack_that_destroys_clean_accuracy_is_invalid(
     assert result.metrics["ca_backdoored"] < result.metrics["ca_clean"] - 0.03
 
 
+class _CostlyLabelFlip(_LabelFlip):
+    card = attack_card(name="costly_label_flip", keeps_clean_accuracy=False)
+
+
+def test_an_attack_that_costs_clean_accuracy_by_design_reaches_the_defense(
+    game: Game, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(ATTACKS._items, "costly_label_flip", _CostlyLabelFlip)
+    budget = SCENARIO.budget.model_copy(update={"poison_rate": 0.5})
+    scenario = SCENARIO.model_copy(update={"budget": budget})
+    result = game.run(make_cell("costly_label_flip", "fine_tuning", scenario=scenario))
+    assert result.outcome == "ok", result.reason
+    assert {"ca", "asr"} <= result.metrics.keys()  # the defense step ran
+    assert result.metrics["ca_backdoored"] < result.metrics["ca_clean"] - 0.03  # still reported
+
+
 class _Injection(ModelAttack):
     """Poisons the clean split with the static patch, then trains on it (test-only attack)."""
 
