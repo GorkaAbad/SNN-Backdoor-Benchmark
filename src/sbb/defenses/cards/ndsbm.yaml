@@ -1,5 +1,5 @@
 name: ndsbm
-version: 1.0.1
+version: 1.1.0
 title: NDSBM, neural dendrites suppression backdoor mitigation
 paper: "Li, Wu, Xia et al. Unsupervised Backdoor Detection and Mitigation for Spiking Neural Networks. arXiv 2510.06629"
 published: "2025-10"
@@ -14,6 +14,12 @@ license_note: "The official code has no license. Re-implemented from the paper, 
 # gradients, and the victim's statistics stay. The official bounds also have a batch dimension,
 # here they are shared by the samples. And the official forward skips the neurons of the second
 # conv block (a commented-out call), the port keeps them.
+# 1.1.0: the bounds learn on 20 clean samples per class, the official nsample. Adam moves them by
+# about lr per step whatever c is, so the number of steps decides how far they shrink. 1.0.1 used
+# the whole clean subset, up to 13 times more steps, and on the lite network (tiny_lif_cnn) its CA
+# fell from 98.7 to 45. With 20 per class the papers' networks keep their CA (DVS128 Gesture 93.1,
+# CIFAR10-DVS 69.8 against 70.3) and the lite network still loses it (60.6), the method's own
+# behavior there: with c = 0 it keeps 98.7 (GPU check of 2026-10-26).
 stage: post_training
 view:
   resources: [model, clean_subset]
@@ -24,5 +30,5 @@ adaptation_note: >
   membrane potential of the last spiking layer. The clamps live outside the weights, so the Game
   stores them next to the checkpoint (ModelDefense.extra) and reattaches them on load.
 hparams:
-  default: {epochs: 50, lr: 0.1, c: 1.0e-5, init: 10.0, batch_size: 16}
+  default: {epochs: 50, lr: 0.1, c: 1.0e-5, init: 10.0, batch_size: 16, samples_per_class: 20}
   cifar10dvs/cifar10dvs_net: {c: 2.0e-5, init: 20.0}

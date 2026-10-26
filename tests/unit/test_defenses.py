@@ -18,7 +18,7 @@ from sbb.defenses.anp import ANP, neuron_masks, perturb_bn
 from sbb.defenses.clp import CLP, channel_lipschitz
 from sbb.defenses.fine_pruning import FinePruning
 from sbb.defenses.nad import NAD, AttentionDistillation, attention_map
-from sbb.defenses.ndsbm import NDSBM, Clamps
+from sbb.defenses.ndsbm import NDSBM, Clamps, _clean_batches
 from sbb.defenses.spectral_signatures import spectral_outliers
 from sbb.defenses.strip import STRIP
 from sbb.defenses.tmpbd import class_potentials, p_value
@@ -297,6 +297,17 @@ def test_ndsbm_narrows_the_clamps_and_keeps_the_weights(datamodule: DataModule) 
     clamps = defense.extra(repaired)
     assert all((upper < 11.0).all() for upper in clamps.upper)  # the norm term pulls them in
     assert all(not m._forward_hooks for m in repaired.modules())  # the Game attaches them
+
+
+def test_ndsbm_learns_on_at_most_samples_per_class(datamodule: DataModule) -> None:
+    view = _view(NDSBM, datamodule, _model())
+    labels = [int(y) for _, y, _ in view.clean_loader(16).dataset]  # type: ignore[attr-defined]
+    epoch = _clean_batches(view, batch_size=4, per_class=2)
+    first, second = list(epoch()), list(epoch())
+    kept = sum(len(x) for x in first)
+    assert kept == sum(min(2, labels.count(c)) for c in set(labels))
+    assert all(len(x) <= 4 for x in first) and sum(len(x) for x in second) == kept
+    assert not all(torch.equal(a, b) for a, b in zip(first, second, strict=True))  # reshuffled
 
 
 def test_small_clusters_reduces_no_further_than_the_rank_of_a_class() -> None:
