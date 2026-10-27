@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 import torch
+from spikingjelly.activation_based import neuron
+from spikingjelly.activation_based.layer import SeqToANNContainer
 
 from sbb.core.trainer import per_sample_loss
 from sbb.models.checkpoint import load_checkpoint, save_checkpoint
@@ -48,6 +50,35 @@ def test_probes() -> None:
         membrane.spikes()
     with pytest.raises(SbbError):
         model.probe("nope", "spikes")
+
+
+def _wrapped(*layers: torch.nn.Module) -> SNNModel:
+    return SNNModel(ARCH, (1, 4, 4), 3, torch.nn.Sequential(*layers))
+
+
+def test_activity_counts_spikes_and_effective_synaptic_operations() -> None:
+    linear = torch.nn.Linear(4, 3, bias=False)
+    torch.nn.init.ones_(linear.weight)
+    model = _wrapped(torch.nn.Flatten(2), linear, neuron.IFNode(step_mode="m"))
+    x = torch.zeros(2, 2, 1, 1, 4)  # [B, T, P, H, W]
+    x[0, 0, 0, 0, 0] = x[0, 1, 0, 0, 0] = x[0, 1, 0, 0, 1] = 1.0  # 3 nonzero inputs, sample 0
+    with model.activity() as activity:
+        model(x)
+    counts = activity.counts()
+    # Each nonzero input reaches 3 neurons: 9 operations over 2 samples. Sample 0 drives all 3 IF
+    # neurons over threshold at both steps (6 spikes), sample 1 never fires: 6 of 12.
+    assert (counts.samples, counts.synops, counts.spikes, counts.neuron_steps) == (2, 9, 6, 12)
+    assert (counts.spike_rate, counts.synops_per_sample) == (0.5, 4.5)
+
+
+def test_activity_counts_only_the_connections_a_convolution_has() -> None:
+    conv = torch.nn.Conv2d(1, 2, 3, padding=1)
+    model = _wrapped(SeqToANNContainer(conv), neuron.IFNode(step_mode="m"))
+    x = torch.zeros(1, 1, 1, 4, 4)
+    x[0, 0, 0, 0, 0] = 1.0  # a corner pixel reaches a 2x2 patch of each of the 2 output maps
+    with model.activity() as activity:
+        model(x)
+    assert activity.counts().synops == 8  # not 2 x 9, the fan-out of an inner pixel
 
 
 def test_membrane_probe_can_keep_the_graph() -> None:

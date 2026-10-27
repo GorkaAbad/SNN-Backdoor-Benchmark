@@ -37,6 +37,9 @@ from tests.cards import attack_card, defense_card
 from tests.conftest import SCENARIO, make_cell, run_in_fresh_caches
 from tests.contracts.test_plugins import check_attack, check_defense
 
+# What every cell that ends ok reports, on top of its stage's metrics and the defense's own.
+BASE_METRICS = {"ca", "asr", "ra", "asr_all", "spike_rate", "spike_rate_triggered", "synops"}
+
 
 def test_static_patch_backdoors_and_fine_tuning_runs(game: Game) -> None:
     clean = game.run(make_cell("no_attack", "no_defense"))
@@ -45,7 +48,7 @@ def test_static_patch_backdoors_and_fine_tuning_runs(game: Game) -> None:
     assert [r.outcome for r in (clean, attacked, tuned)] == ["ok"] * 3, attacked.reason
     assert clean.metrics["ca"] > 0.9 and clean.metrics["asr"] < 0.1
     assert attacked.metrics["ca"] > 0.9 and attacked.metrics["asr"] > 0.9
-    assert set(tuned.metrics) == {"ca", "asr", "ra", "asr_all"}
+    assert set(tuned.metrics) == BASE_METRICS
     assert attacked.artifacts["clean_model"] == clean.artifacts["clean_model"]
     assert attacked.artifacts["model"] == tuned.artifacts["model"]
 
@@ -400,7 +403,7 @@ def test_retraining_defenses_retrain_the_victim(game: Game, defense: str) -> Non
     assert undefended.metrics["asr"] > 0.9 and defended.metrics["asr"] < 0.1
     assert defended.artifacts["model"] == undefended.artifacts["model"]
     assert defended.artifacts["defended_model"] != defended.artifacts["model"]
-    assert set(defended.metrics) == {"ca", "asr", "ra", "asr_all"}
+    assert set(defended.metrics) == BASE_METRICS
 
 
 @pytest.mark.usefixtures("stage_defenses")
@@ -408,7 +411,7 @@ def test_input_defense_rejects_triggered_inputs(game: Game) -> None:
     result = game.run(make_cell("static_patch", "patch_detector"))
     assert result.outcome == "ok", result.reason
     metrics = result.metrics
-    assert set(metrics) == {"ca", "asr", "ra", "asr_all", "frr", "tpr", "auroc"}
+    assert set(metrics) == BASE_METRICS | {"frr", "tpr", "auroc"}
     assert metrics["tpr"] > 0.9 and metrics["auroc"] > 0.9 and metrics["frr"] < 0.2
     assert metrics["asr"] < 0.1  # rejected triggered inputs do not count as successes
     assert "defended_model" not in result.artifacts  # the model itself is unchanged
@@ -423,7 +426,7 @@ def test_detection_defense_records_a_cached_verdict(game: Game) -> None:
     assert first.outcome == "ok", first.reason
     assert first.metrics == again.metrics and _WeightNorm.calls == 1
     assert first.metrics["verdict"] > 0
-    assert {k: first.metrics[k] for k in ("ca", "asr", "ra", "asr_all")} == undefended.metrics
+    assert {k: first.metrics[k] for k in BASE_METRICS} == undefended.metrics  # plus the verdict
 
 
 class _KeepAll(DataDefense):
@@ -616,7 +619,7 @@ def test_cell_hparams_override_the_card(game: Game, monkeypatch: pytest.MonkeyPa
 def test_ported_defenses_run_in_the_game(game: Game, defense: str, extra: set[str]) -> None:
     result = game.run(make_cell("static_patch", defense))
     assert result.outcome == "ok", result.reason
-    assert set(result.metrics) == {"ca", "asr", "ra", "asr_all"} | extra
+    assert set(result.metrics) == BASE_METRICS | extra
 
 
 def test_finetune_injection_backdoors_the_supplied_model(game: Game) -> None:

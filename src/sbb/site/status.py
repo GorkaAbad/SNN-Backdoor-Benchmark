@@ -24,8 +24,12 @@ METRICS = {
     "tpr": ("Rejection of triggered inputs", "higher"),
     "auroc": ("Input AUROC", "higher"),
     "verdict": ("Detection verdict", "none"),
+    "spike_rate": ("Spike rate, clean inputs", "none"),
+    "spike_rate_triggered": ("Spike rate, triggered inputs", "none"),
+    "synops": ("Synaptic operations per sample", "none"),
 }
 METRIC_COLUMNS = tuple(METRICS)
+RAW_METRICS = frozenset({"verdict", "synops"})  # shown as they are, not in percent
 COLUMNS = (
     "version",
     "track",
@@ -47,8 +51,8 @@ COLUMNS = (
 
 
 def percent(name: str, value: float) -> float:
-    """A metric as the CSVs show it: in percent, except the detection verdict, a raw score."""
-    return round(value if name == "verdict" else 100 * value, 4)
+    """A metric as the CSVs show it: in percent, except the raw verdict and synops counts."""
+    return round(value if name in RAW_METRICS else 100 * value, 4)
 
 
 def status_rows(

@@ -1,6 +1,7 @@
 """The uniform model surface: SNNModel, Probe, the neuron factory and the architecture registry."""
 
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from typing import Literal
 
 import torch
@@ -90,6 +91,10 @@ class SNNModel(nn.Module):
             raise SbbError(f"no neuron layer {layer!r}, known: {list(neurons)}")
         return Probe(neurons[layer], kind, detach)
 
+    def activity(self) -> "Activity":
+        """Return a context manager that counts spikes and synaptic operations (Activity)."""
+        return Activity(self)
+
 
 class Probe:
     """Context manager that records spikes or membrane potentials of one layer.
@@ -134,6 +139,92 @@ class Probe:
     def rates(self) -> torch.Tensor:
         """Mean spike rate over T, [B, ...]."""
         return self.spikes().mean(1)
+
+
+@dataclass(frozen=True)
+class ActivityCounts:
+    """Spikes and synaptic operations of a model over some inputs, as NeuroBench defines them.
+
+    Attributes:
+        samples: Inputs seen.
+        spikes: Spikes of every neuron layer.
+        neuron_steps: Neurons times time steps times samples, the slots a spike can take.
+        synops: Synaptic operations: the connections of every convolution and linear layer that
+            carry a nonzero input (NeuroBench's effective MACs and ACs together).
+    """
+
+    samples: int
+    spikes: float
+    neuron_steps: float
+    synops: float
+
+    @property
+    def spike_rate(self) -> float:
+        """Spikes per neuron and time step, 1 minus NeuroBench's activation sparsity."""
+        return self.spikes / self.neuron_steps if self.neuron_steps else 0.0
+
+    @property
+    def synops_per_sample(self) -> float:
+        """Synaptic operations of one input over all its time steps."""
+        return self.synops / self.samples if self.samples else 0.0
+
+
+class Activity:
+    """Context manager that counts the spikes and synaptic operations of a model's forward passes.
+
+    The counts add up over every forward pass made inside the context. They follow NeuroBench
+    (activation sparsity, synaptic operations) without depending on it.
+    """
+
+    def __init__(self, model: SNNModel) -> None:
+        self.model = model
+        self._samples = 0
+        self._spikes = self._steps = self._synops = 0.0
+
+    def __enter__(self) -> "Activity":
+        self._handles = [self.model.register_forward_pre_hook(self._count_samples)]
+        self._handles += [
+            layer.register_forward_hook(self._count_spikes)
+            for _, layer in self.model.named_neurons()
+        ]
+        self._handles += [
+            module.register_forward_hook(self._count_synops)
+            for module in self.model.modules()
+            if isinstance(module, nn.Linear | nn.modules.conv._ConvNd)
+        ]
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        for handle in self._handles:
+            handle.remove()
+
+    def counts(self) -> ActivityCounts:
+        """The counts so far."""
+        return ActivityCounts(self._samples, self._spikes, self._steps, self._synops)
+
+    def _count_samples(self, module: nn.Module, inputs: tuple[torch.Tensor, ...]) -> None:
+        self._samples += inputs[0].shape[0]  # x [B, T, P, H, W]
+
+    def _count_spikes(self, module: nn.Module, inputs: object, output: torch.Tensor) -> None:
+        self._spikes += float(output.detach().sum(dtype=torch.float64))
+        self._steps += output.numel()
+
+    @torch.no_grad()
+    def _count_synops(
+        self, module: nn.Module, inputs: tuple[torch.Tensor, ...], output: torch.Tensor
+    ) -> None:
+        active = (inputs[0] != 0).to(output.dtype)
+        if isinstance(module, nn.Linear):
+            ops = active.sum(dtype=torch.float64) * module.out_features
+        else:
+            # The same convolution with unit weights counts, for each output, the nonzero inputs
+            # that reach it, so padding and stride are exact. Multi-step inputs fold T into B.
+            assert isinstance(module, nn.modules.conv._ConvNd)
+            active = active.flatten(0, active.dim() - len(module.kernel_size) - 2)
+            ones = torch.ones_like(module.weight)
+            # ponytail: one more convolution per layer and pass, only on the evaluation passes.
+            ops = module._conv_forward(active, ones, None).sum(dtype=torch.float64)
+        self._synops += float(ops)
 
 
 ArchBuilder = Callable[[ArchSpec, tuple[int, int, int], int], SNNModel]

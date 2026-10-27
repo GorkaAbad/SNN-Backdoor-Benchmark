@@ -184,7 +184,8 @@ class Game:
         # 6. Attack validity
         test = data.test_loader(bs)
         ca_clean = trainer.evaluate(clean, test, ties)["accuracy"]
-        victim_pred, test_true = trainer.predict(victim, test, ties)  # reused by step 8
+        with victim.activity() as victim_activity:  # reused by step 8, as the predictions
+            victim_pred, test_true = trainer.predict(victim, test, ties)
         ca_victim = float(np.mean(victim_pred == test_true)) if len(test_true) else 0.0
         validity = {"ca_clean": ca_clean, "ca_backdoored": ca_victim}
         keeps_ca = attack_cls.card.keeps_clean_accuracy
@@ -222,21 +223,25 @@ class Game:
             triggered = data.triggered_loader(bs, frames=attack.trigger.apply)
         else:
             triggered = data.triggered_loader(bs, events=attack.trigger.apply)
+        clean_activity = victim_activity
         if defended.model is victim:
             clean_pred, clean_true = victim_pred, test_true
         else:
-            clean_pred, clean_true = trainer.predict(defended.model, test, ties)
+            with defended.model.activity() as clean_activity:
+                clean_pred, clean_true = trainer.predict(defended.model, test, ties)
         rejection: dict[str, np.ndarray] = {}
         detector = defended.detector
         if detector is None:
-            triggered_pred, triggered_true = trainer.predict(defended.model, triggered, ties)
+            with defended.model.activity() as triggered_activity:
+                triggered_pred, triggered_true = trainer.predict(defended.model, triggered, ties)
         else:
             # The triggered batches are made once, for the scores and the predictions, since a
             # trigger can be slow (sneaky_dynamic runs its autoencoder per sample on the CPU).
             clean_scores = self._scores(detector, test)
             parts: list[torch.Tensor] = []
             batches = self._scored(detector, triggered, parts)
-            triggered_pred, triggered_true = trainer.predict(defended.model, batches, ties)
+            with defended.model.activity() as triggered_activity:
+                triggered_pred, triggered_true = trainer.predict(defended.model, batches, ties)
             triggered_scores = torch.cat(parts).numpy() if parts else np.empty(0)
             rejection = {
                 "clean_scores": clean_scores,
@@ -245,7 +250,14 @@ class Game:
                 "triggered_accepted": triggered_scores <= detector.threshold,
             }
         ctx = EvalContext(
-            clean_pred, clean_true, triggered_pred, triggered_true, budget.target, **rejection
+            clean_pred,
+            clean_true,
+            triggered_pred,
+            triggered_true,
+            budget.target,
+            **rejection,
+            clean_activity=clean_activity.counts(),
+            triggered_activity=triggered_activity.counts(),
         )
         metrics = {
             name: metric().compute(ctx)

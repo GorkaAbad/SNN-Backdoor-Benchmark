@@ -1,6 +1,6 @@
 {
-  "no_attack/no_defense": {"ca": 1.0, "asr": 0.0, "ra": 1.0, "asr_all": 0.25},
-  "no_attack/fine_tuning": {"ca": 1.0, "asr": 0.0, "ra": 1.0, "asr_all": 0.25},
-  "static_patch/no_defense": {"ca": 1.0, "asr": 1.0, "ra": 0.0, "asr_all": 1.0},
-  "static_patch/fine_tuning": {"ca": 1.0, "asr": 1.0, "ra": 0.0, "asr_all": 1.0}
+  "no_attack/no_defense": {"ca": 1.0, "asr": 0.0, "ra": 1.0, "asr_all": 0.25, "spike_rate": 0.045019, "spike_rate_triggered": 0.045019, "synops": 67218.936},
+  "no_attack/fine_tuning": {"ca": 1.0, "asr": 0.0, "ra": 1.0, "asr_all": 0.25, "spike_rate": 0.047877, "spike_rate_triggered": 0.047877, "synops": 67803.04},
+  "static_patch/no_defense": {"ca": 1.0, "asr": 1.0, "ra": 0.0, "asr_all": 1.0, "spike_rate": 0.033294, "spike_rate_triggered": 0.080134, "synops": 50564.614},
+  "static_patch/fine_tuning": {"ca": 1.0, "asr": 1.0, "ra": 0.0, "asr_all": 1.0, "spike_rate": 0.041269, "spike_rate_triggered": 0.086403, "synops": 52819.083}
 }

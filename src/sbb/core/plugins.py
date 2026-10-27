@@ -13,7 +13,7 @@ from sbb.core.proxies import AttackerView, DefenderView
 from sbb.core.trainer import TrainerHooks
 from sbb.data.poison import Budget, PoisonSet
 from sbb.data.sample import EVENT_DTYPE, EventSample
-from sbb.models.snn import SNNModel
+from sbb.models.snn import ActivityCounts, SNNModel
 from sbb.utils.determinism import rng_for
 
 
@@ -236,7 +236,8 @@ class EvalContext:
 
     With an input defense, scores are its per-sample scores (higher is more suspicious) and the
     accepted masks mark the samples at or below its threshold. Without one, every sample is
-    accepted and the scores are None.
+    accepted and the scores are None. The activity fields count the spikes and synaptic
+    operations of the evaluated model over each test set (v2). The Game always fills them.
     """
 
     clean_pred: np.ndarray
@@ -248,6 +249,8 @@ class EvalContext:
     triggered_accepted: np.ndarray | None = None
     clean_scores: np.ndarray | None = None
     triggered_scores: np.ndarray | None = None
+    clean_activity: ActivityCounts | None = None
+    triggered_activity: ActivityCounts | None = None
 
     @property
     def clean_ok(self) -> np.ndarray:
@@ -274,12 +277,14 @@ def _all(predictions: np.ndarray) -> np.ndarray:
 class Metric(ABC):
     """A metric computed from an EvalContext. name equals the registry name.
 
-    stages lists the defense stages whose cells report the metric.
+    stages lists the defense stages whose cells report the metric. unit is "fraction" for a
+    value in [0, 1], or "count" for a raw count (v2: synaptic operations).
     """
 
     name: ClassVar[str]
     stages: ClassVar[frozenset[Stage]] = frozenset(Stage)
+    unit: ClassVar[Literal["fraction", "count"]] = "fraction"
 
     @abstractmethod
     def compute(self, ctx: EvalContext) -> float:
-        """Return a fraction in [0, 1]."""
+        """Return a fraction in [0, 1], or a count of at least 0 when unit is "count"."""

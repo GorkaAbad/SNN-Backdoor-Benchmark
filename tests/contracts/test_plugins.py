@@ -26,7 +26,7 @@ from sbb.core.trainer import Trainer, TrainerHooks, TrainSpec
 from sbb.data.module import DataModule
 from sbb.data.poison import Budget
 from sbb.data.sample import DATASETS, EVENT_DTYPE, EventSample
-from sbb.models.snn import ARCHITECTURES, SNNModel, build_model
+from sbb.models.snn import ARCHITECTURES, ActivityCounts, SNNModel, build_model
 from sbb.models.spec import ArchSpec
 from sbb.utils.determinism import rng_for
 
@@ -167,8 +167,11 @@ def test_metric(name: str) -> None:
         triggered_accepted=rng.random(50) < 0.5,
         clean_scores=rng.random(50),
         triggered_scores=rng.random(50) + 0.5,
+        clean_activity=ActivityCounts(50, 300.0, 1000.0, 2.0e5),
+        triggered_activity=ActivityCounts(50, 450.0, 1000.0, 3.0e5),
     )
-    assert 0.0 <= cls().compute(ctx) <= 1.0
+    value = cls().compute(ctx)
+    assert 0.0 <= value <= 1.0 if cls.unit == "fraction" else value >= 0.0
 
 
 @pytest.mark.parametrize("name", DATASETS.names())

@@ -5,6 +5,8 @@ from sbb.core.cards import Stage
 from sbb.core.plugins import EvalContext
 from sbb.core.registry import METRICS
 from sbb.metrics.detection import auroc
+from sbb.models.snn import ActivityCounts
+from sbb.utils.errors import SbbError
 
 
 def _context(**overrides: object) -> EvalContext:
@@ -79,3 +81,14 @@ def test_input_defense_metrics_apply_only_to_input_defenses() -> None:
         assert METRICS.get(name).stages == frozenset({Stage.INFERENCE})
     for name in ("ca", "asr", "ra", "asr_all"):
         assert METRICS.get(name).stages == frozenset(Stage)
+
+
+def test_activity_metrics_read_the_recorded_counts() -> None:
+    ctx = _context(
+        clean_activity=ActivityCounts(4, 30.0, 100.0, 800.0),
+        triggered_activity=ActivityCounts(4, 45.0, 100.0, 900.0),
+    )
+    assert (_metric("spike_rate", ctx), _metric("spike_rate_triggered", ctx)) == (0.3, 0.45)
+    assert _metric("synops", ctx) == 200.0  # per sample, a raw count
+    with pytest.raises(SbbError):
+        _metric("spike_rate", _context())  # the Game always records it

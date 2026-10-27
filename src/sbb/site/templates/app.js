@@ -4,7 +4,7 @@
 
 const KIND_ORDER = ["data_poisoning", "training_control", "supply_chain", "federated"];
 const STAGE_ORDER = ["pre_training", "in_training", "post_training", "inference", "model_detection"];
-const METRIC_ORDER = ["ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict"];
+const METRIC_ORDER = ["ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict", "spike_rate", "spike_rate_triggered", "synops"];
 
 const state = {
   tab: "matrix",
@@ -31,7 +31,7 @@ function uniq(values) {
 }
 
 function isPercent(metric) {
-  return metric !== "verdict";
+  return metric !== "verdict" && metric !== "synops";  // raw values, as RAW_METRICS in status.py
 }
 
 function formatValue(metric, value) {
