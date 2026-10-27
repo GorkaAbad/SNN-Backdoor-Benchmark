@@ -194,6 +194,11 @@ def test_status_lists_every_planned_cell_with_its_state(tmp_path: Path) -> None:
     assert len(rows) == len(cells)
     assert by_pair[("static_patch", "no_defense")]["state"] == "ok"
     assert by_pair[("static_patch", "no_defense")]["verification"] == "match"
+    rerun = done.model_copy(update={"metrics": {"ca": 0.5, "asr": 1.0}})  # same key, new numbers
+    stale = {
+        (r["attack"], r["defense"]): r for r in status_rows(cells, [rerun], [_check(done, "match")])
+    }
+    assert stale[("static_patch", "no_defense")]["verification"] == ""  # as on the site
     assert by_pair[("static_patch", "no_defense")]["ca"] == 90.0  # percent
     assert by_pair[("no_attack", "fine_tuning")]["state"] == "not_applicable"
     assert by_pair[("no_attack", "fine_tuning")]["reason"] == "a reason"

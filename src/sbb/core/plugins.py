@@ -12,7 +12,7 @@ from sbb.core.cards import AttackCard, DefenseCard, Stage
 from sbb.core.proxies import AttackerView, DefenderView
 from sbb.core.trainer import TrainerHooks
 from sbb.data.poison import Budget, PoisonSet
-from sbb.data.sample import EventSample
+from sbb.data.sample import EVENT_DTYPE, EventSample
 from sbb.models.snn import SNNModel
 from sbb.utils.determinism import rng_for
 
@@ -124,7 +124,11 @@ class PoisoningAttack(Attack):
             [self.labels.relabel(int(labels[p]), self.target) for p in positions], dtype=np.int64
         )
         if isinstance(self.trigger, FrameTrigger):
-            samples = tuple(train[int(p)] for p in positions)
+            # The DataModule triggers the cached clean frames, so the events are never read.
+            samples = tuple(
+                EventSample(np.empty(0, EVENT_DTYPE), int(labels[p]), int(i))
+                for p, i in zip(positions, indices, strict=True)
+            )
             return PoisonSet(indices, samples, new_labels, frame_trigger=self.trigger.apply)
         samples = tuple(
             self.trigger.apply(train[int(p)], rng_for(view.seed, int(i)))

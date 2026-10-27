@@ -147,6 +147,7 @@ def test_slurm_executor_submits_one_array_job(
     assert f"cd {job}" in script
     assert 'sbb run-cell cells/"${SLURM_ARRAY_TASK_ID}".json --site site.yaml' in script
     assert f"--out '{out.resolve()}'" in script
+    assert f"--bind '{tmp_path / 'cache'},{out.resolve()}'" in script  # results leave the image
     assert not (out / "jobs").exists()
     written = [Cell.model_validate_json(p.read_text()) for p in sorted((job / "cells").iterdir())]
     assert sorted(c.key() for c in written) == sorted(c.key() for c in cells)

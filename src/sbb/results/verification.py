@@ -1,5 +1,6 @@
 """Verification records: a cell rerun elsewhere, compared with its result (docs/PLAN.md 7.8)."""
 
+from collections.abc import Sequence
 from datetime import UTC
 from pathlib import Path
 from typing import Literal
@@ -10,6 +11,15 @@ from sbb.core.result import CellResult, Provenance
 
 # The verifier name of the verify-lite workflow. Its records set the status of lite cells.
 LITE_VERIFIER = "github-actions"
+
+
+def lite_verdicts(result: CellResult, checks: Sequence["Verification"]) -> list[str]:
+    """The verdicts of the verify-lite records in checks that cover result."""
+    return [
+        v.verdict
+        for v in checks
+        if v.result_key == result.key and v.verifier == LITE_VERIFIER and v.covers(result)
+    ]
 
 
 class Verification(BaseModel, frozen=True):
@@ -44,6 +54,18 @@ class Verification(BaseModel, frozen=True):
         outcome = self.notes.removeprefix("outcome ") if self.notes else original.outcome
         verdict = "match" if _matches(original, outcome, self.delta, tolerance_pp) else "mismatch"
         return self.model_copy(update={"verdict": verdict})
+
+    def covers(self, result: CellResult) -> bool:
+        """Whether this record checked result's numbers: rerun minus delta gives each metric back.
+
+        A record stays tied to the numbers it checked, so a result changed after its verification
+        (a rerun keeps its key) is not covered by the old record.
+        """
+        return all(
+            abs(self.metrics[m] - self.delta.get(m, 0.0) - value) <= 1e-9
+            for m, value in result.metrics.items()
+            if m in self.metrics
+        )
 
     def path(self, root: Path, original: CellResult) -> Path:
         """<root>/<benchmark version>/<cell key>/<verifier>-<UTC time of the rerun>.json."""

@@ -45,7 +45,8 @@ class PoisonSet:
         samples: The modified samples, in the order of indices.
         labels: Labels used for training.
         frame_trigger: Set by attacks whose trigger acts on frames. The DataModule applies it to the
-            frames of every sample of the overlay, with the RNG rng_for(seed, index).
+            cached clean frames of every sample of the overlay, with the RNG rng_for(seed, index),
+            so it never reads the samples' events.
     """
 
     indices: np.ndarray

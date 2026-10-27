@@ -1,7 +1,7 @@
 """The run status of a benchmark: one row per planned cell, done or missing, with its metrics."""
 
 import csv
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -10,9 +10,20 @@ from sbb.core.cards import compatible
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
-from sbb.results.verification import LITE_VERIFIER, Verification
+from sbb.results.verification import Verification, lite_verdicts
 
-METRIC_COLUMNS = ("ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict")
+# Labels and direction of the metrics the site shows. A metric not listed keeps its name.
+METRICS = {
+    "ca": ("Clean accuracy", "higher"),
+    "asr": ("Attack success rate", "lower"),
+    "asr_all": ("ASR, target class included", "lower"),
+    "ra": ("Robust accuracy", "higher"),
+    "frr": ("False rejection rate", "lower"),
+    "tpr": ("Rejection of triggered inputs", "higher"),
+    "auroc": ("Input AUROC", "higher"),
+    "verdict": ("Detection verdict", "none"),
+}
+METRIC_COLUMNS = tuple(METRICS)
 COLUMNS = (
     "version",
     "track",
@@ -45,11 +56,14 @@ def status_rows(
 
     state is the result's outcome. A cell without a result is missing, or not_applicable with
     the reason when the threat models do not fit, since such a cell never trains anything.
-    verification is the verdict of the verify-lite record, if any. Metrics are in percent,
+    verification is the verdict of the verify-lite records that checked the result's current
+    numbers, mismatch if any of them mismatched, as on the site. Metrics are in percent,
     except the detection verdict, a raw score.
     """
     by_key = {r.key: r for r in results}
-    verdicts = {v.result_key: v.verdict for v in checks if v.verifier == LITE_VERIFIER}
+    checks_by_key: dict[str, list[Verification]] = defaultdict(list)
+    for check in checks:
+        checks_by_key[check.result_key].append(check)
     rows = []
     for cell in cells:
         key = cell.key()
@@ -64,7 +78,7 @@ def status_rows(
             "defense": cell.defense,
             "seed": cell.seed,
             "state": result.outcome if result else "missing",
-            "verification": verdicts.get(key, ""),
+            "verification": _verification(result, checks_by_key[key]) if result else "",
             "key": key,
         }
         if result:
@@ -82,6 +96,11 @@ def status_rows(
                 row["state"], row["reason"] = "not_applicable", "; ".join(reasons)
         rows.append(row)
     return rows
+
+
+def _verification(result: CellResult, checks: Sequence[Verification]) -> str:
+    verdicts = lite_verdicts(result, checks)
+    return "mismatch" if "mismatch" in verdicts else "match" if verdicts else ""
 
 
 def summary(rows: Sequence[dict[str, Any]]) -> dict[str, Counter[str]]:

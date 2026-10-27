@@ -16,20 +16,9 @@ from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.metrics.detection import auroc
 from sbb.results.replication import ReplicationRecord
-from sbb.results.verification import LITE_VERIFIER, Verification
-from sbb.site.status import percent, write_csv
+from sbb.results.verification import Verification, lite_verdicts
+from sbb.site.status import METRICS, percent, write_csv
 
-# Labels and direction of the metrics the site shows. A metric not listed keeps its name.
-METRICS = {
-    "ca": ("Clean accuracy", "higher"),
-    "asr": ("Attack success rate", "lower"),
-    "asr_all": ("ASR, target class included", "lower"),
-    "ra": ("Robust accuracy", "higher"),
-    "frr": ("False rejection rate", "lower"),
-    "tpr": ("Rejection of triggered inputs", "higher"),
-    "auroc": ("Input AUROC", "higher"),
-    "verdict": ("Detection verdict", "none"),
-}
 # What a cell shows when its seeds did not all end ok, the most serious first.
 _STATUS = {
     "failed": "failed",
@@ -207,27 +196,11 @@ def _csv(cells: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
     return rows, [*keys, "seeds", "excluded", *stats, "sites", "devices", "reason"]
 
 
-def _checked(result: CellResult, check: Verification) -> bool:
-    """Whether check verified this result's numbers: rerun minus delta gives each metric back.
-
-    A record stays tied to the numbers it checked, so a result changed after its verification
-    (a rerun keeps its key) is not covered by the old record.
-    """
-    return all(
-        abs(check.metrics[m] - check.delta.get(m, 0.0) - value) <= 1e-9
-        for m, value in result.metrics.items()
-        if m in check.metrics
-    )
-
-
 def _verified(results: list[CellResult], checks: dict[str, list[Verification]]) -> str:
     """Status of a finished cell: the verify-lite verdicts of its seeds decide a lite cell."""
     if results[0].cell.track != "lite":
         return "self-reported"
-    verdicts = [
-        [v.verdict for v in checks.get(r.key, []) if v.verifier == LITE_VERIFIER and _checked(r, v)]
-        for r in results
-    ]
+    verdicts = [lite_verdicts(r, checks.get(r.key, [])) for r in results]
     if any("mismatch" in seed for seed in verdicts):
         return "disputed"
     return "reproduced" if all(verdicts) else "self-reported"

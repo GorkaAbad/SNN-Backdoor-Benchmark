@@ -4,7 +4,7 @@ import json
 import logging
 import math
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -184,7 +184,8 @@ class Game:
         # 6. Attack validity
         test = data.test_loader(bs)
         ca_clean = trainer.evaluate(clean, test, ties)["accuracy"]
-        ca_victim = trainer.evaluate(victim, test, ties)["accuracy"]
+        victim_pred, test_true = trainer.predict(victim, test, ties)  # reused by step 8
+        ca_victim = float(np.mean(victim_pred == test_true)) if len(test_true) else 0.0
         if ca_victim < ca_clean - budget.delta_pp / 100:
             reason = f"CA dropped from {ca_clean:.4f} to {ca_victim:.4f}"
             metrics = {"ca_clean": ca_clean, "ca_backdoored": ca_victim}
@@ -219,16 +220,22 @@ class Game:
             triggered = data.triggered_loader(bs, frames=attack.trigger.apply)
         else:
             triggered = data.triggered_loader(bs, events=attack.trigger.apply)
-        clean_pred, clean_true = trainer.predict(defended.model, test, ties)
-        triggered_pred, triggered_true = trainer.predict(defended.model, triggered, ties)
+        if defended.model is victim:
+            clean_pred, clean_true = victim_pred, test_true
+        else:
+            clean_pred, clean_true = trainer.predict(defended.model, test, ties)
         rejection: dict[str, np.ndarray] = {}
-        if defended.detector is not None:
-            # ponytail: scoring runs the loaders a second time. Merge it into predict if it is slow.
-            detector = defended.detector
-            clean_scores, triggered_scores = (
-                self._scores(detector, test),
-                self._scores(detector, triggered),
-            )
+        detector = defended.detector
+        if detector is None:
+            triggered_pred, triggered_true = trainer.predict(defended.model, triggered, ties)
+        else:
+            # The triggered batches are made once, for the scores and the predictions, since a
+            # trigger can be slow (sneaky_dynamic runs its autoencoder per sample on the CPU).
+            clean_scores = self._scores(detector, test)
+            parts: list[torch.Tensor] = []
+            batches = self._scored(detector, triggered, parts)
+            triggered_pred, triggered_true = trainer.predict(defended.model, batches, ties)
+            triggered_scores = torch.cat(parts).numpy() if parts else np.empty(0)
             rejection = {
                 "clean_scores": clean_scores,
                 "triggered_scores": triggered_scores,
@@ -257,9 +264,9 @@ class Game:
         cell, data = setting.cell, setting.data
         budget = cell.scenario.budget
         # ponytail: the PoisonSet is rebuilt in every cell and only its key is recorded, although
-        # PLAN 4.8 rule 9 caches every stage. On N-MNIST that costs 30 to 40 s on 4 CPU cores per
-        # static_patch cell (6 000 samples). Cache it with learned triggers in v1: a cached set
-        # skips poison(), so trigger.fit too.
+        # PLAN 4.8 rule 9 caches every stage, so no artifact exists under the poison_set key. On
+        # N-MNIST that costs 30 to 40 s on 4 CPU cores per static_patch cell (6 000 samples).
+        # Caching it also needs the fitted trigger state, because a cached set skips poison().
         poison = attack.poison(view, budget, data.defender_pool)
         if poison.frame_trigger is not None and attack.card.capabilities.trigger_domain != "frames":
             raise ThreatModelViolation(
@@ -423,6 +430,15 @@ class Game:
         """The input defense's score of every sample, in loader order."""
         parts = [detector.score(x.to(self.device)).cpu() for x, _, _ in loader]
         return torch.cat(parts).numpy() if parts else np.empty(0)
+
+    def _scored(
+        self, detector: InputDefense, loader: DataLoader[Any], scores: list[torch.Tensor]
+    ) -> Iterator[Any]:
+        """The batches of loader, each scored by the input defense into scores on the way."""
+        for batch in loader:
+            with torch.no_grad():
+                scores.append(detector.score(batch[0].to(self.device)).cpu())
+            yield batch
 
     def _prepare_data(self, scenario: Scenario, seed: int) -> DataModule:
         """Prepare the dataset, load the split, reserve the defender pool and build the loaders."""
