@@ -55,21 +55,26 @@
     "seed": 1,
     "attack_hparams": {}
   },
-  "outcome": "invalid_attack",
-  "reason": "CA dropped from 0.6800 to 0.4800",
+  "outcome": "ok",
+  "reason": null,
   "metrics": {
+    "asr": 0.5622222222222222,
+    "asr_all": 0.6,
+    "ca": 0.542,
+    "ra": 0.2788888888888889,
     "ca_clean": 0.68,
     "ca_backdoored": 0.48
   },
   "artifacts": {
-    "clean_model": "ad1525e1482cfcfccedfe233c416dda3dc7e159e4c1af6559a7927437b9d977b",
-    "model": "72f682e211fb546f513877658e5fe80b1d66c5fae6964e557a8aca0ac98eec31"
+    "clean_model": "086df08c00a46ec86da5ebf1c6dc47f15d7d7610910b8094ccbe41205112b923",
+    "model": "76db74485f5ad7198987998a8193ab0ee20cc1e31a6b2bba6bba29b4d640d15e",
+    "defended_model": "524a23ca35c2840025b8da4991e12953371f5a2255e338bfde496e83d9140716"
   },
   "provenance": {
-    "sbb_version": "0.1.0",
-    "git_commit": "f0adb77ee3c2efd4c317e9d8df23e800fe23b96d",
+    "sbb_version": "1.0.0",
+    "git_commit": "50e26111b1f1665f10cac8b747bc395a5b38a597",
     "image_digest": null,
-    "lockfile_sha256": "5f2811709d21ce6ce46a7489a66d325c649d686014847956767c68a3765f5801",
+    "lockfile_sha256": "7c23765bbf6eb06d433c3c4b6e0eec99ea7c272e51754f5f1b27da883ab89eff",
     "python": "3.11.11",
     "torch": "2.14.1+cu130",
     "spikingjelly": "0.0.0.0.14",
@@ -80,7 +85,7 @@
     "deterministic": true,
     "submitter": "GorkaAbad",
     "submitter_org": "SNN-Backdoor-Benchmark",
-    "started_at": "2026-10-24T14:58:03.712638Z",
-    "duration_s": 3.081944548059255
+    "started_at": "2026-10-27T02:50:07.559321Z",
+    "duration_s": 650.0613808329217
   }
 }

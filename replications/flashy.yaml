@@ -2,7 +2,7 @@ method: flashy
 source: "Ria\xF1o et al., Flashy Backdoor, arXiv 2411.03022, Table 4 (and Table 3),\
   \ 3 poisoned frames at the start with a clean frame between two, full frame, polarity\
   \ 1. Target 0 and 40 epochs as in the official claims."
-confirmed: false
+confirmed: true
 hparams:
   selector:
     include_target: true

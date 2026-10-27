@@ -3,7 +3,7 @@ source: Abad et al., Sneaky Spikes, NDSS 2024, Figure 4, alpha 0.5 and gamma 0.0
   (the official scripts/dynamic.sh). Values read from the plot. The official code
   keeps the epoch with the best test accuracies, the port keeps the last epoch. Batch
   8, the default of the official dynamic.py.
-confirmed: false
+confirmed: true
 hparams: {}
 seeds:
 - 0

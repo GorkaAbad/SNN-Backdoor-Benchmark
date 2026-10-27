@@ -74,12 +74,12 @@ declares its threat model and hyperparameters.
 | Sneaky Spikes, dynamic (`sneaky_dynamic`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | training control | learned, input-specific | explained |
 | Static patch on raw events (`static_patch`) | variant of Sneaky Spikes | data poisoning | patch added to the event stream | not applicable |
 | Flashy Backdoor (`flashy`) | [Riaño et al., 2024](https://arxiv.org/abs/2411.03022) | data poisoning | full-frame flash | explained |
-| T-Backdoor, rate, latency and jitter (`tbackdoor_*`) | [Miah et al., 2026](https://arxiv.org/abs/2609.30119) | data poisoning | reordered frames only | pending |
+| T-Backdoor, rate, latency and jitter (`tbackdoor_*`) | [Miah et al., 2026](https://arxiv.org/abs/2609.30119) | data poisoning | reordered frames only | replicated |
 | Fine-tuning injection (`finetune_injection`) | baseline | supply chain | static patch, fine-tuned into a clean model | not applicable |
 
 A port is **replicated** when its mean over three seeds is within 3 percentage points of every
 number its paper reports, and **explained** when a maintainer documented why it misses
-([records](replications/)). T-Backdoor joins the benchmark once its replication is done.
+([records](replications/)). T-Backdoor joins the benchmark in version 1.0.
 
 ### Defenses
 
@@ -98,8 +98,7 @@ number its paper reports, and **explained** when a maintainer documented why it 
 
 Defenses designed for ANNs are adapted to SNNs once, with shared utilities, and the card of each
 defense describes its adaptation. NDSBM ([Li et al., 2025](https://arxiv.org/abs/2510.06629)) is
-ported but stays out of the benchmark until its clean accuracy issue is fixed. BadSNN waits for its
-official code.
+ported and joins the benchmark in version 1.0. BadSNN waits for its official code.
 
 ### Datasets and networks
 
