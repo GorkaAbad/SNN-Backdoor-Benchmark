@@ -41,7 +41,8 @@ function formatValue(metric, value) {
 
 function formatStat(metric, stat) {
   if (!stat) return "";
-  return `${formatValue(metric, stat.mean)} ± ${formatValue(metric, stat.std)}`;
+  const ci = stat.ci95 == null ? "" : `, 95% CI ± ${formatValue(metric, stat.ci95)}`;
+  return `${formatValue(metric, stat.mean)} ± ${formatValue(metric, stat.std)} (std${ci})`;
 }
 
 function groupIndex(method, methods) {
@@ -353,19 +354,20 @@ function downloadMatrix() {
   download(selectionName(`${state.metric}-matrix`), matrixCsv(matrix(visibleCells(), state.metric, DATA.methods)));
 }
 
-// The shown cells, one row each, with the mean and std of every metric, in the matrix order.
+// The shown cells, one row each, with the mean, std and 95% interval of every metric, in the matrix order.
 function downloadTable() {
   const cells = visibleCells();
   const metrics = METRIC_ORDER.filter((m) => cells.some((c) => c.metrics[m]));
   const attacks = orderMethods(uniq(cells.map((c) => c.attack)), DATA.methods);
   const defenses = orderMethods(uniq(cells.map((c) => c.defense)), DATA.methods);
   const rank = (c) => attacks.indexOf(c.attack) * defenses.length + defenses.indexOf(c.defense);
-  const scale = (m, v) => (v === undefined ? "" : Number((v * (isPercent(m) ? 100 : 1)).toFixed(4)));
+  const scale = (m, v) => (v == null ? "" : Number((v * (isPercent(m) ? 100 : 1)).toFixed(4)));
+  const stats = ["mean", "std", "ci95"];
   const rows = [...cells].sort((a, b) => rank(a) - rank(b)).map((c) => [
     c.attack, c.defense, c.seeds.join(" "), excludedText(c, "; "), c.status,
-    ...metrics.flatMap((m) => [scale(m, c.metrics[m]?.mean), scale(m, c.metrics[m]?.std)]),
+    ...metrics.flatMap((m) => stats.map((s) => scale(m, c.metrics[m]?.[s]))),
   ]);
-  const headers = ["attack", "defense", "seeds", "excluded", "status", ...metrics.flatMap((m) => [`${m}_mean`, `${m}_std`])];
+  const headers = ["attack", "defense", "seeds", "excluded", "status", ...metrics.flatMap((m) => stats.map((s) => `${m}_${s}`))];
   download(selectionName("table"), toCsv([headers, ...rows]));
 }
 
@@ -553,7 +555,7 @@ async function main() {
   }
   $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. Lite cells are verified on GitHub runners after merge. Full-track cells are self-reported until independent verification (v2). `;
   const link = (href, textContent) => Object.assign(document.createElement("a"), { href, textContent });
-  $("footer").append("Download ", link("results.csv", "all results"), " (mean and std over seeds) or ", link("status.csv", "the run status of every cell"), ", as CSV.");
+  $("footer").append("Download ", link("results.csv", "all results"), " (mean, std and 95% t-interval over seeds) or ", link("status.csv", "the run status of every cell"), ", as CSV.");
   render();
 }
 

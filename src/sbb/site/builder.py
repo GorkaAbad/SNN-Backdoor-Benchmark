@@ -17,6 +17,7 @@ from sbb.core.result import CellResult
 from sbb.metrics.detection import auroc
 from sbb.results.policy import OUTCOME_STATUS, VerificationPolicy
 from sbb.results.replication import ReplicationRecord
+from sbb.results.stats import seed_stats
 from sbb.results.verification import Verification
 from sbb.runner.spec import Tolerance
 from sbb.site.status import METRICS, percent, write_csv
@@ -121,7 +122,7 @@ class LeaderboardBuilder:
 def _aggregate(
     results: list[CellResult], checks: dict[str, list[Verification]], policy: VerificationPolicy
 ) -> dict[str, Any]:
-    """One row of the site: the cell over its valid seeds, metrics as mean and population std.
+    """One row of the site: the cell over its valid seeds, each metric as seed_stats gives it.
 
     Attack validity (PLAN rule 6) is judged per seed. Seeds that did not end ok are left out of
     the metrics and listed in excluded, with their reason (user decision of 2026-10-23). A cell
@@ -134,8 +135,7 @@ def _aggregate(
     status = str(policy.cell_status(results, [v for r in results for v in checks.get(r.key, [])]))
     metrics = {}
     for name in sorted({name for r in valid for name in r.metrics}):
-        values = np.array([r.metrics[name] for r in valid if name in r.metrics])
-        metrics[name] = {"mean": float(values.mean()), "std": float(values.std())}
+        metrics[name] = seed_stats([r.metrics[name] for r in valid if name in r.metrics])
     return {
         "version": first.benchmark_version,
         "track": first.track,
@@ -175,7 +175,8 @@ def _aggregate(
 def _csv(cells: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
     """The site's cells as CSV rows and columns, for analysis outside the page.
 
-    One row per cell, the mean and standard deviation over its valid seeds for each metric.
+    One row per cell. For each metric over its valid seeds: the mean, the population std and the
+    half-width of the 95% t-interval, empty for one seed.
     """
     known = [m for m in METRICS if any(m in c["metrics"] for c in cells)]
     names = known + sorted({m for c in cells for m in c["metrics"]} - set(METRICS))
@@ -187,13 +188,14 @@ def _csv(cells: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
         for name, stat in cell["metrics"].items():
             row[f"{name}_mean"] = percent(name, stat["mean"])
             row[f"{name}_std"] = percent(name, stat["std"])
+            row[f"{name}_ci95"] = "" if stat["ci95"] is None else percent(name, stat["ci95"])
         row["excluded"] = "; ".join(
             f"{e['seed']}: {e['status']} ({e['reason']})" for e in cell["excluded"]
         )
         row["sites"], row["devices"] = "; ".join(cell["sites"]), "; ".join(cell["devices"])
         row["reason"] = cell["reason"] or ""
         rows.append(row)
-    stats = [f"{name}_{s}" for name in names for s in ("mean", "std")]
+    stats = [f"{name}_{s}" for name in names for s in ("mean", "std", "ci95")]
     return rows, [*keys, "seeds", "excluded", *stats, "sites", "devices", "reason"]
 
 

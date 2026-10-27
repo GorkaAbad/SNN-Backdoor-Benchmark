@@ -17,6 +17,8 @@ from sbb.site.status import status_rows, write_csv
 from tests.unit.test_runner import SMOKE
 
 PROVENANCE = collect_provenance(torch.device("cpu"), "laptop", "test", datetime.now(UTC), 0.0)
+# CA 0.8 and 0.9 over two seeds: sample std 0.0707 and t(0.975, 1) = 12.706 give the interval.
+STAT_085 = {"mean": 0.85, "std": 0.05, "n": 2, "ci95": 0.6353}
 REPLICATIONS = Path(__file__).parents[2] / "replications"
 
 
@@ -46,7 +48,7 @@ def test_cells_aggregate_the_seeds() -> None:
         c for c in data["cells"] if (c["attack"], c["defense"]) == ("static_patch", "no_defense")
     )
     assert cell["seeds"] == [0, 1] and cell["status"] == "self-reported"
-    assert cell["metrics"]["ca"] == pytest.approx({"mean": 0.85, "std": 0.05})
+    assert cell["metrics"]["ca"] == pytest.approx(STAT_085, abs=1e-4)
     assert (cell["dataset"], cell["arch"], cell["sites"]) == (
         "synthetic",
         "tiny_lif_cnn",
@@ -127,6 +129,7 @@ def test_build_writes_a_site_with_the_data(tmp_path: Path) -> None:
     cell = rows[("static_patch", "no_defense")]
     assert (cell["status"], cell["seeds"]) == ("self-reported", "0 1")
     assert (float(cell["ca_mean"]), float(cell["ca_std"])) == (85.0, 5.0)  # percent
+    assert float(cell["ca_ci95"]) == pytest.approx(63.531, abs=1e-3)  # t(0.975, 1) x 5 points
     assert float(cell["verdict_mean"]) == 0.75  # a raw score
     na = rows[("no_attack", "fine_tuning")]
     assert (na["status"], na["reason"], na["ca_mean"]) == ("not-applicable", "a reason", "")
@@ -240,7 +243,7 @@ def test_a_cell_averages_its_valid_seeds_and_lists_the_others(tmp_path: Path) ->
     cells = {(c["attack"], c["defense"]): c for c in builder.data()["cells"]}
     partial = cells[("static_patch", "no_defense")]
     assert partial["status"] == "self-reported" and partial["seeds"] == [0, 2]
-    assert partial["metrics"]["ca"] == pytest.approx({"mean": 0.85, "std": 0.05})
+    assert partial["metrics"]["ca"] == pytest.approx(STAT_085, abs=1e-4)
     assert partial["excluded"] == [{"seed": 1, "status": "invalid-attack", "reason": "a reason"}]
     assert partial["reason"] is None
     invalid = cells[("no_attack", "no_defense")]  # no valid seed: the whole cell is invalid

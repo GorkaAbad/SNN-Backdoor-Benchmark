@@ -1,10 +1,10 @@
-"""Markdown tables of results, one per (track, scenario)."""
+"""Markdown tables of results, one per (track, scenario), with the 95% t-interval over seeds."""
 
 from collections import defaultdict
 from collections.abc import Sequence
-from statistics import mean
 
 from sbb.core.result import CellResult
+from sbb.results.stats import seed_stats
 
 _METRICS = ("ca", "asr", "ra")
 
@@ -14,8 +14,12 @@ def _entry(results: Sequence[CellResult]) -> str:
     if not ok:
         outcome = results[0].outcome
         return "N/A" if outcome == "not_applicable" else outcome
-    values = " · ".join(f"{m.upper()} {100 * mean(r.metrics[m] for r in ok):.1f}" for m in _METRICS)
-    return f"{values} (n={len(ok)})"
+    values = []
+    for m in _METRICS:
+        s = seed_stats([r.metrics[m] for r in ok])
+        ci = "" if s["ci95"] is None else f" ± {100 * s['ci95']:.1f}"
+        values.append(f"{m.upper()} {100 * s['mean']:.1f}{ci}")
+    return f"{' · '.join(values)} (n={len(ok)})"
 
 
 def markdown_table(results: Sequence[CellResult]) -> str:

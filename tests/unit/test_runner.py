@@ -12,6 +12,7 @@ from sbb.core.result import CellResult, Outcome, collect_provenance
 from sbb.core.scenario import Cell
 from sbb.data.sample import DATASETS
 from sbb.models.snn import ARCHITECTURES
+from sbb.results.stats import seed_stats
 from sbb.results.store import LocalResultStore
 from sbb.results.table import markdown_table
 from sbb.runner.executors import executor_for
@@ -82,6 +83,20 @@ def test_table_shows_metrics_and_reasons() -> None:
     assert "CA 98.0 · ASR 1.0 · RA 97.0 (n=1)" in table
     assert "| static_patch | failed | N/A |" in table
     assert "- static_patch × no_defense: not_applicable because" in table
+
+
+def test_seed_stats_give_a_t_interval() -> None:
+    # Sample std 1 over 3 seeds and t(0.975, 2) = 4.3027: the half-width is 4.3027 / sqrt(3).
+    assert seed_stats([1.0, 2.0, 3.0]) == pytest.approx(
+        {"mean": 2.0, "std": (2 / 3) ** 0.5, "n": 3, "ci95": 2.4841}, abs=1e-4
+    )
+    assert seed_stats([0.5])["ci95"] is None  # one seed has no interval
+
+
+def test_table_shows_the_interval_over_seeds() -> None:
+    results = [_result("no_attack", "no_defense", "ok", ca=ca, asr=0.0, ra=ca) for ca in (0.9, 1.0)]
+    # Sample std 0.0707 and t(0.975, 1) = 12.706: 63.5 points either side, in percent.
+    assert "CA 95.0 ± 63.5 · ASR 0.0 ± 0.0 · RA 95.0 ± 63.5 (n=2)" in markdown_table(results)
 
 
 def test_store_round_trip(tmp_path: Path) -> None:
