@@ -87,7 +87,7 @@ class VerificationPolicy:
         verdicts = [
             matches(r, v.delta, tolerance, v.notes)
             for v in checks
-            if v.result_key == r.key and self.is_independent(v, r) and _checked(r, v)
+            if v.result_key == r.key and self.is_independent(v, r) and v.covers(r)
         ]
         hits = sum(verdicts)
         if len(verdicts) - hits >= max(hits, 1):
@@ -128,16 +128,3 @@ class VerificationPolicy:
             m: max(t.full_pp, t.full_sigma * 100 * float(np.std(v or [0.0])))
             for m, v in values.items()
         }
-
-
-def _checked(result: CellResult, check: Verification) -> bool:
-    """Whether check verified this result's numbers: rerun minus delta gives each metric back.
-
-    A record stays tied to the numbers it checked, so a result changed after its verification
-    (a rerun keeps its key) is not covered by the old record.
-    """
-    return all(
-        abs(check.metrics[m] - check.delta.get(m, 0.0) - value) <= 1e-9
-        for m, value in result.metrics.items()
-        if m in check.metrics
-    )

@@ -19,19 +19,8 @@ from sbb.results.policy import OUTCOME_STATUS, VerificationPolicy
 from sbb.results.replication import ReplicationRecord
 from sbb.results.verification import Verification
 from sbb.runner.spec import Tolerance
-from sbb.site.status import percent, write_csv
+from sbb.site.status import METRICS, percent, write_csv
 
-# Labels and direction of the metrics the site shows. A metric not listed keeps its name.
-METRICS = {
-    "ca": ("Clean accuracy", "higher"),
-    "asr": ("Attack success rate", "lower"),
-    "asr_all": ("ASR, target class included", "lower"),
-    "ra": ("Robust accuracy", "higher"),
-    "frr": ("False rejection rate", "lower"),
-    "tpr": ("Rejection of triggered inputs", "higher"),
-    "auroc": ("Input AUROC", "higher"),
-    "verdict": ("Detection verdict", "none"),
-}
 _TEMPLATES = ("index.html", "app.js", "style.css", "favicon.png")
 
 

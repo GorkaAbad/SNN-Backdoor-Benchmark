@@ -17,14 +17,12 @@ from rich.table import Table
 import sbb.attacks  # noqa: F401  registers the plugins
 import sbb.defenses  # noqa: F401
 import sbb.metrics  # noqa: F401
-from sbb.core.cards import compatible
 from sbb.core.game import Game
-from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
 from sbb.results.bundle import Manifest, check_manifest, make_manifest
 from sbb.results.policy import VerificationPolicy
-from sbb.results.replication import ReplicationRecord
+from sbb.results.replication import REPLICATION_TOLERANCE_PP, ReplicationRecord
 from sbb.results.store import LocalResultStore, ResultStore
 from sbb.results.table import markdown_table
 from sbb.results.validate import validate as validate_files
@@ -198,7 +196,10 @@ def zoo_push(version: str, repo: Repo = ZOO, out: Out = Path("results"), site: S
     """
     local = LocalStore(_site(site).cache_dir / "artifacts")
     results = LocalResultStore(out).query(benchmark_version=version)
-    keys = sorted({key for result in results for key in result.artifacts.values()})
+    # The poison_set key identifies the poison set, which is rebuilt in every cell, not stored.
+    keys = sorted(
+        {key for r in results for name, key in r.artifacts.items() if name != "poison_set"}
+    )
     found = {key: path for key in keys if (path := local.get(key))}
     if found:
         HubStore(repo, prefix=version).put_many(found)
@@ -279,12 +280,14 @@ def reproduce(
     tolerance_pp: Annotated[
         float | None, typer.Option(help="Allowed difference. Default: the track's.")
     ] = None,
+    benchmarks: Annotated[
+        Path, typer.Option(help="Benchmark specs, one of them of the result's version.")
+    ] = Path("benchmarks"),
 ) -> None:
     """Rerun the cell of RESULT_JSON on this site and write a Verification record."""
     original = CellResult.model_validate_json(result_json.read_text())
+    track_pp = _track_tolerance(original.cell, benchmarks)  # before the rerun, which can be long
     rerun = _site(site).game("reproduce").run(original.cell)
-    defaults = Tolerance()
-    track_pp = defaults.lite_pp if original.cell.track == "lite" else defaults.full_pp
     tolerance = track_pp if tolerance_pp is None else tolerance_pp  # 0 asks for an exact match
     check = verify(original, rerun, verifier, verifier_org, tolerance)
     path = check.path(verifications, original)
@@ -322,6 +325,20 @@ def spot_check(
     for cell in picked:
         description = f"{cell.scenario.name} {cell.attack} x {cell.defense} seed {cell.seed}"
         console.print(f"sbb reproduce {paths[cell.key()][1]}  # {description}")
+
+
+def _track_tolerance(cell: Cell, benchmarks: Path) -> float:
+    """The tolerance of the cell's track in the spec of its benchmark version, in pp.
+
+    Replications have no spec and use the replication tolerance.
+    """
+    if cell.track == "replication":
+        return REPLICATION_TOLERANCE_PP
+    for path in sorted(benchmarks.glob("*.yaml")):
+        spec = BenchmarkSpec.load(path)
+        if spec.version == cell.benchmark_version:
+            return spec.tolerance.lite_pp if cell.track == "lite" else spec.tolerance.full_pp
+    raise SbbError(f"no benchmark spec of version {cell.benchmark_version} in {benchmarks}")
 
 
 def _verifications(root: Path) -> list[Verification]:
@@ -363,11 +380,11 @@ def plan(
     verifications: Checks = Path("verifications"),
 ) -> None:
     """List the cells of SPEC with their status and N/A reasons, or write them to a CSV."""
-    store = LocalResultStore(out)
+    benchmark = BenchmarkSpec.load(spec)
+    cells = Planner(benchmark).cells(track, attack, defense)
+    policy = VerificationPolicy(benchmark.tolerance)
+    rows = status_rows(cells, LocalResultStore(out).query(), _verifications(verifications), policy)
     if csv:
-        cells = Planner(BenchmarkSpec.load(spec)).cells(track, attack, defense)
-        policy = VerificationPolicy(BenchmarkSpec.load(spec).tolerance)
-        rows = status_rows(cells, store.query(), _verifications(verifications), policy)
         write_csv(rows, csv)
         for name, counts in summary(rows).items():
             states = ", ".join(f"{n} {state}" for state, n in counts.most_common())
@@ -375,20 +392,12 @@ def plan(
         console.print(f"written to {csv}")
         return
     table = Table("cell", "track", "scenario", "attack", "defense", "seed", "status")
-    for cell in Planner(BenchmarkSpec.load(spec)).cells(track, attack, defense):
-        attack_card, defense_card = ATTACKS.get(cell.attack).card, DEFENSES.get(cell.defense).card
-        ok, reasons = compatible(attack_card, defense_card, cell.scenario.budget)
-        result = store.get(cell.key())
-        status = result.outcome if result else "pending" if ok else "N/A: " + "; ".join(reasons)
-        table.add_row(
-            cell.key()[:12],
-            cell.track,
-            cell.scenario.name,
-            cell.attack,
-            cell.defense,
-            str(cell.seed),
-            status,
-        )
+    for row in rows:
+        status = row["state"]
+        if status == "not_applicable":
+            status = "N/A: " + row["reason"]
+        columns = ("track", "scenario", "attack", "defense", "seed")
+        table.add_row(row["key"][:12], *(str(row[c]) for c in columns), status)
     console.print(table)
 
 

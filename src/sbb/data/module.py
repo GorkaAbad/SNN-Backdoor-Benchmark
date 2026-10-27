@@ -46,8 +46,8 @@ class DataModule:
     """Builds every loader of a scenario. Batches are (x [B, T, P, H, W], y [B], index [B]).
 
     Frames of clean samples are cached by (dataset, split, representation). Overlay samples and
-    test samples with a raw-event trigger are encoded on the fly. Frame triggers act on encoded
-    frames, which come from the cache for test samples.
+    test samples with a raw-event trigger are encoded on the fly. Frame triggers act on the cached
+    frames of the clean sample, for test samples and for the samples of an overlay.
 
     Args:
         dataset: The prepared dataset.
@@ -170,8 +170,11 @@ class DataModule:
     def _poisoned(
         self, index: int, sample: EventSample, frame_trigger: FrameTriggerFn | None
     ) -> torch.Tensor:
-        x = self.encode(sample)
-        return x if frame_trigger is None else frame_trigger(x, rng_for(self.seed, index))
+        if frame_trigger is None:
+            return self.encode(sample)
+        # A frame trigger poisons the clean sample, whose frames are in the cache. The overlay
+        # sample carries no events then (PoisoningAttack.poison).
+        return frame_trigger(self.cached_frames(index), rng_for(self.seed, index))
 
     def _triggered(
         self, index: int, events: EventTriggerFn | None, frames: FrameTriggerFn | None

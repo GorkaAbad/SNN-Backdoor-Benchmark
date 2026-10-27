@@ -124,6 +124,7 @@ def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     original = next((out / "smoke-0.1.0").glob("*.json"))
     verifications = tmp_path / "verifications"
     args = ["reproduce", str(original), "--site", str(site), "--verifications", str(verifications)]
+    args += ["--benchmarks", str(SMOKE.parent)]
     reproduced = CliRunner().invoke(app, [*args, "--verifier", "bob", "--verifier-org", "lab"])
     assert reproduced.exit_code == 0, reproduced.output
     (record,) = verifications.rglob("*.json")
@@ -140,6 +141,15 @@ def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     assert CliRunner().invoke(app, strict).exit_code == 0
     verdicts = {json.loads(r.read_text())["verdict"] for r in verifications.rglob("*.json")}
     assert verdicts == {"match", "mismatch"}
+
+    # By default the spec's tolerance applies: smoke allows 1 pp on lite, the default 3 pp.
+    shifted["metrics"]["ca"] -= 0.015
+    copy.write_text(json.dumps(shifted))
+    by_spec = tmp_path / "by_spec"
+    loose = ["reproduce", str(copy), "--site", str(site), "--verifications", str(by_spec)]
+    assert CliRunner().invoke(app, [*loose, "--benchmarks", str(SMOKE.parent)]).exit_code == 0
+    (record,) = by_spec.rglob("*.json")
+    assert json.loads(record.read_text())["verdict"] == "mismatch"
 
     # A card with broken YAML is reported, not a crash.
     broken = tmp_path / "cards" / "broken.yaml"

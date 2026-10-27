@@ -14,6 +14,8 @@ from sbb.core.scenario import Cell, Scenario
 from sbb.utils.errors import SbbError
 
 Status = Literal["pending", "replicated", "explained", "failed"]
+# The benchmark rule for every replication, in percentage points (user decision of 2026-10-22).
+REPLICATION_TOLERANCE_PP = 3.0
 
 
 class Stat(BaseModel, frozen=True):
@@ -61,7 +63,7 @@ class ReplicationRecord(BaseModel, frozen=True):
     confirmed: bool = False
     hparams: dict[str, Any] = {}
     seeds: list[int] = [0, 1, 2]
-    tolerance_pp: float = 3.0
+    tolerance_pp: float = REPLICATION_TOLERANCE_PP
     targets: list[Target]
     status: Status = "pending"
     explanation: str | None = None

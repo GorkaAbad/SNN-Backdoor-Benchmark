@@ -15,8 +15,9 @@ class SlurmExecutor(Executor):
 
     site.slurm entries become `#SBATCH --<key>=<value>` lines, and its "extra" entry is copied as
     is, one line per line. With runtime apptainer, each task runs the site's image with
-    `apptainer exec --nv` (on CUDA) and the cache bound. With runtime none, the tasks use the
-    environment sbatch exports, so `sbb` must be on the PATH of the submitting shell.
+    `apptainer exec --nv` (on CUDA), with the cache and the results directory bound. With runtime
+    none, the tasks use the environment sbatch exports, so `sbb` must be on the PATH of the
+    submitting shell.
     """
 
     def submit(self, cells: Sequence[Cell], out_dir: Path) -> list[str]:
@@ -24,6 +25,7 @@ class SlurmExecutor(Executor):
         if not cells:
             return []
         job = self.write_job(cells, out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)  # apptainer binds only existing paths
         script = job / "array.sbatch"
         script.write_text(self.script(job, len(cells), out_dir.resolve()))
         submitted = subprocess.run(
@@ -48,10 +50,10 @@ class SlurmExecutor(Executor):
         # expands the array index whatever the job path is.
         cell = 'cells/"${SLURM_ARRAY_TASK_ID}".json'
         rest = shlex.join(["--site", "site.yaml", "--out", str(out_dir)])
-        return "\n".join([*lines, f"{self.prefix()}sbb run-cell {cell} {rest}", ""])
+        return "\n".join([*lines, f"{self.prefix(out_dir)}sbb run-cell {cell} {rest}", ""])
 
-    def prefix(self) -> str:
-        """The container part of the task command."""
+    def prefix(self, out_dir: Path) -> str:
+        """The container part of the task command. It binds the cache and out_dir."""
         runtime = self.site.runtime
         if runtime == "none":
             return ""
@@ -59,6 +61,6 @@ class SlurmExecutor(Executor):
             if not self.site.image:
                 raise SbbError(f"site {self.site.name} runs apptainer but sets no image")
             gpu = "--nv " if self.site.device == "cuda" else ""
-            cache = shlex.quote(str(self.site.cache_dir))
-            return f"apptainer exec {gpu}--bind {cache} {shlex.quote(self.site.image)} "
+            binds = shlex.quote(f"{self.site.cache_dir},{out_dir}")
+            return f"apptainer exec {gpu}--bind {binds} {shlex.quote(self.site.image)} "
         raise SbbError(f"Slurm sites run apptainer or no container, not {runtime}")

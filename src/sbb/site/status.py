@@ -14,7 +14,18 @@ from sbb.results.policy import VerificationPolicy
 from sbb.results.verification import Verification
 from sbb.runner.spec import Tolerance
 
-METRIC_COLUMNS = ("ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict")
+# Labels and direction of the metrics the site shows. A metric not listed keeps its name.
+METRICS = {
+    "ca": ("Clean accuracy", "higher"),
+    "asr": ("Attack success rate", "lower"),
+    "asr_all": ("ASR, target class included", "lower"),
+    "ra": ("Robust accuracy", "higher"),
+    "frr": ("False rejection rate", "lower"),
+    "tpr": ("Rejection of triggered inputs", "higher"),
+    "auroc": ("Input AUROC", "higher"),
+    "verdict": ("Detection verdict", "none"),
+}
+METRIC_COLUMNS = tuple(METRICS)
 COLUMNS = (
     "version",
     "track",

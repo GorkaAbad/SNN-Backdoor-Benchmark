@@ -5,10 +5,9 @@ paper: "Abad et al., Sneaky Spikes, NDSS 2024"
 published: "2023-02"
 code_reference: "https://github.com/GorkaAbad/Sneaky-Spikes"
 license_note: "MIT"
-# This is a raw-event variant, not an exact port. The official code overwrites a patch in every
-# SpikingJelly frame, with a size relative to the image and polarity modes 0 to 3, and poisons
-# samples of every class. Here the patch adds events to the raw stream and the selector skips the
-# target class. See docs/PLAN.md section 12.
+# A variation of the Sneaky Spikes static trigger, not the paper's attack. The patch adds events
+# to the raw stream, with an absolute size and one polarity, and the selector skips the target
+# class. The paper's attack is sneaky_static.
 kind: data_poisoning
 capabilities:
   labels: dirty

@@ -45,6 +45,18 @@ class Verification(BaseModel, frozen=True):
         verdict = "match" if matches(original, self.delta, tolerance_pp, self.notes) else "mismatch"
         return self.model_copy(update={"verdict": verdict})
 
+    def covers(self, result: CellResult) -> bool:
+        """Whether this record checked result's numbers: rerun minus delta gives each metric back.
+
+        A record stays tied to the numbers it checked, so a result changed after its verification
+        (a rerun keeps its key) is not covered by the old record.
+        """
+        return all(
+            abs(self.metrics[m] - self.delta.get(m, 0.0) - value) <= 1e-9
+            for m, value in result.metrics.items()
+            if m in self.metrics
+        )
+
     def path(self, root: Path, original: CellResult) -> Path:
         """<root>/<benchmark version>/<cell key>/<verifier>-<UTC time of the rerun>.json."""
         stamp = self.provenance.started_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")

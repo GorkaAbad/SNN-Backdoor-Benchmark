@@ -1,7 +1,7 @@
 """The single training loop (docs/PLAN.md section 6.7)."""
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -151,9 +151,9 @@ class Trainer:
 
     @torch.no_grad()
     def predict(
-        self, model: SNNModel, loader: Loader, ties: Ties = "none"
+        self, model: SNNModel, loader: Iterable[Any], ties: Ties = "none"
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Return (predicted classes, labels) over the loader.
+        """Return (predicted classes, labels) over the batches (x, y, index) of loader.
 
         With ties "none", an input whose top two scores tie gets NO_PREDICTION.
         """
