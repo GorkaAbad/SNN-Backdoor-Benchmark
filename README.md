@@ -166,8 +166,8 @@ a security game ([threat model](docs/threat-model.md)):
 
 The benchmark has two tracks. The **lite** track runs on N-MNIST on a CPU, and GitHub Actions
 reruns every lite result after merge to verify it. The **full** track runs the papers' networks on
-DVS128 Gesture and CIFAR10-DVS on GPUs, and its results are self-reported until independent
-verification arrives in v2. Models, poisoned sets and frames are cached by content, so cells that
+DVS128 Gesture and CIFAR10-DVS on GPUs, and its results are self-reported until a group from
+another organization reproduces them ([docs/verifying.md](docs/verifying.md)). Models, poisoned sets and frames are cached by content, so cells that
 share a model train it once.
 
 ## Contributing
@@ -190,6 +190,7 @@ record. Anyone can also verify a published cell with `sbb reproduce`.
 | Document | Covers |
 |---|---|
 | [docs/contributing.md](docs/contributing.md) | adding an attack or a defense, running it, opening a pull request, verifying a cell |
+| [docs/verifying.md](docs/verifying.md) | spot checks of full-track results, statuses, tolerance, submitting records |
 | [docs/threat-model.md](docs/threat-model.md) | the security game, what attacks may do and what defenses may see, the metrics |
 | [docs/porting.md](docs/porting.md) | porting a published method and its replication record |
 | [docs/sites.md](docs/sites.md) | site profiles, Slurm clusters, Docker and Apptainer |

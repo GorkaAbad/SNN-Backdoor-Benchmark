@@ -168,7 +168,8 @@ example an input detector that recognises the public test set.
 
 After the merge, the `verify-lite` workflow reruns your lite cells on GitHub runners. A match
 within 3 percentage points on every metric makes a cell `reproduced` on the leaderboard, a mismatch makes it
-`disputed`. Full-track cells stay `self-reported` until independent verification lands in v2.
+`disputed`. Full-track cells stay `self-reported` until a group from another organization
+reproduces them ([verifying.md](verifying.md)).
 
 ## Verify a published cell
 
@@ -180,7 +181,13 @@ SBB_SUBMITTER=<handle> SBB_SUBMITTER_ORG=<org> \
 ```
 
 It writes `verifications/<version>/<key>/<handle>-<time>.json` with the verdict. Open a pull
-request that adds the record.
+request that adds the record. [verifying.md](verifying.md) covers spot checks of a submission,
+the model zoo and the tolerance.
+
+- **Reciprocity.** Submitting a full-track method commits you to verify 3 cells of another
+  submission, which the maintainers assign.
+- **Open challenges.** Anyone may rerun any published cell at any time and submit the record. A
+  mismatch makes the cell `disputed` until the maintainers resolve it.
 
 ## Change the harness
 
