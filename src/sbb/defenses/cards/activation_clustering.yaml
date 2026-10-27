@@ -1,5 +1,5 @@
 name: activation_clustering
-version: 1.2.0
+version: 1.3.0
 title: Activation clustering
 paper: "Chen, Carvalho, Baracaldo, Ludwig, Edwards, Lee, Molloy, Srivastava. Detecting Backdoor Attacks on Deep Neural Networks by Activation Clustering. arXiv 1811.03728"
 published: "2018-11"
@@ -22,4 +22,6 @@ hparams:
   # 1.2.0: the features are whitened before FastICA, at most dims directions and only those
   # that vary. FastICA's own whitening signs each direction by the first feature's loading,
   # exactly zero for a neuron that never fires, which gave NaN on three CIFAR10-DVS cells.
+  # 1.3.0: the reference model is a copy of the data poisoning victim, the same training, so it
+  # is not trained twice. On networks with dropout the GPU RNG of the retraining then moves.
   default: {dims: 10, max_share: 0.35}

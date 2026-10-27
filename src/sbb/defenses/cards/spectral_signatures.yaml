@@ -1,5 +1,5 @@
 name: spectral_signatures
-version: 1.0.0
+version: 1.1.0
 title: Spectral signatures
 paper: "Tran, Li, Madry. Spectral Signatures in Backdoor Attacks. NeurIPS 2018"
 published: "2018-11"
@@ -17,5 +17,7 @@ adaptation_note: >
   the scenario recipe. The representation of a sample is the input of the readout, the last
   linear layer, averaged over time (readout_inputs): the spike rates of the layer before the
   readout, the SNN counterpart of the penultimate activations of the paper.
+# 1.1.0: the reference model is a copy of the data poisoning victim, the same training, so it is
+# not trained twice. On networks with dropout the GPU RNG of the retraining then moves.
 hparams:
   default: {percentile: 85}
