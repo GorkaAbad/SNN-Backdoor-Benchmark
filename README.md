@@ -101,6 +101,8 @@ Their papers have no event setting to replicate.
 | CLP (`clp`) | [Zheng et al., ECCV 2022](https://arxiv.org/abs/2208.03111) | post-training | model |
 | TMPBD (`tmpbd`) | [Li et al., 2025](https://arxiv.org/abs/2510.06629) | model detection | model |
 | Fine-tuning (`fine_tuning`) | baseline | post-training | model, clean data |
+| Fewer time steps (`fewer_steps`) | SNN-native baseline | post-training | model, clean data |
+| Threshold recalibration (`threshold_recalibration`) | SNN-native baseline | post-training | model, clean data |
 
 Defenses designed for ANNs are adapted to SNNs once, with shared utilities, and the card of each
 defense describes its adaptation. NDSBM ([Li et al., 2025](https://arxiv.org/abs/2510.06629)) is

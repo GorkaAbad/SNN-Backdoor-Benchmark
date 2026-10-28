@@ -1,0 +1,15 @@
+name: fewer_steps
+version: 1.0.0
+title: Fewer time steps, an sbb SNN-native baseline
+# No paper: a baseline that only an SNN has, as the number of time steps is a knob of the model.
+stage: post_training
+view:
+  resources: [model, clean_subset]
+  clean_fraction: 0.05
+adaptation_note: >
+  Native to SNNs, with no source method. The model sees only its first k time steps. k is the
+  smallest number of steps whose clean accuracy on the clean subset stays within max_drop of all
+  T steps, so the defender never looks at the trigger. k lives outside the weights, so the Game
+  stores it next to the checkpoint (ModelDefense.extra) and reattaches it on load.
+hparams:
+  default: {max_drop: 0.03, batch_size: 32}

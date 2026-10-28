@@ -65,6 +65,15 @@ def test_source_specific_attack_counts_only_its_source_class(game: Game) -> None
     assert result.metrics["asr"] > 0.9 and result.metrics["asr_all"] < 0.7
 
 
+@pytest.mark.parametrize("defense", ["fewer_steps", "threshold_recalibration"])
+def test_snn_baselines_keep_their_choice_through_the_cache(game: Game, defense: str) -> None:
+    # The second run loads the defended model and its stored choice back, without a repair.
+    first = game.run(make_cell("static_patch", defense))
+    again = game.run(make_cell("static_patch", defense))
+    assert first.outcome == again.outcome == "ok", first.reason
+    assert first.metrics == again.metrics
+
+
 def test_same_seed_gives_identical_results(tmp_path: Path) -> None:
     (first, first_weights), (second, second_weights) = run_in_fresh_caches(
         make_cell("static_patch", "fine_tuning"), tmp_path, torch.device("cpu")

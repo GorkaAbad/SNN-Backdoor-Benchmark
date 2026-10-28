@@ -16,12 +16,14 @@ from sbb.defenses.abl import ABL
 from sbb.defenses.activation_clustering import small_clusters
 from sbb.defenses.anp import ANP, neuron_masks, perturb_bn
 from sbb.defenses.clp import CLP, channel_lipschitz
+from sbb.defenses.fewer_steps import FewerSteps
 from sbb.defenses.fine_pruning import FinePruning
 from sbb.defenses.nad import NAD, AttentionDistillation, attention_map
 from sbb.defenses.ndsbm import NDSBM, Clamps, _clean_batches
 from sbb.defenses.spectral_signatures import spectral_outliers
 from sbb.defenses.strip import STRIP
 from sbb.defenses.strip_per_step import STRIPPerStep
+from sbb.defenses.threshold_recalibration import ThresholdRecalibration
 from sbb.defenses.tmpbd import class_potentials, p_value
 from sbb.defenses.utils import channel_means, conv_blocks
 from sbb.models.snn import SNNModel, build_model
@@ -107,6 +109,46 @@ def test_strip_rejects_the_chosen_fraction_of_clean_inputs(datamodule: DataModul
     assert np.mean((scores > defense.threshold).numpy()) <= 0.25
     first = -(p * torch.log(p)).sum(1)  # the entropy under one overlay enters the mean
     assert (first >= 0).all() and torch.isfinite(scores).all()
+
+
+def _reloaded(defense: Any, repaired: SNNModel, cls: type) -> SNNModel:
+    """The repaired model as the Game evaluates it: weights loaded back, extra state reattached."""
+    model = build_model(ARCH, (2, 16, 16), 4)
+    model.load_state_dict(repaired.state_dict())
+    extra = cls(defense.hparams).extra(model)
+    extra.load_state_dict(defense.extra(repaired).state_dict())
+    cls(defense.hparams).attach(model, extra)
+    return model.eval()
+
+
+def test_fewer_steps_keeps_the_first_steps_that_hold_the_clean_accuracy(
+    datamodule: DataModule,
+) -> None:
+    view = _view(FewerSteps, datamodule, _model())
+    x = torch.rand(3, 4, 2, 16, 16) * 3
+    loose = FewerSteps({"max_drop": 1.0, "batch_size": 8})
+    repaired = loose.repair(view)
+    assert int(loose.extra(repaired).k) == 1  # any drop is allowed, so one step is enough
+    with torch.no_grad():
+        assert torch.equal(_reloaded(loose, repaired, FewerSteps)(x), repaired.eval()(x[:, :1]))
+    strict = FewerSteps({"max_drop": -1.0, "batch_size": 8})  # no k qualifies: keep them all
+    repaired = strict.repair(_view(FewerSteps, datamodule, _model()))
+    assert int(strict.extra(repaired).k) == ARCH.T
+
+
+def test_threshold_recalibration_raises_thresholds_while_the_clean_accuracy_holds(
+    datamodule: DataModule,
+) -> None:
+    hparams = {"max_drop": 1.0, "scales": [1.5, 2.0], "batch_size": 8}
+    defense = ThresholdRecalibration(hparams)
+    repaired = defense.repair(_view(ThresholdRecalibration, datamodule, _model()))
+    assert float(defense.extra(repaired).scale) == 2.0  # any drop is allowed: the largest scale
+    assert {n.v_threshold for _, n in repaired.named_neurons()} == {1.0}  # repair restores them
+    reloaded = _reloaded(defense, repaired, ThresholdRecalibration)
+    assert {n.v_threshold for _, n in reloaded.named_neurons()} == {2.0}
+    strict = ThresholdRecalibration({**hparams, "max_drop": -1.0})
+    repaired = strict.repair(_view(ThresholdRecalibration, datamodule, _model()))
+    assert float(strict.extra(repaired).scale) == 1.0
 
 
 def test_strip_per_step_averages_the_entropy_of_each_time_step(datamodule: DataModule) -> None:
