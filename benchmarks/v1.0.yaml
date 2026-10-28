@@ -1,0 +1,78 @@
+# Benchmark 1.0, frozen with sbb 2.0.0 (docs/PLAN.md 13.4, task 10). Lite runs on a CPU and is
+# verified on GitHub runners. Full needs a GPU, and independent groups spot-check it. The
+# scenarios and tracks are those of 0.9. The battery is the full matrix: every attack against
+# every defense, the N/A cells reported as such.
+benchmark: sbb
+version: 1.0.0
+scenarios:
+  # The recipe of the toy benchmark, about 80 minutes per cold cell on 4 CPU cores.
+  nmnist_tiny:
+    name: nmnist_tiny
+    data: {name: nmnist, split: nmnist_official_v1}
+    repr: {kind: frames, T: 10, split_by: number, downsample: 1}
+    arch: {name: tiny_lif_cnn, T: 10, neuron: {model: lif, tau: 2.0, v_threshold: 1.0}}
+    train: {epochs: 10, batch_size: 64, optimizer: adam, lr: 0.001, schedule: cosine}
+    budget: {poison_rate: 0.1, target: 0, defender_clean_fraction: 0.05, delta_pp: 3.0}
+  # The papers' networks and the training recipe of Sneaky Spikes (its official scripts).
+  dvsgesture_full:
+    name: dvsgesture_full
+    data: {name: dvsgesture, split: dvsgesture_official_v1}
+    repr: {kind: frames, T: 16, split_by: number, downsample: 1}
+    arch:
+      name: dvsgesture_net
+      T: 16
+      neuron: {model: lif, tau: 2.0, v_threshold: 1.0, surrogate: atan, detach_reset: true}
+    train: {epochs: 64, batch_size: 16, loss: mse, optimizer: adam, lr: 0.001, schedule: cosine}
+    budget: {poison_rate: 0.05, target: 0, defender_clean_fraction: 0.05, delta_pp: 3.0}
+  cifar10dvs_full:
+    name: cifar10dvs_full
+    data: {name: cifar10dvs, split: cifar10dvs_9to1_v1}
+    repr: {kind: frames, T: 16, split_by: number, downsample: 1}
+    arch:
+      name: cifar10dvs_net
+      T: 16
+      neuron: {model: lif, tau: 2.0, v_threshold: 1.0, surrogate: atan, detach_reset: true}
+    train: {epochs: 28, batch_size: 16, loss: mse, optimizer: adam, lr: 0.001, schedule: cosine}
+    budget: {poison_rate: 0.05, target: 0, defender_clean_fraction: 0.05, delta_pp: 3.0}
+tracks:
+  # sneaky_dynamic trains for hours even on a GPU, far beyond the 6 hours of a CPU runner, so it
+  # runs in the full track only and every lite cell can be verified on GitHub.
+  lite: {scenarios: [nmnist_tiny], seeds: [0, 1, 2], exclude: [sneaky_dynamic]}
+  full: {scenarios: [dvsgesture_full, cifar10dvs_full], seeds: [0, 1, 2]}
+battery:
+  # Group A, group B (T-Backdoor replicated), the adaptive attacks of the adaptive track, which
+  # are ANN attacks ported to SNNs (PLAN 12), and the SNN-native baselines of group C.
+  attacks:
+    - no_attack
+    - static_patch
+    - sneaky_static
+    - sneaky_moving
+    - sneaky_smart
+    - sneaky_dynamic
+    - flashy
+    - finetune_injection
+    - tbackdoor_rate
+    - tbackdoor_latency
+    - tbackdoor_jitter
+    - tact
+    - adap_blend
+    - adap_patch
+  defenses:
+    - no_defense
+    - fine_tuning
+    - fine_pruning
+    - clp
+    - strip
+    - strip_per_step
+    - tmpbd
+    - spectral_signatures
+    - activation_clustering
+    - abl
+    - nad
+    - anp
+    - ndsbm
+    - fewer_steps
+    - threshold_recalibration
+  dev: [static_patch]
+# lite_pp returns to 1.0 if the lite results reproduce within 1.0 pp on GitHub runners (D10).
+tolerance: {lite_pp: 3.0, full_pp: 2.0, full_sigma: 2.0}
