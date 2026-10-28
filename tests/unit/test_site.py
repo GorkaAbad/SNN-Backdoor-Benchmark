@@ -12,8 +12,9 @@ from sbb.core.result import CellResult, Outcome, collect_provenance
 from sbb.results.replication import ReplicationRecord
 from sbb.results.verification import LITE_VERIFIER, Verification
 from sbb.runner.planner import Planner
-from sbb.site.builder import LeaderboardBuilder
+from sbb.site.builder import LeaderboardBuilder, attack_group
 from sbb.site.status import status_rows, write_csv
+from tests.cards import attack_card
 from tests.unit.test_runner import SMOKE
 
 PROVENANCE = collect_provenance(torch.device("cpu"), "laptop", "test", datetime.now(UTC), 0.0)
@@ -257,3 +258,8 @@ def test_a_cell_averages_its_valid_seeds_and_lists_the_others(tmp_path: Path) ->
     with (tmp_path / "results.csv").open() as f:
         row = next(r for r in csv.DictReader(f) if r["attack"] == "static_patch")
     assert (row["seeds"], row["excluded"]) == ("0 2", "1: invalid-attack (a reason)")
+
+
+def test_aware_attacks_are_grouped_as_adaptive() -> None:
+    assert attack_group(attack_card()) == "data_poisoning"
+    assert attack_group(attack_card(knowledge={"defense": "aware:strip"})) == "adaptive"

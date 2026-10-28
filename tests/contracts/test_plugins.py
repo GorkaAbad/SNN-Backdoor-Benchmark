@@ -115,6 +115,7 @@ def check_attack(cls: type[Attack], datamodule: DataModule) -> None:
 def test_attack(name: str, datamodule: DataModule) -> None:
     cls = ATTACKS.get(name)
     assert cls.card.name == name
+    assert set(cls.card.knowledge.aware_of) <= set(DEFENSES.names()), "aware of an unknown defense"
     check_attack(cls, datamodule)
 
 

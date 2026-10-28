@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from sbb import __version__
+from sbb.core.cards import AttackCard
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.metrics.detection import auroc
@@ -206,7 +207,8 @@ def _methods() -> dict[str, dict[str, Any]]:
         attack = ATTACKS.get(name).card
         methods[name] = {
             "role": "attack",
-            "group": str(attack.kind),
+            "group": attack_group(attack),
+            "aware_of": list(attack.knowledge.aware_of),
             "trigger_domain": attack.capabilities.trigger_domain,
             **_common(attack.model_dump(mode="json")),
         }
@@ -220,6 +222,11 @@ def _methods() -> dict[str, dict[str, Any]]:
             **_common(defense.model_dump(mode="json")),
         }
     return methods
+
+
+def attack_group(card: AttackCard) -> str:
+    """The site's group of an attack: adaptive for an aware attack, otherwise its kind."""
+    return "adaptive" if card.knowledge.aware_of else str(card.kind)
 
 
 def _common(card: dict[str, Any]) -> dict[str, Any]:

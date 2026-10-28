@@ -48,6 +48,9 @@ def test_hparams_override_is_deep_merged() -> None:
         {"name": "Bad-Name"},
         {"capabilities": {}},
         {"unknown_field": 1},
+        {"knowledge": {"defense": "aware:"}},
+        {"knowledge": {"defense": "aware:strip, strip_per_step"}},
+        {"knowledge": {"defense": "strip"}},
     ],
 )
 def test_invalid_attack_cards_are_rejected(bad: dict[str, object]) -> None:
@@ -66,3 +69,9 @@ def test_invalid_attack_cards_are_rejected(bad: dict[str, object]) -> None:
 def test_defense_cards_declare_what_their_stage_needs(stage: str, resources: list[str]) -> None:
     with pytest.raises(pydantic.ValidationError, match="must declare"):
         defense_card(stage=stage, view={"resources": resources})
+
+
+def test_aware_attacks_name_their_target_defenses() -> None:
+    assert attack_card().knowledge.aware_of == ()
+    aware = attack_card(knowledge={"defense": "aware:strip,strip_per_step"})
+    assert aware.knowledge.aware_of == ("strip", "strip_per_step")

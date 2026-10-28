@@ -90,7 +90,14 @@ class Knowledge(BaseModel, frozen=True):
     model_config = ConfigDict(extra="forbid")
     architecture: Literal["known", "unknown"] = "unknown"
     data: Literal["full", "partial"] = "full"
-    defense: str = "oblivious"
+    # oblivious, or aware:<defense>[,<defense>...] for an adaptive attack built to beat those
+    # defenses. It still runs against every defense (PLAN 3.5). A contract test checks the names.
+    defense: str = Field("oblivious", pattern=r"^(oblivious|aware:[a-z0-9_]+(,[a-z0-9_]+)*)$")
+
+    @property
+    def aware_of(self) -> tuple[str, ...]:
+        """The defenses an adaptive attack targets, empty for an oblivious one."""
+        return () if self.defense == "oblivious" else tuple(self.defense[6:].split(","))
 
 
 def _merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

@@ -2,7 +2,7 @@
 // The leaderboard page. It loads data.json, written by `sbb site build`, filters it in the
 // browser and draws the views with Plotly. Nothing is computed here that the builder could do.
 
-const KIND_ORDER = ["data_poisoning", "training_control", "supply_chain", "federated"];
+const KIND_ORDER = ["data_poisoning", "training_control", "supply_chain", "federated", "adaptive"];
 const STAGE_ORDER = ["pre_training", "in_training", "post_training", "inference", "model_detection"];
 const METRIC_ORDER = ["ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict", "spike_rate", "spike_rate_triggered", "synops"];
 
@@ -474,6 +474,7 @@ function renderMethods() {
       const lines = [
         m.paper,
         m.trigger_domain ? `Trigger domain: ${m.trigger_domain.replace("_", " ")}` : null,
+        m.aware_of && m.aware_of.length ? `Built to beat: ${m.aware_of.join(", ")}` : null,
         m.resources ? `Defender sees: ${m.resources.join(", ") || "nothing"}` : null,
         m.adaptation_note ? `SNN adaptation: ${m.adaptation_note}` : null,
         m.license_note ? `License: ${m.license_note}` : null,
