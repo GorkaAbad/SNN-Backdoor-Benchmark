@@ -171,6 +171,21 @@ within 3 percentage points on every metric makes a cell `reproduced` on the lead
 `disputed`. Full-track cells stay `self-reported` until a group from another organization
 reproduces them ([verifying.md](verifying.md)).
 
+## Attacks that arrive after a freeze
+
+A benchmark version is frozen when it is released. An attack submitted after that waits one
+benchmark version in the delayed battery, so defense authors cannot tune against it before it
+is scored. Send it to the maintainers instead of opening a public pull request. They keep it in
+a private copy of the repository, run it against every defense of the current version on their
+own sites with the same harness, and keep the results private. When the next version is
+released, the attack lands on `main` by an ordinary pull request with its results as they were
+computed. The cell keys hash the method names, versions and hyperparameters, not the
+repository, so the results match the published code. Their provenance names a commit of the
+private copy. Anyone can still rerun them from the public release with `sbb reproduce`.
+
+No attack is pending now (maintainer decision of 2026-10-28). The maintainers decide which
+attacks are pending at each release.
+
 ## Verify a published cell
 
 Anyone can rerun any published cell:
