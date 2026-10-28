@@ -55,14 +55,16 @@ def test_patches_blend_each_square_with_its_opacity() -> None:
         {"size": 0.25, "position": "bottom-right", "polarity": 2, "alpha": 1.0},
     )
     frames = torch.full((2, 2, 8, 8), 3.0)
+    frames[:, :, 4, 4] = 5.0  # the peak count, the level a set channel goes to
     out = PatchesTrigger(patches).apply(frames, RNG)
-    assert (out[:, 0, :2, :2] == 1.5).all() and (out[:, 1, :2, :2] == 2.0).all()
-    assert (out[:, 0, 6:, 6:] == 1.0).all() and (out[:, 1, 6:, 6:] == 0.0).all()
-    assert int((out != 3.0).sum()) == 2 * 2 * 4 * 2  # steps x channels x pixels x patches
+    assert (out[:, 0, :2, :2] == 1.5).all() and (out[:, 1, :2, :2] == 4.0).all()
+    assert (out[:, 0, 6:, 6:] == 5.0).all() and (out[:, 1, 6:, 6:] == 0.0).all()
+    assert int((out != frames).sum()) == 2 * 2 * 4 * 2  # steps x channels x pixels x patches
     one = PatchesTrigger(patches, one=True).apply(frames, RNG)
-    assert [(one[..., :2, :2] != 3).any().item(), (one[..., 6:, 6:] != 3).any().item()].count(
-        True
-    ) == 1
+    changed = [(one != frames)[..., :2, :2].any().item(), (one != frames)[..., 6:, 6:].any().item()]
+    assert changed.count(True) == 1
+    blank = PatchesTrigger(patches[1:]).apply(torch.zeros(1, 2, 8, 8), RNG)
+    assert (blank[:, 0, 6:, 6:] == 1.0).all()  # a blank sample gets a count of 1
 
 
 def _poison(name: str, datamodule: DataModule) -> tuple[PoisoningAttack, np.ndarray, np.ndarray]:

@@ -1,5 +1,5 @@
 name: adap_patch
-version: 1.0.0
+version: 1.1.0
 title: Adap-Patch, an ANN attack ported to SNNs
 paper: "Qi, Xie, Li, Mahloujifar, Mittal. Revisiting the Assumption of Latent Separability for Backdoor Defenses. ICLR 2023"
 published: "2022-05"
@@ -19,10 +19,13 @@ adaptation_note: >
   An ANN image attack ported to SNNs and event data, not an attack designed for SNNs.
   The four patch images of the paper become four squares in the corners of every frame, with
   different polarity modes, blended into the frames with the paper's opacities (0.5, 0.2, 0.5,
-  0.3) (PatchesTrigger). Each poisoned sample gets one of them at random. The test inputs get two
-  of them (test, indices into patches) fully opaque, as in the paper. Of the poison budget, the
-  fraction eta (2/3) are cover samples that keep their label, the paper's conservatism ratio.
-  Samples come from every class but the target.
+  0.3) (PatchesTrigger). A square's set channels go to the sample's peak count, as a patch image
+  spans the image's range. Each poisoned sample gets one of them at random. The test inputs get
+  two of them (test, indices into patches) fully opaque, as in the paper. Of the poison budget,
+  the fraction eta (2/3) are cover samples that keep their label, the paper's conservatism
+  ratio. Samples come from every class but the target. 1.1.0 blends towards the peak count:
+  1.0.0 blended towards a count of 1, which on DVS128 Gesture dimmed the busy pixels and left
+  no backdoor (ASR 2.3, check of 2026-10-28).
 hparams:
   default:
     patches:

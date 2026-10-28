@@ -298,15 +298,17 @@ class FlashTrigger(FrameTrigger):
         return out
 
 
-def _blend(frames: torch.Tensor, ys: slice, xs: slice, mode: int, alpha: float) -> None:
-    """Blend both channels of frames[:, :, ys, xs] towards the polarity mode, in place."""
+def _blend(
+    frames: torch.Tensor, ys: slice, xs: slice, mode: int, alpha: float, level: float
+) -> None:
+    """Blend both channels of frames[:, :, ys, xs] towards level times the mode's bits, in place."""
     if mode not in range(4):
         raise SbbError(f"the polarity mode must be 0, 1, 2 or 3, got {mode}")
     if frames.shape[1] != 2:
         raise SbbError(f"frame triggers need two polarity channels, got {frames.shape[1]}")
-    for channel, value in enumerate((mode >> 1, mode & 1)):
+    for channel, bit in enumerate((mode >> 1, mode & 1)):
         region = frames[:, channel, ys, xs]
-        frames[:, channel, ys, xs] = region + alpha * (value - region)
+        frames[:, channel, ys, xs] = region + alpha * (bit * level - region)
 
 
 @dataclass(frozen=True)
@@ -357,9 +359,14 @@ class BlendTrigger(FrameTrigger):
 class PatchesTrigger(FrameTrigger):
     """Squares blended into every frame, each with its opacity (Adap-Patch).
 
+    The channels a square's polarity mode sets go to the sample's peak count (at least 1), the
+    others to 0, as a patch image spans the range of the image. Blending towards a count of 1
+    instead, as FramePatchTrigger paints, mostly dims the busy pixels of high-count frames
+    (DVS128 Gesture), which left nothing to learn (adap_patch 1.0.0, ASR 2.3 on Gesture).
+
     Attributes:
         patches: One dict per square: size (a fraction of the frame width), position, polarity
-            mode and alpha (opacity, 1 paints the square as FramePatchTrigger does).
+            mode and alpha (opacity).
         one: Apply one square per sample, drawn with its RNG, instead of all of them.
     """
 
@@ -370,9 +377,10 @@ class PatchesTrigger(FrameTrigger):
         """Blend the squares, or one of them, into every frame."""
         height, width = frames.shape[-2:]
         chosen = [self.patches[int(rng.integers(len(self.patches)))]] if self.one else self.patches
+        level = max(float(frames.max()), 1.0)
         out = frames.clone()
         for patch in chosen:
             side = _side(patch["size"], width)
             y, x = _corner(patch["position"], height, width, side)
-            _blend(out, *_square(y, x, side, frames), patch["polarity"], patch["alpha"])
+            _blend(out, *_square(y, x, side, frames), patch["polarity"], patch["alpha"], level)
         return out
