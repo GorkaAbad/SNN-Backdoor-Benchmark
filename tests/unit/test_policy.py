@@ -57,6 +57,19 @@ def test_the_full_tolerance_widens_with_the_seed_std() -> None:
     assert POLICY.status(r, [_check(r, moved_pp=3.0)], seeds) == Status.REPRODUCED  # < 3.27 pp
 
 
+def test_a_count_metric_is_judged_relative_to_its_value() -> None:
+    seeds = [_result(0, synops=1.0e6), _result(1, synops=1.1e6), _result(2, synops=1.2e6)]
+    r = seeds[0]  # the seeds spread by 7.4 percent of their mean
+
+    def moved(by: float) -> Verification:
+        update = {"delta": {"synops": by}, "metrics": {"synops": 1.0e6 + by}}
+        return _check(r).model_copy(update=update)
+
+    assert POLICY.status(r, [moved(1.0e5)]) == Status.DISPUTED  # 10 percent, more than 2
+    assert POLICY.status(r, [moved(1.0e5)], seeds) == Status.REPRODUCED  # within 2 x 7.4
+    assert POLICY.status(r, [moved(1.0e4)]) == Status.REPRODUCED  # 1 percent
+
+
 def test_lite_results_count_the_lite_verifier() -> None:
     r = _result(track="lite", ca=0.9)
     assert POLICY.status(r, [_check(r, org=LITE_VERIFIER, moved_pp=2.5)]) == Status.REPRODUCED

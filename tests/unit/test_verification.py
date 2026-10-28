@@ -38,6 +38,14 @@ def test_verdict_follows_the_tolerance(rerun: CellResult, verdict: str) -> None:
         assert check.delta == pytest.approx({"ca": -0.005, "asr": -0.005})
 
 
+@pytest.mark.parametrize(("synops", "verdict"), [(1.02e6, "match"), (1.05e6, "mismatch")])
+def test_a_count_metric_is_judged_relative_to_its_value(synops: float, verdict: str) -> None:
+    # 3 pp of a fraction is 0.03 absolute, of a count 3 percent of its value.
+    original = _result(ca=0.99, synops=1.0e6)
+    check = verify(original, _result(ca=0.99, synops=synops), "alice", "lab", tolerance_pp=3.0)
+    assert check.verdict == verdict
+
+
 def test_a_record_is_rejudged_from_its_deltas() -> None:
     original = _result(ca=0.99, asr=1.0)
     moved = verify(original, _result(ca=0.97, asr=1.0), "alice", "lab", tolerance_pp=1.0)

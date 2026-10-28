@@ -260,6 +260,11 @@ class Game:
             triggered_activity=triggered_activity.counts(),
             source_classes=attack.source_classes,
         )
+        if not ctx.nontarget.any():  # the success metrics would divide by zero
+            raise SbbError(
+                f"no triggered test sample counts: none of class other than the target "
+                f"{budget.target} and among the source classes {attack.source_classes or 'all'}"
+            )
         metrics = {
             name: metric().compute(ctx)
             for name in METRICS.names()

@@ -355,11 +355,16 @@ def site_build(
     results: Annotated[Path, typer.Option(help="Results directory.")] = Path("results"),
     replications: Annotated[Path, typer.Option(help="Replication records.")] = Path("replications"),
     verifications: Checks = Path("verifications"),
+    benchmarks: Annotated[
+        Path, typer.Option(help="Benchmark specs, whose tolerances judge the records.")
+    ] = Path("benchmarks"),
 ) -> None:
     """Build the static, interactive leaderboard into OUT, for GitHub Pages."""
     records = [ReplicationRecord.load(p) for p in sorted(replications.glob("*.yaml"))]
     checks = _verifications(verifications)
-    builder = LeaderboardBuilder(LocalResultStore(results).query(), records, checks)
+    specs = [BenchmarkSpec.load(p) for p in sorted(benchmarks.glob("*.yaml"))]
+    tolerances = {spec.version: spec.tolerance for spec in specs}
+    builder = LeaderboardBuilder(LocalResultStore(results).query(), records, checks, tolerances)
     builder.build(out)
     console.print(
         f"{len(builder.results)} results, {len(records)} replication records and "

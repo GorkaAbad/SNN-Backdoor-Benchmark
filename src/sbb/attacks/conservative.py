@@ -33,6 +33,9 @@ class ConservativePoisoning(PoisoningAttack):
         cover = self.cover_selector.select(
             labels, n_cover, self.target, np.union1d(excluded, payload), view.rng
         )
+        # As in PoisoningAttack.poison, triggers are fitted after the selection, each one once.
+        for trigger in {id(t): t for t in (self.train_trigger, self.trigger)}.values():
+            trigger.fit(view)
         positions = np.sort(np.concatenate([payload, cover]))
         indices = train.indices[positions]
         new_labels = np.where(np.isin(positions, payload), self.target, labels[positions])

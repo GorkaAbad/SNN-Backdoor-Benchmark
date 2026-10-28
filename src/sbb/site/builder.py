@@ -3,7 +3,7 @@
 import json
 import shutil
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
@@ -16,7 +16,7 @@ from sbb.core.cards import AttackCard
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.metrics.detection import auroc
-from sbb.results.policy import OUTCOME_STATUS, VerificationPolicy
+from sbb.results.policy import OUTCOME_STATUS, Tolerances, VerificationPolicy
 from sbb.results.replication import ReplicationRecord
 from sbb.results.stats import seed_stats
 from sbb.results.verification import Verification
@@ -37,7 +37,8 @@ class LeaderboardBuilder:
         results: Cell results of any benchmark versions. Replication cells are left out.
         replications: The replication records.
         verifications: The verification records.
-        policy: The policy that computes the statuses, by default with the spec's tolerances.
+        tolerances: The tolerances of each benchmark version, from its spec. A version without one
+            gets the default Tolerance.
     """
 
     def __init__(
@@ -45,10 +46,11 @@ class LeaderboardBuilder:
         results: Sequence[CellResult],
         replications: Sequence[ReplicationRecord],
         verifications: Sequence[Verification] = (),
-        policy: VerificationPolicy | None = None,
+        tolerances: Mapping[str, Tolerances] | None = None,
     ) -> None:
         self.results = [r for r in results if r.cell.track != "replication"]
-        self.policy = policy or VerificationPolicy(Tolerance())
+        self.policies = {v: VerificationPolicy(t) for v, t in (tolerances or {}).items()}
+        self.default_policy = VerificationPolicy(Tolerance())
         self.replications = replications
         self.checks: dict[str, list[Verification]] = defaultdict(list)
         for check in verifications:
@@ -69,7 +71,10 @@ class LeaderboardBuilder:
     def data(self) -> dict[str, Any]:
         """Everything the page shows."""
         methods = _methods()
-        cells = [_aggregate(group, self.checks, self.policy) for group in self._groups().values()]
+        cells = [
+            _aggregate(group, self.checks, self.policies.get(version, self.default_policy))
+            for (version, *_), group in self._groups().items()
+        ]
         return {
             "generated": datetime.now(UTC).isoformat(timespec="seconds"),
             "sbb_version": __version__,
@@ -180,13 +185,22 @@ def _aggregate(
 _CELL = ("version", "track", "scenario", "attack", "defense")
 
 
+def _detection(defense: str, methods: dict[str, Any]) -> bool:
+    """A detection defense leaves the model as it is, so its CA and ASR are the undefended ones."""
+    return bool(methods.get(defense, {}).get("group") == "model_detection")
+
+
 def _broken_by(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dict[str, Any]]:
-    """The cells where an aware attack keeps a mean ASR of BROKEN_ASR or more against a defense."""
+    """The cells where an aware attack keeps a mean ASR of BROKEN_ASR or more against a defense.
+
+    Detection defenses are left out: their ASR is the victim's, whatever their verdict.
+    """
     return [
         {**{k: c[k] for k in _CELL}, "asr": c["metrics"]["asr"]["mean"]}
         for c in cells
         if methods.get(c["attack"], {}).get("aware_of")
         and c["defense"] != "no_defense"
+        and not _detection(c["defense"], methods)
         and "asr" in c["metrics"]
         and c["metrics"]["asr"]["mean"] >= BROKEN_ASR
     ]
@@ -196,17 +210,19 @@ def _pareto(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dict[s
     """Per version, track, scenario and attack group: each defense's mean CA and ASR, front marked.
 
     The means run over the attacks of the group with both metrics, no_attack left out. Detection
-    defenses are left out too: they leave the model as it is, so their CA and ASR are those of
-    no_defense, and the model AUROC rates them. A defense is on the front when no other one keeps
-    at least its CA and at most its ASR, and one of the two strictly.
+    defenses are left out too (_detection), and the model AUROC rates them. Only defenses with
+    results against every attack of the group compete for the front, so one that missed a hard
+    attack cannot win on easier averages. Such a defense is on the front when no other complete
+    one keeps at least its CA and at most its ASR, and one of the two strictly.
     """
     groups: dict[tuple[str, ...], dict[str, list[tuple[float, float]]]] = defaultdict(
         lambda: defaultdict(list)
     )
     for c in cells:
         m = c["metrics"]
-        detection = methods.get(c["defense"], {}).get("group") == "model_detection"
-        if c["attack"] == "no_attack" or detection or "ca" not in m or "asr" not in m:
+        if c["attack"] == "no_attack" or _detection(c["defense"], methods):
+            continue
+        if "ca" not in m or "asr" not in m:
             continue
         group = methods.get(c["attack"], {}).get("group", "unknown")
         key = (c["version"], c["track"], c["scenario"], group)
@@ -217,10 +233,12 @@ def _pareto(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dict[s
             d: (float(np.mean([ca for ca, _ in v])), float(np.mean([a for _, a in v])))
             for d, v in defenses.items()
         }
+        most = max(len(v) for v in defenses.values())
+        complete = [means[d] for d, v in defenses.items() if len(v) == most]
         for defense, (ca, asr) in means.items():
-            dominated = any(
+            dominated = len(defenses[defense]) < most or any(
                 o_ca >= ca and o_asr <= asr and (o_ca, o_asr) != (ca, asr)
-                for o_ca, o_asr in means.values()
+                for o_ca, o_asr in complete
             )
             points.append(
                 {

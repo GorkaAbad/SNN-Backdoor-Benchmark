@@ -8,7 +8,7 @@ import numpy as np
 
 from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
-from sbb.results.verification import LITE_VERIFIER, Verification, matches
+from sbb.results.verification import LITE_VERIFIER, Verification, is_count, matches
 
 
 class Status(StrEnum):
@@ -124,7 +124,11 @@ class VerificationPolicy:
         if r.cell.track == "lite":
             return {m: t.lite_pp for m in r.metrics}
         values = {m: [s.metrics[m] for s in seeds if m in s.metrics] for m in r.metrics}
-        return {
-            m: max(t.full_pp, t.full_sigma * 100 * float(np.std(v or [0.0])))
-            for m, v in values.items()
-        }
+        return {m: max(t.full_pp, t.full_sigma * 100 * _spread(m, v)) for m, v in values.items()}
+
+
+def _spread(metric: str, values: list[float]) -> float:
+    """The std over the seeds, relative to their mean for a count (is_count)."""
+    std = float(np.std(values or [0.0]))
+    mean = abs(float(np.mean(values))) if values else 0.0
+    return std / mean if is_count(metric) and mean else std

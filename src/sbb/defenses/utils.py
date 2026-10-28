@@ -89,8 +89,11 @@ def reference_features(view: DefenderView) -> np.ndarray:
     analyze learned representations, such as spectral signatures, start from them.
     """
     batch_size = view.trainer.spec.batch_size
-    # Built even when the Game's model is reused, so the global RNG moves as if it trained, and
-    # whatever the defense initializes next gets the same weights.
+    # Built even when the Game's model is reused, so the global RNG advances by the same
+    # initialization draws as before the reuse. Training would advance it further (data order,
+    # dropout), so on the GPU the cleansed retraining differs from the one before the reuse,
+    # which is why activation clustering and spectral signatures bumped their versions (PLAN 13.4
+    # task 1). Removing this build would change their numbers again.
     model = build_model(view.arch, view.scenario.input_shape, view.scenario.num_classes)
     if (trained := view.train_set.trained_model()) is not None:
         model = trained

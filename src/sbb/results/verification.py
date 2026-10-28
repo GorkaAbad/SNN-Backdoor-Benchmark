@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+import sbb.metrics  # noqa: F401  registers the metrics, whose unit decides how a delta is judged
+from sbb.core.registry import METRICS
 from sbb.core.result import CellResult, Provenance
 
 # The verifier name of the verify-lite workflow. Its records set the status of lite cells.
@@ -113,5 +115,18 @@ def matches(
     return (
         outcome == original.outcome
         and delta.keys() == original.metrics.keys()
-        and all(abs(d) <= tolerance_pp[m] / 100 for m, d in delta.items())
+        and all(
+            abs(d) <= tolerance_pp[m] / 100 * (abs(original.metrics[m]) if is_count(m) else 1)
+            for m, d in delta.items()
+        )
     )
+
+
+def is_count(metric: str) -> bool:
+    """Whether metric is a raw count (Metric.unit), whose tolerance is a percentage of its value.
+
+    A fraction such as CA may move by tolerance_pp percentage points. A count such as synops may
+    move by tolerance_pp percent of the original, as one spike more changes it by far more than
+    any fixed amount.
+    """
+    return metric in METRICS.names() and METRICS.get(metric).unit == "count"

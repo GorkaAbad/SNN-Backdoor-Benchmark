@@ -74,6 +74,9 @@ def status_rows(
     for r in results:
         if r.outcome == "ok":
             seeds[_unseeded(r.cell)].append(r)
+    checks_of: dict[str, list[Verification]] = defaultdict(list)
+    for check in checks:
+        checks_of[check.result_key].append(check)
     rows = []
     for cell in cells:
         key = cell.key()
@@ -93,7 +96,8 @@ def status_rows(
         }
         if result:
             if result.outcome == "ok":
-                row["verification"] = str(policy.status(result, checks, seeds[_unseeded(cell)]))
+                own = checks_of[key]
+                row["verification"] = str(policy.status(result, own, seeds[_unseeded(cell)]))
             for name, value in result.metrics.items():
                 if name in METRIC_COLUMNS:
                     row[name] = percent(name, value)

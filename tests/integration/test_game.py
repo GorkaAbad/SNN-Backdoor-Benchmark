@@ -65,6 +65,13 @@ def test_source_specific_attack_counts_only_its_source_class(game: Game) -> None
     assert result.metrics["asr"] > 0.9 and result.metrics["asr_all"] < 0.7
 
 
+def test_a_source_class_without_test_samples_fails_the_cell(game: Game) -> None:
+    # The synthetic data has 4 classes, so no test sample is of source class 5.
+    cell = make_cell("tact", "no_defense").model_copy(update={"attack_hparams": {"source": [5]}})
+    result = game.run(cell)
+    assert result.outcome == "failed" and "no triggered test sample counts" in str(result.reason)
+
+
 @pytest.mark.parametrize("defense", ["fewer_steps", "threshold_recalibration"])
 def test_snn_baselines_keep_their_choice_through_the_cache(game: Game, defense: str) -> None:
     # The second run loads the defended model and its stored choice back, without a repair.
