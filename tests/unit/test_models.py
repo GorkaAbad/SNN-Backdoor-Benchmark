@@ -26,6 +26,9 @@ def test_forward_shape_and_state_reset(neuron: str) -> None:
     first = model(x)
     assert first.shape == (3, 4)
     assert torch.equal(first, model(x))  # forward resets neuron states
+    steps = model.steps(x)
+    assert steps.shape == (4, 3, 4)
+    assert torch.equal(steps.mean(0), first)
 
 
 def test_flatten_size_follows_the_input() -> None:

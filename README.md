@@ -89,6 +89,7 @@ number its paper reports, and **explained** when a maintainer documented why it 
 | Spectral signatures (`spectral_signatures`) | [Tran et al., NeurIPS 2018](https://arxiv.org/abs/1811.00636) | pre-training | training set |
 | Activation clustering (`activation_clustering`) | [Chen et al., 2018](https://arxiv.org/abs/1811.03728) | pre-training | training set |
 | STRIP (`strip`) | [Gao et al., ACSAC 2019](https://arxiv.org/abs/1902.06531) | inference | model, clean data |
+| STRIP per time step (`strip_per_step`) | sbb variant of STRIP | inference | model, clean data |
 | NAD (`nad`) | [Li et al., ICLR 2021](https://arxiv.org/abs/2101.05930) | post-training | model, clean data |
 | ABL (`abl`) | [Li et al., NeurIPS 2021](https://arxiv.org/abs/2110.11571) | in-training | training set, training loop |
 | ANP (`anp`) | [Wu and Wang, NeurIPS 2021](https://arxiv.org/abs/2110.14430) | post-training | model, clean data |

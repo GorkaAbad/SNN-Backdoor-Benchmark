@@ -1,0 +1,19 @@
+name: strip_per_step
+version: 1.0.0
+title: STRIP per time step, an sbb variant
+paper: "Gao, Xu, Wang, Chen, Ranasinghe, Nepal. STRIP: A Defence Against Trojan Attacks on Deep Neural Networks. ACSAC 2019"
+published: "2019-02"
+code_reference: "https://github.com/garrisongys/STRIP"
+license_note: "The official code has no license. Re-implemented from the paper."
+stage: inference
+view:
+  resources: [model, clean_subset]
+  clean_fraction: 0.05
+adaptation_note: >
+  Same as strip, except for the entropy. strip takes the entropy of the softmax of the output
+  averaged over time. This variant takes the entropy of the softmax of the output at every time
+  step and averages it over the time steps, so a trigger that dominates only some steps counts
+  at those steps. It is an sbb variant (user decision of 2026-10-28), not a method of the paper.
+hparams:
+  default: {overlays: 100, frr: 0.01, batch_size: 32}
+  synthetic/tiny_lif_cnn: {overlays: 4}

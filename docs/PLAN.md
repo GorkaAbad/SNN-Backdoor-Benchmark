@@ -396,6 +396,7 @@ class ModelFactory {
 }
 class SNNModel {
   +forward(x) logits
+  +steps(x) logits per step
   +reset()
   +named_neurons()
   +probe(layer, kind, detach) Probe
@@ -806,6 +807,7 @@ class SNNModel(nn.Module):           # v0: one concrete wrapper around a net map
     forward takes x [B, T, P, H, W], resets neuron states first, runs in multi-step mode,
     and returns logits [B, K] as the mean over T of a non-spiking linear readout."""   # v1: or of voted spikes, see 13.6
     def forward(self, x: torch.Tensor) -> torch.Tensor: ...
+    def steps(self, x: torch.Tensor) -> torch.Tensor: ...   # v2: the output [T, B, K] before the mean
     def reset(self) -> None: ...
     def named_neurons(self) -> Iterator[tuple[str, nn.Module]]: ...
     def probe(self, layer: str, kind: Literal["spikes", "membrane"],
@@ -1682,7 +1684,8 @@ Tasks, in order:
    - v2 build (2026-10-27). `sbb.results.stats.seed_stats` gives the mean, the population std, the number of seeds and the half-width of the 95% Student t-interval (none for one seed). The site cells, `results.csv` (`<metric>_ci95`), the page's table download, the cell hover and `table.md` show it. `SNNModel.activity()` hooks every neuron layer (spikes over neurons and time steps) and every convolution and linear layer (connections that carry a nonzero input, found by running the layer with unit weights on the nonzero mask, so padding and stride are exact). The Game records it on the prediction passes it already makes, and `EvalContext` carries the counts. Three registered metrics read them: `spike_rate` and `spike_rate_triggered` (fractions), and `synops` per clean sample (`Metric.unit` "count", shown raw like the verdict). Unit tests check exact counts on hand-built models, including a corner pixel of a padded 3x3 convolution. NeuroBench is not a dependency and the comparison test with it was not written. The maintainer approved the new keys of `smoke.json` (2026-10-27): its four values per cell are unchanged, and `static_patch` raises the spike rate of the smoke network from 0.033 to 0.080.
 6. Adaptive track. `Knowledge.defense` already exists in the card. It gains validation (`oblivious` or `aware:<registered defense>`). The Planner pairs an aware attack with its defense and with `no_defense` only (3.5), so the undefended cell gives its validity and DER. Adaptive attacks are not a separate track: they run in the lite and full tracks, and the site groups them as adaptive. First aware attacks, chosen from the v0.9 results, where only activation clustering (mean ASR 32.6 against 95.2 undefended), STRIP (65.1) and fine-pruning (76.8) lower the full-track ASR, and only STRIP (16.4) the lite one:
    - Event variants of Adap-Blend and Adap-Patch (Qi et al., ICLR 2023), `aware:activation_clustering`, which they were designed to break (group C).
-   - One attack `aware:strip` that keeps the prediction entropy high under superposition **[FILL]**: the maintainer picks the method.
+   - One attack `aware:strip` that keeps the prediction entropy high under superposition: TaCT (Tang et al., "Demon in the Variant", USENIX Security 2021), whose source-specific trigger does not fire on the overlaid inputs of other classes (user decision of 2026-10-28). An event port under section 12, with a replication record.
+   - STRIP per time step (user decision of 2026-10-28). `strip_per_step` takes the entropy of the output at every time step and averages it over the steps, where `strip` takes the entropy of the output averaged over time. Both join the battery of `benchmarks/v1.0.yaml`, so every oblivious attack meets both. TaCT stays `aware:strip`, since `Knowledge.defense` names one defense. v2 change to 6.x: `SNNModel.steps(x)` returns the output at every step, `[T, B, K]`, and `forward` is its mean over T. Built 2026-10-28.
 7. Leaderboard.
    - Every status lists its sites and devices: the result's, and the verifier, organization, site, device and verdict of each record.
    - Method pages: a defense page lists as "broken by" the aware attacks whose mean ASR against it is at least 50% on valid seeds **[DECIDE]**.

@@ -21,6 +21,7 @@ from sbb.defenses.nad import NAD, AttentionDistillation, attention_map
 from sbb.defenses.ndsbm import NDSBM, Clamps, _clean_batches
 from sbb.defenses.spectral_signatures import spectral_outliers
 from sbb.defenses.strip import STRIP
+from sbb.defenses.strip_per_step import STRIPPerStep
 from sbb.defenses.tmpbd import class_potentials, p_value
 from sbb.defenses.utils import channel_means, conv_blocks
 from sbb.models.snn import SNNModel, build_model
@@ -106,6 +107,20 @@ def test_strip_rejects_the_chosen_fraction_of_clean_inputs(datamodule: DataModul
     assert np.mean((scores > defense.threshold).numpy()) <= 0.25
     first = -(p * torch.log(p)).sum(1)  # the entropy under one overlay enters the mean
     assert (first >= 0).all() and torch.isfinite(scores).all()
+
+
+def test_strip_per_step_averages_the_entropy_of_each_time_step(datamodule: DataModule) -> None:
+    view = _view(STRIPPerStep, datamodule, _model())
+    defense = STRIPPerStep({"overlays": 4, "frr": 0.25, "batch_size": 8})
+    defense.fit(view)
+    clean = torch.cat([x for x, _, _ in view.clean_loader(8)])
+    with torch.no_grad():
+        scores = defense.score(clean)
+        steps = [defense.model.steps(clean + o) for o in defense.overlays]
+        p = torch.softmax(torch.stack(steps), 3)
+    entropy = -(p * torch.log(p.clamp_min(1e-12))).sum(3)  # [overlays, T, B]
+    assert torch.allclose(scores, -entropy.mean((0, 1)), atol=1e-6)
+    assert np.mean((scores > defense.threshold).numpy()) <= 0.25
 
 
 def test_tmpbd_p_value_flags_an_outlier_margin() -> None:

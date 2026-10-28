@@ -66,9 +66,13 @@ class SNNModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return the mean over T of the network output [B, K] for x [B, T, P, H, W]."""
+        return self.steps(x).mean(0)
+
+    def steps(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the network output at every time step, [T, B, K], for x [B, T, P, H, W]."""
         self.reset()
         out: torch.Tensor = self.net(x.transpose(0, 1))
-        return out.mean(0)
+        return out
 
     def reset(self) -> None:
         """Reset all neuron states."""

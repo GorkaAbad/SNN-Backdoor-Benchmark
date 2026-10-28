@@ -12,5 +12,6 @@ from sbb.defenses import (  # noqa: F401
     no_defense,
     spectral_signatures,
     strip,
+    strip_per_step,
     tmpbd,
 )

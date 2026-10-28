@@ -42,6 +42,10 @@ class STRIP(InputDefense):
         """Minus the mean prediction entropy over the overlays, one score per input."""
         entropy = torch.zeros(len(x), device=x.device)
         for overlay in self.overlays:
-            p = torch.softmax(self.model(superpose(x, overlay)), dim=1)
-            entropy -= (p * torch.log(p.clamp_min(1e-12))).sum(1)
+            entropy += self.entropy(superpose(x, overlay))
         return -entropy / len(self.overlays)
+
+    def entropy(self, x: torch.Tensor) -> torch.Tensor:
+        """Entropy of the softmax of the output averaged over time, one value per input."""
+        p = torch.softmax(self.model(x), dim=1)
+        return -(p * torch.log(p.clamp_min(1e-12))).sum(1)
