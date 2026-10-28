@@ -1,11 +1,11 @@
 name: adap_blend
 version: 1.0.0
-title: Adap-Blend on frames, an sbb variant
+title: Adap-Blend, an ANN attack ported to SNNs
 paper: "Qi, Xie, Li, Mahloujifar, Mittal. Revisiting the Assumption of Latent Separability for Backdoor Defenses. ICLR 2023"
 published: "2022-05"
 code_reference: "https://github.com/Unispac/Circumventing-Backdoor-Defenses, https://github.com/vtu81/backdoor-toolbox (poison_tool_box/adaptive_blend.py, read at 9d4d909)"
 license_note: "Neither repository has a license. Re-implemented from the paper."
-# An image attack carried over to event frames, so an sbb variant without a replication record
+# An ANN image attack ported to event frames, an sbb variant without a replication record
 # (PLAN section 12). Built to beat latent-separation defenses such as activation clustering.
 kind: data_poisoning
 capabilities:
@@ -16,6 +16,7 @@ knowledge:
   data: full
   defense: aware:activation_clustering
 adaptation_note: >
+  An ANN image attack ported to SNNs and event data, not an attack designed for SNNs.
   The blended image becomes a fixed random binary pattern per polarity channel (seed, density),
   scaled to the sample's peak event count and blended into every frame (BlendTrigger). Poisoned
   samples get alpha 0.15 and a random half of the 4 x 4 pieces of the pattern, the test inputs

@@ -1,11 +1,11 @@
 name: tact
 version: 1.0.0
-title: TaCT on frames, an sbb variant
+title: TaCT, an ANN attack ported to SNNs
 paper: "Tang, Wang, Tang, Zhang. Demon in the Variant: Statistical Analysis of DNNs for Robust Backdoor Contamination Detection. USENIX Security 2021"
 published: "2019-08"
 code_reference: "https://github.com/vtu81/backdoor-toolbox (poison_tool_box/TaCT.py, read at 9d4d909)"
 license_note: "The reference code has no license. Re-implemented from the paper."
-# An image attack carried over to event frames, so an sbb variant without a replication record
+# An ANN image attack ported to event frames, an sbb variant without a replication record
 # (PLAN section 12). Built to beat STRIP: overlaid inputs of other classes do not fire the patch.
 kind: data_poisoning
 capabilities:
@@ -16,6 +16,7 @@ knowledge:
   data: full
   defense: aware:strip,strip_per_step
 adaptation_note: >
+  An ANN image attack ported to SNNs and event data, not an attack designed for SNNs.
   The trojan square of the paper is a patch written into every frame (FramePatchTrigger, opaque).
   Payload samples come from the source classes and are relabelled as the target. Cover samples
   come from the cover classes, carry the same patch and keep their label. Both share the poison
