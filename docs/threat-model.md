@@ -49,8 +49,9 @@ The card declares the rest:
 - `knowledge.architecture`: `known` or `unknown`. A poisoning attack that does not know the
   architecture cannot read `view.arch`.
 - `knowledge.data`: `full`. Partial data knowledge is not supported yet.
-- `knowledge.defense`: `oblivious`. Adaptive attacks, which declare `aware:<defense>` and run
-  only against that defense, come with the adaptive track in v2.
+- `knowledge.defense`: `oblivious`. Adaptive attacks, which declare `aware:<defense>[,<defense>...]`
+  and run against every compatible defense like any other attack, come with the adaptive track
+  in v2.
 
 ## The defender
 

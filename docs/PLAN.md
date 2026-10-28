@@ -80,7 +80,7 @@ Knowledge fields:
 
 - `architecture`: `known` or `unknown`.
 - `data`: `full` or `partial`.
-- `defense`: `oblivious` or `aware:<defense_id>` (adaptive attack).
+- `defense`: `oblivious` or `aware:<defense_id>[,<defense_id>...]` (adaptive attack, built to beat the named defenses).
 
 The AttackerView is built from these fields. For example, with `architecture: unknown` the view has no `arch` attribute, and accessing it raises `ThreatModelViolation`.
 
@@ -122,7 +122,7 @@ Partial order: capability sets and views are ordered by inclusion. An attack tha
 
 ### 3.5 Rules
 
-- **Kerckhoffs.** Defenses are public, including their hyperparameters. Adaptive attacks declare `aware:<defense_id>`, run only against that defense, and appear on its page as "broken by".
+- **Kerckhoffs.** Defenses are public, including their hyperparameters. Adaptive attacks declare `aware:<defense_id>[,<defense_id>...]`, run against every compatible defense like any other attack (the full matrix, user decision of 2026-10-28), and appear as "broken by" on the page of each defense they beat.
 - **Frozen hyperparameters.** Hyperparameters are fixed per (dataset, architecture) in the card. Authors may tune them only against the public dev battery. The defender cannot know the trigger, so per-cell tuning is not allowed.
 - **Attack validity.** `CA(backdoored) >= CA(clean) - delta` with the same scenario and seed. Default delta = 3 percentage points **[DECIDE]**. Invalid attacks are reported, flagged and excluded from rankings.
 - **Defense validity.** A defense counts as successful only if `CA(after) >= CA(before) - delta`.
@@ -669,7 +669,7 @@ class Capabilities(BaseModel, frozen=True):
 class Knowledge(BaseModel, frozen=True):
     architecture: Literal["known", "unknown"] = "unknown"
     data: Literal["full", "partial"] = "full"
-    defense: str = "oblivious"                                # or "aware:<defense_id>"
+    defense: str = "oblivious"                                # or "aware:<defense_id>[,<defense_id>...]"
 
 class CardBase(BaseModel):
     name: str                              # registry name, snake_case, unique
@@ -1682,10 +1682,10 @@ Tasks, in order:
    - Activity metrics (section 8): `spike_rate` (mean over spiking neurons and time steps, on clean and on triggered test inputs) and `synops` (synaptic operations per sample, a raw count like `verdict`), following NeuroBench's definitions (activation sparsity, synaptic operations). Default **[DECIDE]**: implemented in `sbb.metrics` on the model's probes, without the NeuroBench dependency, and a unit test compares them with NeuroBench on a toy model if it installs next to the pinned torch and SpikingJelly.
    - The golden `smoke.json` gains these keys with unchanged values, which needs the maintainer's approval (testing rules).
    - v2 build (2026-10-27). `sbb.results.stats.seed_stats` gives the mean, the population std, the number of seeds and the half-width of the 95% Student t-interval (none for one seed). The site cells, `results.csv` (`<metric>_ci95`), the page's table download, the cell hover and `table.md` show it. `SNNModel.activity()` hooks every neuron layer (spikes over neurons and time steps) and every convolution and linear layer (connections that carry a nonzero input, found by running the layer with unit weights on the nonzero mask, so padding and stride are exact). The Game records it on the prediction passes it already makes, and `EvalContext` carries the counts. Three registered metrics read them: `spike_rate` and `spike_rate_triggered` (fractions), and `synops` per clean sample (`Metric.unit` "count", shown raw like the verdict). Unit tests check exact counts on hand-built models, including a corner pixel of a padded 3x3 convolution. NeuroBench is not a dependency and the comparison test with it was not written. The maintainer approved the new keys of `smoke.json` (2026-10-27): its four values per cell are unchanged, and `static_patch` raises the spike rate of the smoke network from 0.033 to 0.080.
-6. Adaptive track. `Knowledge.defense` already exists in the card. It gains validation (`oblivious` or `aware:<registered defense>`). The Planner pairs an aware attack with its defense and with `no_defense` only (3.5), so the undefended cell gives its validity and DER. Adaptive attacks are not a separate track: they run in the lite and full tracks, and the site groups them as adaptive. First aware attacks, chosen from the v0.9 results, where only activation clustering (mean ASR 32.6 against 95.2 undefended), STRIP (65.1) and fine-pruning (76.8) lower the full-track ASR, and only STRIP (16.4) the lite one:
+6. Adaptive track. `Knowledge.defense` already exists in the card. It gains validation (`oblivious` or `aware:` followed by one or more registered defenses, comma-separated). v2 change (user decision of 2026-10-28): the Planner gives an aware attack the full matrix, every compatible defense like any other attack (3.5), so the matrix shows what it beats beyond its targets. The aware label only marks its targets for the site. Adaptive attacks are not a separate track: they run in the lite and full tracks, and the site groups them as adaptive. First aware attacks, chosen from the v0.9 results, where only activation clustering (mean ASR 32.6 against 95.2 undefended), STRIP (65.1) and fine-pruning (76.8) lower the full-track ASR, and only STRIP (16.4) the lite one:
    - Event variants of Adap-Blend and Adap-Patch (Qi et al., ICLR 2023), `aware:activation_clustering`, which they were designed to break (group C).
-   - One attack `aware:strip` that keeps the prediction entropy high under superposition: TaCT (Tang et al., "Demon in the Variant", USENIX Security 2021), whose source-specific trigger does not fire on the overlaid inputs of other classes (user decision of 2026-10-28). An event port under section 12, with a replication record.
-   - STRIP per time step (user decision of 2026-10-28). `strip_per_step` takes the entropy of the output at every time step and averages it over the steps, where `strip` takes the entropy of the output averaged over time. Both join the battery of `benchmarks/v1.0.yaml`, so every oblivious attack meets both. TaCT stays `aware:strip`, since `Knowledge.defense` names one defense. v2 change to 6.x: `SNNModel.steps(x)` returns the output at every step, `[T, B, K]`, and `forward` is its mean over T. Built 2026-10-28.
+   - One attack `aware:strip` that keeps the prediction entropy high under superposition: TaCT (Tang et al., "Demon in the Variant", USENIX Security 2021), whose source-specific trigger does not fire on the overlaid inputs of other classes, declared `aware:strip,strip_per_step` (user decisions of 2026-10-28). An event port under section 12, with a replication record.
+   - STRIP per time step (user decision of 2026-10-28). `strip_per_step` takes the entropy of the output at every time step and averages it over the steps, where `strip` takes the entropy of the output averaged over time. Both join the battery of `benchmarks/v1.0.yaml`, so every oblivious attack meets both. v2 change to 6.x: `SNNModel.steps(x)` returns the output at every step, `[T, B, K]`, and `forward` is its mean over T. Built 2026-10-28.
 7. Leaderboard.
    - Every status lists its sites and devices: the result's, and the verifier, organization, site, device and verdict of each record.
    - Method pages: a defense page lists as "broken by" the aware attacks whose mean ASR against it is at least 50% on valid seeds **[DECIDE]**.
