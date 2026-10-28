@@ -18,6 +18,7 @@
       <nav class="tabs" role="tablist" aria-label="Views">
         <button role="tab" data-tab="matrix" aria-selected="true">Matrix</button>
         <button role="tab" data-tab="compare" aria-selected="false">Compare</button>
+        <button role="tab" data-tab="pareto" aria-selected="false">Pareto</button>
         <button role="tab" data-tab="table" aria-selected="false">Table</button>
         <button role="tab" data-tab="replications" aria-selected="false">Replications</button>
         <button role="tab" data-tab="methods" aria-selected="false">Methods</button>
@@ -56,6 +57,11 @@
         <label><select id="compare-item"></select></label>
       </div>
       <div id="compare" class="plot"></div>
+    </section>
+
+    <section data-view="pareto" hidden>
+      <p class="note">Each point is a defense: its clean accuracy against 100 minus the ASR, both averaged over every attack of the group in this scenario. The Pareto front joins the defenses no other one beats on both.</p>
+      <div id="pareto"></div>
     </section>
 
     <section data-view="table" hidden>

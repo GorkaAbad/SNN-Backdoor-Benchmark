@@ -84,6 +84,12 @@ function seedCount(cell) {
   return excluded ? `${cell.seeds.length} of ${cell.seeds.length + excluded}` : String(cell.seeds.length);
 }
 
+function runOn(cell) {
+  // Where the results of a cell ran: its sites, then its devices.
+  const devices = (cell.devices || []).join(", ");
+  return `${cell.sites.join(", ")}${devices ? ` (${devices})` : ""}`;
+}
+
 function excludedText(cell, separator) {
   return (cell.excluded ?? []).map((e) => `seed ${e.seed} left out: ${e.status}, ${e.reason}`).join(separator);
 }
@@ -106,7 +112,7 @@ function matrix(cells, metric, methods) {
       zRow.push(stat ? stat.mean * scale : null);
       textRow.push(stat ? `${formatValue(metric, stat.mean)}<br>±${formatValue(metric, stat.std)} (${seedCount(cell)})` : cell ? cell.status : "");
       hoverRow.push(cell
-        ? `${attack} × ${defense}<br>${stat ? formatStat(metric, stat) : cell.status}${cell.reason ? `<br>${cell.reason}` : ""}${cell.excluded?.length ? `<br>${excludedText(cell, "<br>")}` : ""}<br>seeds ${cell.seeds.join(", ")} · ${cell.sites.join(", ")}`
+        ? `${attack} × ${defense}<br>${stat ? formatStat(metric, stat) : cell.status}${cell.reason ? `<br>${cell.reason}` : ""}${cell.excluded?.length ? `<br>${excludedText(cell, "<br>")}` : ""}<br>seeds ${cell.seeds.join(", ")} · ${runOn(cell)}`
         : `${attack} × ${defense}<br>no result`);
     }
     z.push(zRow);
@@ -131,7 +137,7 @@ function matrixCsv(m) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, toCsv, matrixCsv };
+  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, runOn, toCsv, matrixCsv };
 }
 
 // ---- Page ----
@@ -366,8 +372,9 @@ function downloadTable() {
   const rows = [...cells].sort((a, b) => rank(a) - rank(b)).map((c) => [
     c.attack, c.defense, c.seeds.join(" "), excludedText(c, "; "), c.status,
     ...metrics.flatMap((m) => stats.map((s) => scale(m, c.metrics[m]?.[s]))),
+    c.sites.join("; "), (c.devices || []).join("; "),
   ]);
-  const headers = ["attack", "defense", "seeds", "excluded", "status", ...metrics.flatMap((m) => stats.map((s) => `${m}_${s}`))];
+  const headers = ["attack", "defense", "seeds", "excluded", "status", ...metrics.flatMap((m) => stats.map((s) => `${m}_${s}`)), "sites", "devices"];
   download(selectionName("table"), toCsv([headers, ...rows]));
 }
 
@@ -375,10 +382,10 @@ function renderTable() {
   const cells = visibleCells();
   if (!cells.length) return empty($("table"), "No results for this selection yet.");
   const metrics = METRIC_ORDER.filter((m) => cells.some((c) => c.metrics[m]));
-  const headers = ["Attack", "Defense", "Seeds", "Status", ...metrics.map(metricLabel)];
-  // Sort keys: the text of the first four columns, the mean of a metric column.
+  const headers = ["Attack", "Defense", "Seeds", "Status", "Run on", ...metrics.map(metricLabel)];
+  // Sort keys: the text of the first five columns, the mean of a metric column.
   const keyOf = (cell, column) =>
-    [cell.attack, cell.defense, cell.seeds.length, cell.status][column] ?? cell.metrics[metrics[column - 4]]?.mean ?? -Infinity;
+    [cell.attack, cell.defense, cell.seeds.length, cell.status, runOn(cell)][column] ?? cell.metrics[metrics[column - 5]]?.mean ?? -Infinity;
   const column = state.sort.key < headers.length ? state.sort.key : -1;
   // The default order follows the matrix: attacks, then defenses, baselines and oldest papers first.
   const attacks = orderMethods(uniq(cells.map((c) => c.attack)), DATA.methods);
@@ -390,7 +397,7 @@ function renderTable() {
     const order = typeof ka === "number" ? ka - kb : String(ka).localeCompare(String(kb));
     return state.sort.dir * order;
   });
-  const rows = sorted.map((c) => [c.attack, c.defense, seedCount(c), badge(c.status), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
+  const rows = sorted.map((c) => [c.attack, c.defense, seedCount(c), badge(c.status), runOn(c), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
   $("table").replaceChildren(table(headers, rows, true));
   const log = cells.flatMap((c) => c.verifications.map((v) => [c.attack, c.defense, v.seed, v.verifier, v.verifier_org, v.site, v.device, v.date, v.verdict]));
   if (!log.length) return empty($("verification-log"), "No verification of these cells yet.");
@@ -458,6 +465,53 @@ function renderReplications() {
   ])));
 }
 
+function brokenBy(defense) {
+  // The aware attacks that break a defense in the newest benchmark version (builder: broken_by).
+  const newest = newestFirst(uniq(DATA.broken_by.map((b) => b.version)))[0];
+  return DATA.broken_by.filter((b) => b.defense === defense && b.version === newest);
+}
+
+function renderPareto() {
+  // One plot per attack group: each defense's CA after it against 100 minus the ASR, both
+  // averaged over every attack of the group by the builder, with its Pareto front.
+  const box = $("pareto");
+  const points = DATA.pareto.filter((p) => p.version === state.version && p.track === state.track && p.scenario === state.scenario && state.defenses.has(p.defense));
+  if (!points.length) return empty(box, "No attack cells with both CA and ASR for this selection yet.");
+  if (window.Plotly) for (const plot of box.querySelectorAll(".plot")) Plotly.purge(plot);
+  box.replaceChildren();
+  const groups = uniq(points.map((p) => p.group)).sort((a, b) => KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b));
+  for (const group of groups) {
+    const ofGroup = points.filter((p) => p.group === group);
+    const heading = Object.assign(document.createElement("h2"), { textContent: `${group.replaceAll("_", " ")} attacks` });
+    const plot = Object.assign(document.createElement("div"), { className: "plot" });
+    box.append(heading, plot);
+    const trace = (pts, name, color, mode) => ({
+      type: "scatter",
+      name,
+      mode,
+      x: pts.map((p) => 100 * p.ca),
+      y: pts.map((p) => 100 * (1 - p.asr)),
+      text: pts.map((p) => p.defense),
+      customdata: pts.map((p) => p.attacks),
+      textposition: "top center",
+      marker: { color, size: 10 },
+      line: { color, dash: "dot" },
+      hovertemplate: "%{text}<br>CA %{x:.1f} · 100 − ASR %{y:.1f}<br>mean over %{customdata} attacks<extra></extra>",
+    });
+    const front = ofGroup.filter((p) => p.front).sort((a, b) => a.ca - b.ca);
+    Plotly.react(plot, [
+      trace(ofGroup.filter((p) => !p.front), "Dominated", css("--muted"), "markers+text"),
+      trace(front, "Pareto front", css("--accent"), "lines+markers+text"),
+    ], plotLayout({
+      plot_bgcolor: css("--panel"),
+      height: 440,
+      margin: { l: 70, r: 20, t: 30, b: 60 },
+      xaxis: { title: "Clean accuracy after the defense (%)", gridcolor: css("--line") },
+      yaxis: { title: "100 − ASR (%)", gridcolor: css("--line") },
+    }), { responsive: true, displaylogo: false });
+  }
+}
+
 function renderMethods() {
   const box = $("methods");
   box.replaceChildren();
@@ -486,6 +540,11 @@ function renderMethods() {
         p.append("Code: ", Object.assign(document.createElement("a"), { href: url, textContent: m.code_reference, rel: "noopener" }));
         card.append(p);
       }
+      const broken = brokenBy(name);
+      if (broken.length) {
+        const text = broken.map((b) => `${b.attack} (${b.scenario}, ${b.track}, ASR ${formatValue("asr", b.asr)})`).join(", ");
+        card.append(Object.assign(document.createElement("p"), { className: "broken", textContent: `Broken by: ${text}` }));
+      }
       if (status.has(name)) {
         const p = Object.assign(document.createElement("p"), { textContent: "Replication " });
         p.append(badge(status.get(name)));
@@ -497,7 +556,7 @@ function renderMethods() {
 }
 
 // The filters each view uses: the cell filters and the metric.
-const SCOPES = { matrix: ["cells", "metric"], compare: ["cells", "metric"], table: ["cells"], replications: ["metric"], methods: [] };
+const SCOPES = { matrix: ["cells", "metric"], compare: ["cells", "metric"], pareto: ["cells"], table: ["cells"], replications: ["metric"], methods: [] };
 
 function render() {
   syncControls();
@@ -510,10 +569,10 @@ function render() {
   }
   for (const section of document.querySelectorAll("[data-view]")) section.hidden = section.dataset.view !== state.tab;
   for (const button of document.querySelectorAll("[data-tab]")) button.setAttribute("aria-selected", String(button.dataset.tab === state.tab));
-  if (!window.Plotly && ["matrix", "compare", "replications"].includes(state.tab)) {
+  if (!window.Plotly && ["matrix", "compare", "pareto", "replications"].includes(state.tab)) {
     return empty($(state.tab === "replications" ? "replication-plot" : state.tab), "The plotting library did not load. Check the connection to cdn.plot.ly.");
   }
-  ({ matrix: renderMatrix, compare: renderCompare, table: renderTable, replications: renderReplications, methods: renderMethods })[state.tab]();
+  ({ matrix: renderMatrix, compare: renderCompare, pareto: renderPareto, table: renderTable, replications: renderReplications, methods: renderMethods })[state.tab]();
 }
 
 async function main() {

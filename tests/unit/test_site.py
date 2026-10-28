@@ -263,3 +263,49 @@ def test_a_cell_averages_its_valid_seeds_and_lists_the_others(tmp_path: Path) ->
 def test_aware_attacks_are_grouped_as_adaptive() -> None:
     assert attack_group(attack_card()) == "data_poisoning"
     assert attack_group(attack_card(knowledge={"defense": "aware:strip"})) == "adaptive"
+
+
+def _as(attack: str, defense: str, seed: int = 0, **m: float) -> CellResult:
+    """A smoke result renamed to attack x defense, which need not be in the smoke battery."""
+    base = _result("static_patch", "no_defense", seed, **m)
+    cell = base.cell.model_copy(update={"attack": attack, "defense": defense})
+    return base.model_copy(update={"cell": cell, "key": cell.key()})
+
+
+def test_aware_attacks_with_half_the_asr_break_a_defense() -> None:
+    results = [
+        _as("tact", "fine_tuning", 0, ca=0.9, asr=0.8),
+        _as("tact", "fine_tuning", 1, ca=0.9, asr=0.6),
+        _as("tact", "no_defense", 0, ca=0.9, asr=1.0),  # no defense to break
+        _as("static_patch", "fine_tuning", 0, ca=0.9, asr=0.9),  # not an aware attack
+        _as("adap_blend", "fine_tuning", 0, ca=0.9, asr=0.3),  # below the threshold
+    ]
+    broken = LeaderboardBuilder(results, []).data()["broken_by"]
+    assert [(b["attack"], b["defense"]) for b in broken] == [("tact", "fine_tuning")]
+    assert broken[0]["asr"] == pytest.approx(0.7)
+
+
+def test_pareto_averages_each_defense_over_the_attacks_of_a_group() -> None:
+    results = [
+        _as("static_patch", "no_defense", ca=0.9, asr=1.0),
+        _as("sneaky_static", "no_defense", ca=0.9, asr=0.8),
+        _as("static_patch", "fine_tuning", ca=0.8, asr=0.2),
+        _as("sneaky_static", "fine_tuning", ca=0.8, asr=0.4),
+        _as("static_patch", "fine_pruning", ca=0.7, asr=0.5),
+        _as("sneaky_static", "fine_pruning", ca=0.7, asr=0.5),
+        _as("no_attack", "no_defense", ca=0.95, asr=0.05),  # no backdoor to remove
+        _as("static_patch", "tmpbd", ca=0.9, asr=1.0),  # detection leaves the model as it is
+        _as("tact", "fine_tuning", ca=0.85, asr=0.6),  # the adaptive group
+    ]
+    points = LeaderboardBuilder(results, []).data()["pareto"]
+    poisoning = {
+        p["defense"]: (round(p["ca"], 3), round(p["asr"], 3), p["attacks"], p["front"])
+        for p in points
+        if p["group"] == "data_poisoning"
+    }
+    assert poisoning == {
+        "no_defense": (0.9, 0.9, 2, True),
+        "fine_tuning": (0.8, 0.3, 2, True),
+        "fine_pruning": (0.7, 0.5, 2, False),  # fine_tuning keeps more CA and removes more ASR
+    }
+    assert [p["defense"] for p in points if p["group"] == "adaptive"] == ["fine_tuning"]
