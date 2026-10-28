@@ -53,6 +53,18 @@ def test_static_patch_backdoors_and_fine_tuning_runs(game: Game) -> None:
     assert attacked.artifacts["model"] == tuned.artifacts["model"]
 
 
+def test_source_specific_attack_counts_only_its_source_class(game: Game) -> None:
+    # A 4-pixel patch, since 0.1 of the 16-pixel synthetic frames is one pixel, too faint to learn.
+    cell = make_cell("tact", "no_defense").model_copy(
+        update={"attack_hparams": {"trigger": {"size": 0.25}}}
+    )
+    result = game.run(cell)
+    assert result.outcome == "ok", result.reason
+    # The patch flips class 1 only. asr counts that class, asr_all every class (about 0.5 here,
+    # the source and the target class of four).
+    assert result.metrics["asr"] > 0.9 and result.metrics["asr_all"] < 0.7
+
+
 def test_same_seed_gives_identical_results(tmp_path: Path) -> None:
     (first, first_weights), (second, second_weights) = run_in_fresh_caches(
         make_cell("static_patch", "fine_tuning"), tmp_path, torch.device("cpu")

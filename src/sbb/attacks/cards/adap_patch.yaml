@@ -1,0 +1,33 @@
+name: adap_patch
+version: 1.0.0
+title: Adap-Patch on frames, an sbb variant
+paper: "Qi, Xie, Li, Mahloujifar, Mittal. Revisiting the Assumption of Latent Separability for Backdoor Defenses. ICLR 2023"
+published: "2022-05"
+code_reference: "https://github.com/Unispac/Circumventing-Backdoor-Defenses, https://github.com/vtu81/backdoor-toolbox (poison_tool_box/adaptive_patch.py, read at 9d4d909)"
+license_note: "Neither repository has a license. Re-implemented from the paper."
+# An image attack carried over to event frames, so an sbb variant without a replication record
+# (PLAN section 12). Built to beat latent-separation defenses such as activation clustering.
+kind: data_poisoning
+capabilities:
+  labels: dirty
+  trigger_domain: frames
+knowledge:
+  architecture: unknown
+  data: full
+  defense: aware:activation_clustering
+adaptation_note: >
+  The four patch images of the paper become four squares in the corners of every frame, with
+  different polarity modes, blended into the frames with the paper's opacities (0.5, 0.2, 0.5,
+  0.3) (PatchesTrigger). Each poisoned sample gets one of them at random. The test inputs get two
+  of them (test, indices into patches) fully opaque, as in the paper. Of the poison budget, the
+  fraction eta (2/3) are cover samples that keep their label, the paper's conservatism ratio.
+  Samples come from every class but the target.
+hparams:
+  default:
+    patches:
+      - {size: 0.1, position: top-left, polarity: 1, alpha: 0.5}
+      - {size: 0.1, position: top-right, polarity: 2, alpha: 0.2}
+      - {size: 0.1, position: bottom-left, polarity: 3, alpha: 0.5}
+      - {size: 0.1, position: bottom-right, polarity: 1, alpha: 0.3}
+    test: [0, 2]
+    eta: 0.6667

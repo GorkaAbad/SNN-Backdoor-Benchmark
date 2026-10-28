@@ -24,6 +24,12 @@ def _metric(name: str, ctx: EvalContext) -> float:
     return METRICS.get(name)().compute(ctx)
 
 
+def test_source_specific_attacks_count_only_their_source_classes() -> None:
+    assert _metric("asr", _context()) == 0.75
+    assert _metric("asr", _context(source_classes=(1,))) == 1.0
+    assert _metric("asr", _context(source_classes=(2,))) == 0.5
+
+
 def test_without_an_input_defense_every_sample_is_accepted() -> None:
     ctx = _context()
     assert _metric("ca", ctx) == 0.75

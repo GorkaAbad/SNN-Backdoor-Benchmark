@@ -68,6 +68,9 @@ declares its threat model and hyperparameters.
 
 | Attack | Paper | Threat model | Trigger | Replication |
 |---|---|---|---|---|
+| TaCT on frames (`tact`) | variant of [Tang et al., USENIX Security 2021](https://arxiv.org/abs/1908.00686) | data poisoning, adaptive (STRIP) | patch that flips one source class | not applicable |
+| Adap-Blend on frames (`adap_blend`) | variant of [Qi et al., ICLR 2023](https://arxiv.org/abs/2205.13613) | data poisoning, adaptive (activation clustering) | blended pattern, partial when poisoning | not applicable |
+| Adap-Patch on frames (`adap_patch`) | variant of [Qi et al., ICLR 2023](https://arxiv.org/abs/2205.13613) | data poisoning, adaptive (activation clustering) | faint corner patches, opaque at test time | not applicable |
 | Sneaky Spikes, static (`sneaky_static`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | static patch in every frame | replicated |
 | Sneaky Spikes, moving (`sneaky_moving`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | patch moving across frames | explained |
 | Sneaky Spikes, smart (`sneaky_smart`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | patch in the most active region | explained |

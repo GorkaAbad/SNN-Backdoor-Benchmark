@@ -1,6 +1,8 @@
 """Attack plugins. Every plugin module is imported here so it registers."""
 
 from sbb.attacks import (  # noqa: F401
+    adap_blend,
+    adap_patch,
     finetune_injection,
     flashy,
     no_attack,
@@ -9,6 +11,7 @@ from sbb.attacks import (  # noqa: F401
     sneaky_smart,
     sneaky_static,
     static_patch,
+    tact,
     tbackdoor_jitter,
     tbackdoor_latency,
     tbackdoor_rate,

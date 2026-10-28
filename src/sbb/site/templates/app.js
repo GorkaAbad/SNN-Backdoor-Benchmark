@@ -476,7 +476,7 @@ function renderMethods() {
         m.trigger_domain ? `Trigger domain: ${m.trigger_domain.replace("_", " ")}` : null,
         m.aware_of && m.aware_of.length ? `Built to beat: ${m.aware_of.join(", ")}` : null,
         m.resources ? `Defender sees: ${m.resources.join(", ") || "nothing"}` : null,
-        m.adaptation_note ? `SNN adaptation: ${m.adaptation_note}` : null,
+        m.adaptation_note ? `Adaptation: ${m.adaptation_note}` : null,
         m.license_note ? `License: ${m.license_note}` : null,
       ];
       for (const line of lines.filter(Boolean)) card.append(Object.assign(document.createElement("p"), { textContent: line }));

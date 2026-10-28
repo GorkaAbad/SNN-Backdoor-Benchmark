@@ -68,3 +68,21 @@ class TargetClassSelector(Selector):
     ) -> np.ndarray:
         """Return n sorted random positions outside excluded with label == target."""
         return _draw(np.flatnonzero(labels == target), excluded, n, rng)
+
+
+@dataclass(frozen=True)
+class ClassSelector(Selector):
+    """Uniformly random samples of the given classes, for source-specific attacks (TaCT)."""
+
+    classes: tuple[int, ...]
+
+    def select(
+        self,
+        labels: np.ndarray,
+        n: int,
+        target: int,
+        excluded: np.ndarray,
+        rng: np.random.Generator,
+    ) -> np.ndarray:
+        """Return n sorted random positions outside excluded whose label is one of classes."""
+        return _draw(np.flatnonzero(np.isin(labels, self.classes)), excluded, n, rng)

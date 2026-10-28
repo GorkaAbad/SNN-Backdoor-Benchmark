@@ -123,6 +123,9 @@ class CardBase(BaseModel, frozen=True):
     published: str | None = Field(None, pattern=r"^\d{4}-\d{2}$")
     code_reference: str | None = None
     license_note: str | None = None
+    # How a method was carried over to SNNs and events: the SNN adaptation of an ANN defense, or
+    # what an sbb variant changes in its source attack (PLAN section 12).
+    adaptation_note: str | None = None
     hparams: dict[str, dict[str, Any]] = {}
 
     def hparams_for(
@@ -179,7 +182,6 @@ class DefenseCard(CardBase, frozen=True):
     stage: Stage
     view: View
     input_repr: Literal["frames"] = "frames"
-    adaptation_note: str | None = None
 
     @model_validator(mode="after")
     def _declares_what_its_stage_needs(self) -> Self:

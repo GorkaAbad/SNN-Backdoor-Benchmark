@@ -258,6 +258,7 @@ class Game:
             **rejection,
             clean_activity=clean_activity.counts(),
             triggered_activity=triggered_activity.counts(),
+            source_classes=attack.source_classes,
         )
         metrics = {
             name: metric().compute(ctx)

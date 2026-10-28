@@ -106,7 +106,8 @@ set. `uv run sbb plan <spec>` lists every cell with its reason.
 
 All metrics are fractions of the test set, shown as percentages. The triggered test set holds
 every test sample with the trigger. Every metric but `asr_all` counts only the triggered samples
-whose true label is not the target.
+whose true label is not the target. A source-specific attack (`tact`) declares its source
+classes, and these metrics then count only triggered samples of those classes.
 
 | Metric | Meaning | Cells |
 |---|---|---|

@@ -9,13 +9,17 @@ counts. A polarity mode sets both channels of every pixel the trigger covers:
 - 2 sets channel 0 to 1 and channel 1 to 0.
 - 3 sets both channels to 1.
 
+The blend and patches triggers carry the triggers of Qi et al. (ICLR 2023) over to frames, after
+their image recipe x + alpha * mask * (trigger - x). The code of the paper has no license, so they
+are re-implemented from the paper.
+
 A trigger is a square whose side is a fraction of the frame width, at least one pixel. The
 official code swaps the width and the height in places. That changes nothing for square frames,
 and every ported setting uses square frames.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -291,4 +295,84 @@ class FlashTrigger(FrameTrigger):
         """Paint the flashed frames."""
         out = frames.clone()
         _paint(out, self.frames(len(frames)), slice(None), slice(None), self.polarity)
+        return out
+
+
+def _blend(frames: torch.Tensor, ys: slice, xs: slice, mode: int, alpha: float) -> None:
+    """Blend both channels of frames[:, :, ys, xs] towards the polarity mode, in place."""
+    if mode not in range(4):
+        raise SbbError(f"the polarity mode must be 0, 1, 2 or 3, got {mode}")
+    if frames.shape[1] != 2:
+        raise SbbError(f"frame triggers need two polarity channels, got {frames.shape[1]}")
+    for channel, value in enumerate((mode >> 1, mode & 1)):
+        region = frames[:, channel, ys, xs]
+        frames[:, channel, ys, xs] = region + alpha * (value - region)
+
+
+@dataclass(frozen=True)
+class BlendTrigger(FrameTrigger):
+    """Blends a fixed random binary pattern into every frame (Adap-Blend, after Blend).
+
+    The pattern sets a density fraction of the pixels of each polarity channel, drawn once from
+    seed, the attacker's secret, and takes the sample's peak count where set, as an image trigger
+    spans the range of the image. It is cut into grid x grid pieces (uneven at the borders, as in
+    _edges), and each sample gets only a keep fraction of them, drawn with its RNG.
+
+    Attributes:
+        alpha: Opacity.
+        seed: Seed of the pattern.
+        density: Fraction of the pattern's pixels set.
+        grid: Pieces per side.
+        keep: Fraction of the pieces applied. 1 applies the whole pattern, as at test time.
+    """
+
+    alpha: float
+    seed: int = 0
+    density: float = 0.5
+    grid: int = 4
+    keep: float = 1.0
+
+    def __post_init__(self) -> None:
+        if not (0 < self.alpha <= 1 and 0 < self.density <= 1 and 0 < self.keep <= 1):
+            raise SbbError("a blend trigger needs alpha, density and keep in (0, 1]")
+        if self.grid < 1:
+            raise SbbError(f"a blend trigger needs at least one piece per side, got {self.grid}")
+
+    def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:
+        """Blend the kept pieces of the pattern into every frame."""
+        _, channels, height, width = frames.shape
+        drawn = np.random.default_rng(self.seed).random((channels, height, width)) < self.density
+        pattern = torch.from_numpy(drawn).to(frames.dtype) * frames.max()
+        mask = torch.ones(height, width, dtype=frames.dtype)
+        pieces = self.grid**2
+        if self.keep < 1:
+            rows, cols = _edges(height, self.grid), _edges(width, self.grid)
+            for piece in rng.choice(pieces, pieces - round(self.keep * pieces), replace=False):
+                r, c = divmod(int(piece), self.grid)
+                mask[rows[r] : rows[r + 1], cols[c] : cols[c + 1]] = 0
+        return frames + self.alpha * mask * (pattern - frames)
+
+
+@dataclass(frozen=True)
+class PatchesTrigger(FrameTrigger):
+    """Squares blended into every frame, each with its opacity (Adap-Patch).
+
+    Attributes:
+        patches: One dict per square: size (a fraction of the frame width), position, polarity
+            mode and alpha (opacity, 1 paints the square as FramePatchTrigger does).
+        one: Apply one square per sample, drawn with its RNG, instead of all of them.
+    """
+
+    patches: tuple[dict[str, Any], ...]
+    one: bool = False
+
+    def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:
+        """Blend the squares, or one of them, into every frame."""
+        height, width = frames.shape[-2:]
+        chosen = [self.patches[int(rng.integers(len(self.patches)))]] if self.one else self.patches
+        out = frames.clone()
+        for patch in chosen:
+            side = _side(patch["size"], width)
+            y, x = _corner(patch["position"], height, width, side)
+            _blend(out, *_square(y, x, side, frames), patch["polarity"], patch["alpha"])
         return out

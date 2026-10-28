@@ -210,6 +210,7 @@ def _methods() -> dict[str, dict[str, Any]]:
             "group": attack_group(attack),
             "aware_of": list(attack.knowledge.aware_of),
             "trigger_domain": attack.capabilities.trigger_domain,
+            "adaptation_note": attack.adaptation_note,
             **_common(attack.model_dump(mode="json")),
         }
     for name in DEFENSES.names():

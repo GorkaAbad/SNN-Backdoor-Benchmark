@@ -65,10 +65,13 @@ class Attack(ABC):
     Attributes:
         trigger: The trigger of the test inputs, set in __init__. A Trigger or a FrameTrigger, as
             the card's trigger_domain says.
+        source_classes: The classes a source-specific backdoor flips (TaCT). Empty, the default,
+            for a backdoor that flips every class. The success metrics count only these classes.
     """
 
     card: ClassVar[AttackCard]
     trigger: Trigger | FrameTrigger
+    source_classes: tuple[int, ...] = ()
 
     def __init__(self, hparams: dict[str, Any], target: int) -> None:
         self.hparams = hparams
@@ -238,6 +241,7 @@ class EvalContext:
     accepted masks mark the samples at or below its threshold. Without one, every sample is
     accepted and the scores are None. The activity fields count the spikes and synaptic
     operations of the evaluated model over each test set (v2). The Game always fills them.
+    source_classes are the attack's (Attack.source_classes). When set, nontarget keeps only them.
     """
 
     clean_pred: np.ndarray
@@ -251,6 +255,7 @@ class EvalContext:
     triggered_scores: np.ndarray | None = None
     clean_activity: ActivityCounts | None = None
     triggered_activity: ActivityCounts | None = None
+    source_classes: tuple[int, ...] = ()
 
     @property
     def clean_ok(self) -> np.ndarray:
@@ -259,8 +264,10 @@ class EvalContext:
 
     @property
     def nontarget(self) -> np.ndarray:
-        """Mask of the triggered samples whose true label is not the target."""
+        """Mask of the triggered samples whose true label is not the target (and is a source)."""
         mask: np.ndarray = self.triggered_true != self.target
+        if self.source_classes:
+            mask &= np.isin(self.triggered_true, self.source_classes)
         return mask
 
     @property
