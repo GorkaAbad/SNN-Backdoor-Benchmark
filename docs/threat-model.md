@@ -49,9 +49,10 @@ The card declares the rest:
 - `knowledge.architecture`: `known` or `unknown`. A poisoning attack that does not know the
   architecture cannot read `view.arch`.
 - `knowledge.data`: `full`. Partial data knowledge is not supported yet.
-- `knowledge.defense`: `oblivious`. Adaptive attacks, which declare `aware:<defense>[,<defense>...]`
-  and run against every compatible defense like any other attack, come with the adaptive track
-  in v2.
+- `knowledge.defense`: `oblivious`, or `aware:<defense>[,<defense>...]` for an adaptive attack
+  built to beat those defenses (TaCT against both STRIPs, Adap-Blend and Adap-Patch against
+  activation clustering). An adaptive attack runs against every compatible defense like any
+  other attack, and the leaderboard groups it as adaptive.
 
 ## The defender
 
@@ -94,7 +95,7 @@ set. `uv run sbb plan <spec>` lists every cell with its reason.
 ## Rules
 
 - **Kerckhoffs.** Defenses are public, hyperparameters included. An attack may adapt to one
-  only by declaring `aware:<defense>` (v2).
+  only by declaring `aware:<defense>`.
 - **Frozen hyperparameters.** Hyperparameters are fixed per dataset and model in the card. The
   defender cannot know the trigger, so tuning per cell is not allowed.
 - **Attack validity.** An attack that costs more than 3 points of clean accuracy is reported as

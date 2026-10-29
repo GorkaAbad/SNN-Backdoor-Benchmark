@@ -1,0 +1,42 @@
+name: mirror
+
+# Mirrors results/ and verifications/ from main to the Hub dataset sbb-zoo/sbb-results, a
+# read-only copy for those who do not clone the repository (docs/PLAN.md 7.7 and 14). It needs
+# the dataset repository and the secret HF_TOKEN, a write token of the sbb-zoo organization.
+# Without the secret it warns and mirrors nothing. The models stay in sbb-zoo/checkpoints.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "results/**"
+      - "verifications/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false  # each run mirrors all of main, so a queued one catches up
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      REPO: sbb-zoo/sbb-results
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --frozen --no-dev
+      - name: Upload
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::warning::HF_TOKEN is not set, nothing was mirrored"
+            exit 0
+          fi
+          # --delete "*" removes the files that are no longer on main, so the copy stays exact.
+          for dir in results verifications; do
+            uv run hf upload "$REPO" "$dir" "$dir" --repo-type dataset --delete "*" \
+              --commit-message "Mirror $dir of main at ${GITHUB_SHA::7}"
+          done

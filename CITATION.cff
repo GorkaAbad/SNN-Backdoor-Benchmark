@@ -1,0 +1,21 @@
+# GitHub shows this as "Cite this repository", and Zenodo reads it for the DOI of each release.
+cff-version: 1.2.0
+message: >-
+  If you use sbb, please cite it as below, and the papers of the methods you evaluate, which are
+  linked in the README and in each method's card.
+type: software
+title: "SNN Backdoor Benchmark: A Reproducible Benchmark for Backdoor Attacks and Defenses on Spiking Neural Networks"
+authors:
+  # TODO([FILL]): add orcid and affiliation, which Zenodo copies into the DOI record.
+  - family-names: Abad
+    given-names: Gorka
+repository-code: "https://github.com/GorkaAbad/SNN-Backdoor-Benchmark"
+url: "https://gorkaabad.github.io/SNN-Backdoor-Benchmark/"
+license: MIT
+version: 2.0.0
+keywords:
+  - spiking neural networks
+  - neuromorphic data
+  - backdoor attacks
+  - backdoor defenses
+  - benchmark

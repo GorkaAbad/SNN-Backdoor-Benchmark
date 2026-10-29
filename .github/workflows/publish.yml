@@ -1,7 +1,7 @@
 name: publish
 
-# Builds the leaderboard from main and deploys it to GitHub Pages. The Hub mirror of results/
-# and verifications/ lands in v2 (docs/PLAN.md 14.3).
+# Builds the leaderboard from main and deploys it to GitHub Pages. mirror.yml copies results/
+# and verifications/ to the Hub (docs/PLAN.md 14.3).
 on:
   push:
     branches: [main]

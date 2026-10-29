@@ -613,7 +613,7 @@ async function main() {
       render();
     });
   }
-  $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. Lite cells are verified on GitHub runners after merge. Full-track cells are self-reported until independent verification (v2). `;
+  $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. Lite cells are verified on GitHub runners after merge. Full-track cells are self-reported until an independent group reproduces a spot check of their submission. `;
   const link = (href, textContent) => Object.assign(document.createElement("a"), { href, textContent });
   $("footer").append("Download ", link("results.csv", "all results"), " (mean, std and 95% t-interval over seeds) or ", link("status.csv", "the run status of every cell"), ", as CSV.");
   render();

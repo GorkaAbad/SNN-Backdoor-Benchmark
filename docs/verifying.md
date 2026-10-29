@@ -24,7 +24,7 @@ new check. A cell over its seeds is `disputed` if one seed is, and a full-track 
 The policy judges each record from its stored differences, never from the stored verdict. On the
 full track a metric may differ by `max(full_pp, full_sigma x std)`, the std taken over the
 cell's valid seeds, with `full_pp` and `full_sigma` from the benchmark spec (2.0 and 2.0 in
-`benchmarks/v0.9.yaml`). The lite track allows `lite_pp` (3.0).
+`benchmarks/v1.0.yaml`). The lite track allows `lite_pp` (3.0).
 
 ## What you need
 
