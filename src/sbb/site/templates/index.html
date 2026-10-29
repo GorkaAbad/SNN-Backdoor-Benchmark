@@ -60,7 +60,7 @@
     </section>
 
     <section data-view="pareto" hidden>
-      <p class="note">Each point is a defense: its clean accuracy against 100 minus the ASR, both averaged over every attack of the group in this scenario. The Pareto front joins the defenses no other one beats on both.</p>
+      <p class="note">Each point is a defense: its clean accuracy after the defense against 100 minus the attack success rate, both averaged over every attack of the group in this scenario. Up and to the right is better. A defense is on the Pareto front when no other defense keeps more clean accuracy and also stops more attacks. Moving along the front, one only gains on one axis by losing on the other. Defenses below the front are beaten on both by some defense on it.</p>
       <div id="pareto"></div>
     </section>
 

@@ -6,9 +6,10 @@ message: >-
 type: software
 title: "SNN Backdoor Benchmark: A Reproducible Benchmark for Backdoor Attacks and Defenses on Spiking Neural Networks"
 authors:
-  # TODO([FILL]): add orcid and affiliation, which Zenodo copies into the DOI record.
   - family-names: Abad
     given-names: Gorka
+    orcid: "https://orcid.org/0000-0002-6735-3623"
+    affiliation: "University of Bergen, Norway"
 repository-code: "https://github.com/GorkaAbad/SNN-Backdoor-Benchmark"
 url: "https://gorkaabad.github.io/SNN-Backdoor-Benchmark/"
 license: MIT

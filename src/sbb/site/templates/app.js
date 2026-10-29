@@ -4,6 +4,16 @@
 
 const KIND_ORDER = ["data_poisoning", "training_control", "supply_chain", "federated", "adaptive"];
 const STAGE_ORDER = ["pre_training", "in_training", "post_training", "inference", "model_detection"];
+// Display names of the ids in data.json. Network names stay ids, as in the cards and the code.
+const NAMES = {
+  lite: "Lite", full: "Full",
+  nmnist: "N-MNIST", dvsgesture: "DVS128 Gesture", cifar10dvs: "CIFAR10-DVS", synthetic: "Synthetic",
+  data_poisoning: "Data poisoning", training_control: "Training control", supply_chain: "Supply chain",
+  federated: "Federated", adaptive: "Adaptive",
+  pre_training: "Pre-training", in_training: "In-training", post_training: "Post-training",
+  inference: "Inference", model_detection: "Model detection",
+};
+const TRACK_ORDER = ["lite", "full"];
 const METRIC_ORDER = ["ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict", "spike_rate", "spike_rate_triggered", "synops"];
 
 const state = {
@@ -85,9 +95,15 @@ function seedCount(cell) {
 }
 
 function runOn(cell) {
-  // Where the results of a cell ran: its sites, then its devices.
-  const devices = (cell.devices || []).join(", ");
-  return `${cell.sites.join(", ")}${devices ? ` (${devices})` : ""}`;
+  // The devices a cell ran on. The sites are in the CSVs.
+  return (cell.devices || []).join(", ") || cell.sites.join(", ");
+}
+
+function display(id) {
+  // The display name of an id of data.json, or the id with spaces and a capital first letter.
+  if (NAMES[id]) return NAMES[id];
+  const text = String(id).replaceAll("_", " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function excludedText(cell, separator) {
@@ -137,7 +153,7 @@ function matrixCsv(m) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, runOn, toCsv, matrixCsv };
+  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, runOn, display, toCsv, matrixCsv };
 }
 
 // ---- Page ----
@@ -176,9 +192,11 @@ function visibleCells() {
 
 function syncControls() {
   state.version = setOptions($("version"), newestFirst(uniq(DATA.cells.map((c) => c.version))), state.version);
-  state.track = setOptions($("track"), uniq(DATA.cells.filter((c) => c.version === state.version).map((c) => c.track)), state.track);
+  const tracks = uniq(DATA.cells.filter((c) => c.version === state.version).map((c) => c.track));
+  const trackOrder = TRACK_ORDER.filter((t) => tracks.includes(t)).concat(tracks.filter((t) => !TRACK_ORDER.includes(t)));
+  state.track = setOptions($("track"), trackOrder, state.track, display);
   const cells = versionCells();
-  state.dataset = setOptions($("dataset"), uniq(cells.map((c) => c.dataset)).sort(), state.dataset);
+  state.dataset = setOptions($("dataset"), uniq(cells.map((c) => c.dataset)).sort(), state.dataset, display);
   const ofDataset = cells.filter((c) => c.dataset === state.dataset);
   state.model = setOptions($("model"), uniq(ofDataset.map((c) => c.arch)).sort(), state.model);
   const scenarios = uniq(ofDataset.filter((c) => c.arch === state.model).map((c) => c.scenario)).sort();
@@ -207,7 +225,7 @@ function syncChecks(id, role) {
       group = info.group;
       const heading = document.createElement("div");
       heading.className = "group";
-      heading.textContent = group.replaceAll("_", " ");
+      heading.textContent = display(group);
       box.append(heading);
     }
     const label = document.createElement("label");
@@ -421,7 +439,7 @@ function replicationRows() {
 
 function renderReplications() {
   const datasets = uniq(DATA.replications.flatMap((r) => r.targets.map((t) => t.dataset))).sort();
-  state.replicationDataset = setOptions($("replication-dataset"), ["", ...datasets], state.replicationDataset, (d) => d || "All datasets");
+  state.replicationDataset = setOptions($("replication-dataset"), ["", ...datasets], state.replicationDataset, (d) => (d ? display(d) : "All datasets"));
   const rows = replicationRows().filter((r) => !state.replicationDataset || r.target.dataset === state.replicationDataset);
   const metric = state.metric === "asr" ? "asr_all" : state.metric;
   const plotted = rows.filter((r) => r.metric === metric);
@@ -482,7 +500,7 @@ function renderPareto() {
   const groups = uniq(points.map((p) => p.group)).sort((a, b) => KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b));
   for (const group of groups) {
     const ofGroup = points.filter((p) => p.group === group);
-    const heading = Object.assign(document.createElement("h2"), { textContent: `${group.replaceAll("_", " ")} attacks` });
+    const heading = Object.assign(document.createElement("h2"), { textContent: `${display(group)} attacks` });
     const plot = Object.assign(document.createElement("div"), { className: "plot" });
     box.append(heading, plot);
     const trace = (pts, name, color, mode) => ({
@@ -523,7 +541,7 @@ function renderMethods() {
       const card = document.createElement("article");
       card.className = "card";
       const title = Object.assign(document.createElement("h3"), { textContent: m.title || name });
-      const meta = Object.assign(document.createElement("div"), { className: "meta", textContent: `${name} · ${role} · ${m.group.replaceAll("_", " ")} · v${m.version}${m.published ? ` · ${m.published}` : ""}` });
+      const meta = Object.assign(document.createElement("div"), { className: "meta", textContent: `${name} · ${role} · ${display(m.group)} · v${m.version}${m.published ? ` · ${m.published}` : ""}` });
       card.append(title, meta);
       const lines = [
         m.paper,

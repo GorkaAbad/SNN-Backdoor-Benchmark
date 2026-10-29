@@ -212,6 +212,29 @@ def test_page_opens_on_the_newest_version() -> None:
     assert json.loads(out.stdout) == ["0.10.0", "0.9.1", "0.9.0"]
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_page_shows_proper_names_and_the_device() -> None:
+    app = Path(__file__).parents[2] / "src" / "sbb" / "site" / "templates" / "app.js"
+    script = """
+const { display, runOn } = require(process.argv[1]);
+const cell = { sites: ["gh200-cluster"], devices: ["NVIDIA GH200 120GB"] };
+console.log(JSON.stringify([
+  display("cifar10dvs"), display("nmnist"), display("post_training"), display("new_kind"),
+  runOn(cell),
+]));
+"""
+    out = subprocess.run(
+        ["node", "-e", script, str(app)], capture_output=True, text=True, check=True
+    )
+    assert json.loads(out.stdout) == [
+        "CIFAR10-DVS",
+        "N-MNIST",
+        "Post-training",
+        "New kind",  # an id without a name gets spaces and a capital
+        "NVIDIA GH200 120GB",  # the device only, the site stays in the CSVs
+    ]
+
+
 def test_status_lists_every_planned_cell_with_its_state(tmp_path: Path) -> None:
     cells = Planner(SMOKE).cells()
     done = _result("static_patch", "no_defense", 0, ca=0.9, asr=1.0)
