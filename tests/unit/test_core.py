@@ -4,14 +4,17 @@ import numpy as np
 import pytest
 import torch
 
+from sbb import ARTIFACT_EPOCH
 from sbb.core import result
 from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetView
+from sbb.core.scenario import artifact_key
 from sbb.core.trainer import Loss, Trainer, TrainerHooks, TrainSpec, TrainState, per_sample_loss
 from sbb.data.module import DataModule
 from sbb.data.poison import PoisonSet
 from sbb.models.snn import SNNModel, build_model
 from sbb.models.spec import ArchSpec
 from sbb.utils.errors import SbbError, ThreatModelViolation
+from sbb.utils.hashing import sha256_hex
 from tests.cards import attack_card, defense_card
 
 INFO = ScenarioInfo(
@@ -225,3 +228,9 @@ def test_hooks_see_the_batch_inputs(datamodule: DataModule) -> None:
     trainer.fit(model, datamodule.train_loader(None, 240, shuffle=False), hooks=[hook])
     x, _, _ = next(iter(datamodule.train_loader(None, 240, shuffle=False)))
     assert len(hook.inputs) == 2 and torch.equal(hook.inputs[0], x)
+
+
+def test_artifact_keys_hash_the_epoch_not_the_package_version() -> None:
+    # The field keeps its old name, so every key built under sbb 1.0 stays valid in 2.0.
+    assert ARTIFACT_EPOCH == "1.0"
+    assert artifact_key(part=1) == sha256_hex({"part": 1, "sbb_minor": "1.0"})

@@ -37,6 +37,9 @@ class Provenance(BaseModel):
     submitter_org: str
     started_at: datetime
     duration_s: float
+    # The key of the result of an earlier benchmark version this one copies (sbb carry-over), whose
+    # cell was the same but for the benchmark version. None for a result of its own run.
+    carried_from: str | None = None
 
 
 class CellResult(BaseModel):

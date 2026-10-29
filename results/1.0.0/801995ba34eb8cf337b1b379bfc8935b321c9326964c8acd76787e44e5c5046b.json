@@ -1,0 +1,93 @@
+{
+  "key": "801995ba34eb8cf337b1b379bfc8935b321c9326964c8acd76787e44e5c5046b",
+  "cell": {
+    "benchmark_version": "1.0.0",
+    "track": "full",
+    "scenario": {
+      "name": "dvsgesture_full",
+      "data": {
+        "name": "dvsgesture",
+        "split": "dvsgesture_official_v1",
+        "revision": null
+      },
+      "repr": {
+        "kind": "frames",
+        "T": 16,
+        "split_by": "number",
+        "downsample": 1
+      },
+      "arch": {
+        "name": "dvsgesture_net",
+        "T": 16,
+        "neuron": {
+          "model": "lif",
+          "tau": 2.0,
+          "v_threshold": 1.0,
+          "v_reset": 0.0,
+          "surrogate": "atan",
+          "detach_reset": true
+        },
+        "backend": "torch",
+        "kwargs": {}
+      },
+      "train": {
+        "epochs": 64,
+        "batch_size": 16,
+        "loss": "mse",
+        "optimizer": "adam",
+        "lr": 0.001,
+        "weight_decay": 0.0,
+        "schedule": "cosine",
+        "augment": "none",
+        "amp": false
+      },
+      "budget": {
+        "poison_rate": 0.05,
+        "target": 0,
+        "defender_clean_fraction": 0.05,
+        "delta_pp": 3.0
+      }
+    },
+    "attack": "sneaky_static",
+    "attack_version": "1.0.0",
+    "defense": "strip",
+    "defense_version": "1.0.0",
+    "seed": 2,
+    "attack_hparams": {}
+  },
+  "outcome": "ok",
+  "reason": null,
+  "metrics": {
+    "asr": 0.030303030303030304,
+    "asr_all": 0.027777777777777776,
+    "auroc": 0.9892676767676768,
+    "ca": 0.9027777777777778,
+    "frr": 0.017361111111111112,
+    "ra": 0.0,
+    "tpr": 0.9696969696969697
+  },
+  "artifacts": {
+    "clean_model": "a703892323295b3656fa5b7cad0f75bc049d8bfc7a1c723e47b024ef679b1d22",
+    "poison_set": "0cf787a1fa6d6ec8925ac40ff1bf124fbdded23d527faca7ba0b632004241c7c",
+    "model": "869a3e394c29f3974eae86c482bcc36b2bd501fb92959a674371ac90d61fd59e"
+  },
+  "provenance": {
+    "sbb_version": "0.1.0",
+    "git_commit": "9616d595477595dc8e3933ca453c429e28968618",
+    "image_digest": null,
+    "lockfile_sha256": "5f2811709d21ce6ce46a7489a66d325c649d686014847956767c68a3765f5801",
+    "python": "3.11.11",
+    "torch": "2.14.1+cu130",
+    "spikingjelly": "0.0.0.0.14",
+    "cuda": "13.0",
+    "device": "NVIDIA GH200 120GB",
+    "site": "gh200-cluster",
+    "executor": "in-process",
+    "deterministic": true,
+    "submitter": "GorkaAbad",
+    "submitter_org": "SNN-Backdoor-Benchmark",
+    "started_at": "2026-10-23T08:47:07.258068Z",
+    "duration_s": 50.567144224,
+    "carried_from": "7cc11aa0ed85c3bd73f6fff3c87b8fde839e75874b1d45aefeec1f15bad92e1a"
+  }
+}

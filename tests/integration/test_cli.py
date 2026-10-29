@@ -6,10 +6,12 @@ from click import unstyle
 from typer.testing import CliRunner
 
 from sbb.cli import app
+from sbb.core.result import CellResult
 from sbb.results.replication import ReplicationRecord
 from sbb.runner.planner import Planner
 from sbb.runner.spec import BenchmarkSpec
 from tests.conftest import SCENARIO
+from tests.unit.test_site import _check
 
 SMOKE = Path(__file__).parents[2] / "benchmarks" / "smoke.yaml"
 
@@ -34,6 +36,29 @@ def test_smoke_run_writes_results_and_table(tmp_path: Path) -> None:
 
     planned = CliRunner().invoke(app, ["plan", str(SMOKE), "--out", str(out)])
     assert planned.exit_code == 0 and unstyle(planned.output).count(" ok ") == 4
+
+
+def test_carry_over_copies_identical_cells_and_their_records(tmp_path: Path) -> None:
+    out, site, checks = tmp_path / "results", _site(tmp_path), tmp_path / "verifications"
+    ran = CliRunner().invoke(app, ["run", str(SMOKE), "--site", str(site), "--out", str(out)])
+    assert ran.exit_code == 0, ran.output
+    old = next((out / "smoke-0.1.0").glob("*.json"))
+    original = CellResult.model_validate_json(old.read_text())
+    record = _check(original, "match")
+    path = record.path(checks, original)
+    path.parent.mkdir(parents=True)
+    path.write_text(record.model_dump_json())
+    spec = yaml.safe_load(SMOKE.read_text()) | {"version": "smoke-0.2.0"}
+    new_spec = tmp_path / "smoke2.yaml"
+    new_spec.write_text(yaml.safe_dump(spec))
+
+    args = ["carry-over", str(new_spec), "--source", "smoke-0.1.0", "--results", str(out)]
+    carried = CliRunner().invoke(app, [*args, "--out", str(out), "--verifications", str(checks)])
+    assert carried.exit_code == 0, carried.output
+    assert len(list((out / "smoke-0.2.0").glob("*.json"))) == 4
+    assert len(list((checks / "smoke-0.2.0").glob("*/*.json"))) == 1
+    again = CliRunner().invoke(app, ["run", str(new_spec), "--site", str(site), "--out", str(out)])
+    assert "4 cells, 0 pending" in unstyle(again.output)  # nothing left to run
 
 
 def test_run_cell_runs_one_cell_from_json(tmp_path: Path) -> None:

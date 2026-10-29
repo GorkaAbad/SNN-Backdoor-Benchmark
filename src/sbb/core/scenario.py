@@ -4,7 +4,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, model_validator
 
-from sbb import SBB_MINOR
+from sbb import ARTIFACT_EPOCH
 from sbb.core.trainer import TrainSpec
 from sbb.data.poison import Budget
 from sbb.data.representations import ReprSpec
@@ -53,5 +53,5 @@ class Cell(BaseModel, frozen=True):
 
 
 def artifact_key(**parts: Any) -> str:
-    """Hash of everything that determines an artifact, plus the package major.minor."""
-    return sha256_hex({**parts, "sbb_minor": SBB_MINOR})
+    """Hash of everything that determines an artifact, plus the artifact epoch."""
+    return sha256_hex({**parts, "sbb_minor": ARTIFACT_EPOCH})

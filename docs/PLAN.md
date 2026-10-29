@@ -1094,6 +1094,7 @@ class Provenance(BaseModel):
     submitter_org: str
     started_at: datetime
     duration_s: float
+    carried_from: str | None = None      # v2: key of the earlier result this one copies (sbb carry-over)
 
 class CellResult(BaseModel):
     key: str
@@ -1376,7 +1377,7 @@ hfjobs: {flavor: l4x1, namespace: "<hf-org>", timeout: 6h}
 
 - Canonical JSON: sorted keys, no whitespace, UTF-8, floats written with `repr`. Hash: sha256, hex.
 - `Cell.key()`: hash of the full cell, benchmark version included.
-- Artifact keys exclude the benchmark version and the track, so artifacts are reused across versions. `sbb_minor` is the package `major.minor`.
+- Artifact keys exclude the benchmark version and the track, so artifacts are reused across versions. `sbb_minor` was the package `major.minor` up to 1.0. Since 2.0 (maintainer decision of 2026-10-29: reuse as much as possible) it is `sbb.ARTIFACT_EPOCH`, pinned at "1.0" under the same field name, so every key built under sbb 1.0 stays valid. It moves only when a change alters what an artifact holds without a plugin version bump (the Trainer, the data pipeline, the networks), and a changed golden metric is the signal.
   - `clean_model_key = H(data, repr, arch, train, seed, sbb_minor)`
   - `poison_key = H(data, budget, attack, attack_version, attack hparams, seed, sbb_minor)`
   - `model_key = H(poison_key, repr, arch, train, seed, sbb_minor)` for poisoning attacks, `H(clean_model_key, budget, attack, attack_version, attack hparams, seed, sbb_minor)` for model attacks (v1 change: the representation, the recipe and the budget, which holds the target, also determine the attacker's weights, and the clean model key covers the first two)
@@ -1707,6 +1708,7 @@ Tasks, in order:
     - Tag v2.0.0 (sbb 2.0.0, benchmark 1.0.0). The maintainer enables the Zenodo integration before the tag **[FILL]**, and the release mints the DOI.
     - Results and verification records are mirrored to the Hub dataset `sbb-zoo/sbb-results` from a job on `main`. The models stay in `sbb-zoo/checkpoints`.
     - Prepared 2026-10-28, not launched (maintainer decision of the same day: prepare, the maintainer launches). `benchmarks/v1.0.yaml` holds the 0.9 scenarios and tracks and the full matrix of 14 attacks and 15 defenses: 1845 cells, lite 585 (9 N/A) and full 1260 (36 N/A). Group C contributes only the SNN-native baselines. The 0.9.0 results cost 206 GPU hours on the maintainers' cluster (CIFAR10-DVS 141, DVS128 Gesture 55, lite 9), and every one of them, lite included, ran there. Scaled from those durations, a clean run of 1.0 costs about 374 GPU hours (lite 21, full 353). Carrying over the 0.9 cells whose attack and defense versions did not change saves about 90 of them (284 GPU hours), because every 0.9 attack still trains its victim again for the new defenses, the expensive activation clustering and spectral signatures cells changed version, and the 0.9 cells lack the activity metrics. It would also mix two releases in a frozen benchmark, which `verifying.md` asks verifiers to rerun with one release. **[DECIDE]** for the maintainer: full rerun (default) or carry-over. **[DECIDE]** default: lite results are produced on the maintainers' cluster, as for 0.9, and verify-lite checks them on GitHub runners. A lite-production workflow on hosted runners is not built, since it could only be tested on `main`. Release order once the maintainer launches: bump the package to 2.0.0 first (the cache keys and the provenance carry it), run lite and full with `sites/private/olivia-bench.yaml`, commit the results, `sbb bundle` per submitter, `sbb validate`, merge into `main`, verify-lite, tag v2.0.0 (Zenodo mints the DOI), mirror to `sbb-zoo/sbb-results`, then send the verifier the tag and the manifest.
+    - Maintainer decisions of 2026-10-29: reuse as much as possible, lite on the cluster is fine, the release (merge, tag, DOI, Hub) waits until the maintainer has checked the rest. So the artifact keys hash `ARTIFACT_EPOCH` instead of the package version (7.6), and `sbb carry-over benchmarks/v1.0.yaml --source 0.9.0 --verifications verifications` copied 621 results of 0.9.0 whose cells did not change, and their 189 verify-lite records, into 1.0.0. Activation clustering and spectral signatures changed version, so their cells run again. The carried cells keep their 0.9 provenance (sbb 0.1.0 and its commit) and lack the activity metrics. 1194 cells remain (lite 390, full 804), about 260 to 280 GPU hours. The package is 2.0.0 for the run. On the cluster the run goes in jobs of one track, scenario, seed and attack, at most 8 queued at once, `sneaky_dynamic` with the cache of its 0.9 reruns.
 11. HFJobsExecutor: skipped in v2 **[DECIDE]**. The maintainers' cluster and hosted runners cover every run, and HF Jobs is paid. It comes back if an independent verifier has no GPUs.
 
 Definition of done:

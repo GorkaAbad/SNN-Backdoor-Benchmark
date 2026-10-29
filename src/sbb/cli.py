@@ -3,6 +3,7 @@
 import logging
 import signal
 import warnings
+from collections import defaultdict
 from pathlib import Path
 from typing import Annotated
 
@@ -21,6 +22,7 @@ from sbb.core.game import Game
 from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
 from sbb.results.bundle import Manifest, check_manifest, make_manifest
+from sbb.results.carry import carry, carry_check, unversioned
 from sbb.results.policy import VerificationPolicy
 from sbb.results.replication import REPLICATION_TOLERANCE_PP, ReplicationRecord
 from sbb.results.store import LocalResultStore, ResultStore
@@ -296,6 +298,47 @@ def reproduce(
     deltas = " ".join(f"{k}={v:+.4f}" for k, v in check.delta.items())
     console.print(f"{check.verdict} {deltas} {check.notes or ''}")
     console.print(f"record written to {path}")
+
+
+@app.command("carry-over")
+def carry_over(
+    spec: Path,
+    source: Annotated[str, typer.Option(help="Benchmark version to carry results from.")],
+    results: Annotated[Path, typer.Option(help="Results directory holding SOURCE.")] = Path(
+        "results"
+    ),
+    out: Out = Path("results"),
+    verifications: Annotated[
+        Path | None, typer.Option(help="Also carry the records under this root.")
+    ] = None,
+) -> None:
+    """Copy the SOURCE results whose cells SPEC plans again unchanged into SPEC's version.
+
+    A cell is unchanged when only its benchmark version differs: same scenario, seed, track and
+    attack and defense versions. Failed results are not carried, and cells already in OUT stay.
+    """
+    sources = LocalResultStore(results).query(benchmark_version=source)
+    old = {unversioned(r.cell): r for r in sources}
+    records: dict[str, list[Verification]] = defaultdict(list)
+    if verifications is not None:
+        for check in _verifications(verifications / source):
+            records[check.result_key].append(check)
+    store, carried = LocalResultStore(out), 0
+    for cell in Planner(BenchmarkSpec.load(spec)).cells():
+        original = old.get(unversioned(cell))
+        if original is None or store.get(cell.key()) is not None:
+            continue
+        if (result := carry(original, cell)) is None:
+            continue
+        store.save(result)
+        carried += 1
+        if verifications is not None:
+            for check in records[original.key]:
+                moved = carry_check(check, result)
+                path = moved.path(verifications, result)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(moved.model_dump_json(indent=2) + "\n")
+    console.print(f"carried {carried} results from {source} into {out}")
 
 
 @app.command("spot-check")

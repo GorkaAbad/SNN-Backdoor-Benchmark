@@ -1,6 +1,6 @@
 [project]
 name = "sbb"
-version = "1.0.1"
+version = "2.0.0"
 description = "A benchmark for backdoor attacks and defenses on spiking neural networks"
 readme = "README.md"
 license = "MIT"

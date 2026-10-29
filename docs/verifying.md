@@ -39,8 +39,10 @@ the published models are reused. A cell that retrains its model takes hours.
 ## Set up
 
 Use exactly the release that produced the results. The provenance of each result names its
-`sbb_version`, and the artifact keys of the model zoo include the package `major.minor`, so a
-newer release finds none of the published models and retrains them.
+`sbb_version` and `git_commit`. A result carried over from an earlier benchmark version keeps
+the provenance of its run and names the original in `carried_from`, so rerun it with that run's
+commit. The artifact keys of the model zoo include an artifact epoch, "1.0" since sbb 1.0, so
+the models published for benchmark 0.9 (epoch "0.1") are not found by later releases.
 
 ```bash
 git clone https://github.com/GorkaAbad/SNN-Backdoor-Benchmark.git
