@@ -2,10 +2,9 @@
 
 import numpy as np
 
-from sbb.core.plugins import FrameTrigger, PoisoningAttack, Selector
+from sbb.core.plugins import FrameTrigger, PoisoningAttack, Selector, frame_poison_set
 from sbb.core.proxies import AttackerView
 from sbb.data.poison import Budget, PoisonSet
-from sbb.data.sample import EVENT_DTYPE, EventSample
 
 
 class ConservativePoisoning(PoisoningAttack):
@@ -39,10 +38,6 @@ class ConservativePoisoning(PoisoningAttack):
         positions = np.sort(np.concatenate([payload, cover]))
         indices = train.indices[positions]
         new_labels = np.where(np.isin(positions, payload), self.target, labels[positions])
-        samples = tuple(
-            EventSample(np.empty(0, EVENT_DTYPE), int(labels[p]), int(i))
-            for p, i in zip(positions, indices, strict=True)
-        )
-        return PoisonSet(
-            indices, samples, new_labels.astype(np.int64), frame_trigger=self.train_trigger.apply
+        return frame_poison_set(
+            labels, positions, indices, new_labels.astype(np.int64), self.train_trigger
         )

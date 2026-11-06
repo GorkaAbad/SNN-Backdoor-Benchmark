@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from sbb.core.plugins import Selector
+from sbb.utils.errors import SbbError
 
 
 def _draw(
@@ -84,5 +85,11 @@ class ClassSelector(Selector):
         excluded: np.ndarray,
         rng: np.random.Generator,
     ) -> np.ndarray:
-        """Return n sorted random positions outside excluded whose label is one of classes."""
+        """Return n sorted random positions outside excluded whose label is one of classes.
+
+        Raises:
+            SbbError: If a class has no sample at all, such as a class id the dataset lacks.
+        """
+        if missing := sorted(set(self.classes) - set(labels.tolist())):
+            raise SbbError(f"no sample of class {', '.join(map(str, missing))} to select")
         return _draw(np.flatnonzero(np.isin(labels, self.classes)), excluded, n, rng)

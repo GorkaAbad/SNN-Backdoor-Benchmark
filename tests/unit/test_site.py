@@ -345,14 +345,20 @@ def test_pareto_averages_each_defense_over_the_attacks_of_a_group() -> None:
     ]
     points = LeaderboardBuilder(results, []).data()["pareto"]
     poisoning = {
-        p["defense"]: (round(p["ca"], 3), round(p["asr"], 3), p["attacks"], p["front"])
+        p["defense"]: (
+            round(p["ca"], 3),
+            round(p["asr"], 3),
+            p["attacks"],
+            p["front"],
+            p["complete"],
+        )
         for p in points
         if p["group"] == "data_poisoning"
     }
     assert poisoning == {
-        "no_defense": (0.9, 0.9, 2, True),
-        "fine_tuning": (0.8, 0.3, 2, True),
-        "fine_pruning": (0.7, 0.5, 2, False),  # fine_tuning keeps more CA and removes more ASR
-        "anp": (0.95, 0.0, 1, False),
+        "no_defense": (0.9, 0.9, 2, True, True),
+        "fine_tuning": (0.8, 0.3, 2, True, True),
+        "fine_pruning": (0.7, 0.5, 2, False, True),  # fine_tuning keeps more CA, removes more ASR
+        "anp": (0.95, 0.0, 1, False, False),  # not dominated, but it misses an attack
     }
     assert [p["defense"] for p in points if p["group"] == "adaptive"] == ["fine_tuning"]

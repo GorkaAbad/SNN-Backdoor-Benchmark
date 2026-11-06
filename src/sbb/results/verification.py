@@ -71,12 +71,12 @@ def verify(
     rerun: CellResult,
     verifier: str,
     verifier_org: str,
-    tolerance_pp: float,
+    tolerance_pp: float | Mapping[str, float],
 ) -> Verification:
     """Compare a rerun with the original result.
 
     A match needs the same outcome, every metric of the original in the rerun, and every
-    difference at most tolerance_pp percentage points.
+    difference within tolerance_pp, as matches judges it.
     """
     delta = {
         name: rerun.metrics[name] - value

@@ -27,6 +27,11 @@ def test_class_selector_picks_only_its_classes() -> None:
     assert len(ClassSelector((1,)).select(LABELS, 2, 0, np.array([]), rng_for(0, 0))) == 2
 
 
+def test_class_selector_rejects_a_class_the_data_lacks() -> None:
+    with pytest.raises(SbbError, match="class 7"):  # TaCT would silently lose its cover samples
+        ClassSelector((1, 7)).select(LABELS, 2, 0, np.array([]), rng_for(0, 0))
+
+
 def test_blend_mixes_one_pattern_scaled_to_the_peak_into_every_frame() -> None:
     frames = torch.rand(3, 2, 8, 8) * 4
     out = BlendTrigger(alpha=0.2).apply(frames, RNG)

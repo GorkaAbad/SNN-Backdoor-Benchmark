@@ -127,17 +127,30 @@ class PoisoningAttack(Attack):
             [self.labels.relabel(int(labels[p]), self.target) for p in positions], dtype=np.int64
         )
         if isinstance(self.trigger, FrameTrigger):
-            # The DataModule triggers the cached clean frames, so the events are never read.
-            samples = tuple(
-                EventSample(np.empty(0, EVENT_DTYPE), int(labels[p]), int(i))
-                for p, i in zip(positions, indices, strict=True)
-            )
-            return PoisonSet(indices, samples, new_labels, frame_trigger=self.trigger.apply)
+            return frame_poison_set(labels, positions, indices, new_labels, self.trigger)
         samples = tuple(
             self.trigger.apply(train[int(p)], rng_for(view.seed, int(i)))
             for p, i in zip(positions, indices, strict=True)
         )
         return PoisonSet(indices, samples, new_labels)
+
+
+def frame_poison_set(
+    labels: np.ndarray,
+    positions: np.ndarray,
+    indices: np.ndarray,
+    new_labels: np.ndarray,
+    trigger: FrameTrigger,
+) -> PoisonSet:
+    """A poison set whose frame trigger the DataModule applies to the cached clean frames.
+
+    The events of its samples are never read, so they are left empty.
+    """
+    samples = tuple(
+        EventSample(np.empty(0, EVENT_DTYPE), int(labels[p]), int(i))
+        for p, i in zip(positions, indices, strict=True)
+    )
+    return PoisonSet(indices, samples, new_labels, frame_trigger=trigger.apply)
 
 
 class ModelAttack(Attack):
@@ -240,7 +253,8 @@ class EvalContext:
     With an input defense, scores are its per-sample scores (higher is more suspicious) and the
     accepted masks mark the samples at or below its threshold. Without one, every sample is
     accepted and the scores are None. The activity fields count the spikes and synaptic
-    operations of the evaluated model over each test set (v2). The Game always fills them.
+    operations of the evaluated model over each test set (v2). The Game always fills them, without
+    the synaptic operations of the triggered set, which no metric reads.
     source_classes are the attack's (Attack.source_classes). When set, nontarget keeps only them.
     """
 

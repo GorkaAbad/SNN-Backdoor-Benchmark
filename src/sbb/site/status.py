@@ -10,7 +10,7 @@ from sbb.core.cards import compatible
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
-from sbb.results.policy import VerificationPolicy
+from sbb.results.policy import VerificationPolicy, unseeded
 from sbb.results.verification import Verification
 from sbb.runner.spec import Tolerance
 
@@ -73,7 +73,7 @@ def status_rows(
     seeds: dict[str, list[CellResult]] = defaultdict(list)  # a cell's results over its seeds
     for r in results:
         if r.outcome == "ok":
-            seeds[_unseeded(r.cell)].append(r)
+            seeds[unseeded(r.cell)].append(r)
     checks_of: dict[str, list[Verification]] = defaultdict(list)
     for check in checks:
         checks_of[check.result_key].append(check)
@@ -97,7 +97,7 @@ def status_rows(
         if result:
             if result.outcome == "ok":
                 own = checks_of[key]
-                row["verification"] = str(policy.status(result, own, seeds[_unseeded(cell)]))
+                row["verification"] = str(policy.status(result, own, seeds[unseeded(cell)]))
             for name, value in result.metrics.items():
                 if name in METRIC_COLUMNS:
                     row[name] = percent(name, value)
@@ -112,11 +112,6 @@ def status_rows(
                 row["state"], row["reason"] = "not_applicable", "; ".join(reasons)
         rows.append(row)
     return rows
-
-
-def _unseeded(cell: Cell) -> str:
-    """The key of a cell without its seed, shared by the cell's results over its seeds."""
-    return cell.model_copy(update={"seed": 0}).key()
 
 
 def summary(rows: Sequence[dict[str, Any]]) -> dict[str, Counter[str]]:

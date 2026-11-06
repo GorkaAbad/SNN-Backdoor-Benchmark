@@ -82,6 +82,10 @@ def test_activity_counts_only_the_connections_a_convolution_has() -> None:
     with model.activity() as activity:
         model(x)
     assert activity.counts().synops == 8  # not 2 x 9, the fan-out of an inner pixel
+    with model.activity(synops=False) as spikes_only:
+        model(x)
+    assert spikes_only.counts().synops == 0
+    assert spikes_only.counts().spikes == activity.counts().spikes
 
 
 def test_membrane_probe_can_keep_the_graph() -> None:

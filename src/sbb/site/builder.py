@@ -213,7 +213,8 @@ def _pareto(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dict[s
     defenses are left out too (_detection), and the model AUROC rates them. Only defenses with
     results against every attack of the group compete for the front, so one that missed a hard
     attack cannot win on easier averages. Such a defense is on the front when no other complete
-    one keeps at least its CA and at most its ASR, and one of the two strictly.
+    one keeps at least its CA and at most its ASR, and one of the two strictly. complete marks
+    the defenses that compete, so the page shows the others apart instead of as dominated.
     """
     groups: dict[tuple[str, ...], dict[str, list[tuple[float, float]]]] = defaultdict(
         lambda: defaultdict(list)
@@ -236,7 +237,8 @@ def _pareto(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dict[s
         most = max(len(v) for v in defenses.values())
         complete = [means[d] for d, v in defenses.items() if len(v) == most]
         for defense, (ca, asr) in means.items():
-            dominated = len(defenses[defense]) < most or any(
+            whole = len(defenses[defense]) == most
+            dominated = any(
                 o_ca >= ca and o_asr <= asr and (o_ca, o_asr) != (ca, asr)
                 for o_ca, o_asr in complete
             )
@@ -250,7 +252,8 @@ def _pareto(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dict[s
                     "ca": ca,
                     "asr": asr,
                     "attacks": len(defenses[defense]),
-                    "front": not dominated,
+                    "complete": whole,
+                    "front": whole and not dominated,
                 }
             )
     return points

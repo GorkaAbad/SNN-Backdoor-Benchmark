@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 from click import unstyle
 from typer.testing import CliRunner
@@ -190,3 +191,16 @@ def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     (out / key).write_text(json.dumps(tampered))
     invalid = CliRunner().invoke(app, ["validate", str(manifest)])
     assert invalid.exit_code == 1 and "sha256" in unstyle(invalid.output)
+
+
+def test_reproduce_judges_full_results_with_the_seed_tolerance(tmp_path: Path) -> None:
+    from sbb.cli import _default_tolerance
+    from tests.unit.test_policy import _result
+
+    seeds = [_result(0, ca=0.90), _result(1, ca=0.92), _result(2, ca=0.94)]  # std 1.63 pp
+    for r in [*seeds, _result(0, track="lite", ca=0.5)]:  # another cell, left out of the std
+        (tmp_path / f"{r.key}.json").write_text(r.model_dump_json())
+    tolerance = _default_tolerance(seeds[0], tmp_path, SMOKE.parent)
+    assert tolerance == {"ca": pytest.approx(2.0 * 1.63299, abs=1e-4)}  # max(2 pp, 2 x std)
+    lite = _result(track="lite", ca=0.5)
+    assert _default_tolerance(lite, tmp_path, SMOKE.parent) == {"ca": 1.0}

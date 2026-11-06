@@ -65,11 +65,11 @@ def test_source_specific_attack_counts_only_its_source_class(game: Game) -> None
     assert result.metrics["asr"] > 0.9 and result.metrics["asr_all"] < 0.7
 
 
-def test_a_source_class_without_test_samples_fails_the_cell(game: Game) -> None:
-    # The synthetic data has 4 classes, so no test sample is of source class 5.
+def test_a_source_class_the_data_lacks_fails_the_cell_before_the_victim(game: Game) -> None:
+    # The synthetic data has 4 classes, so there is no sample of source class 5 to poison.
     cell = make_cell("tact", "no_defense").model_copy(update={"attack_hparams": {"source": [5]}})
     result = game.run(cell)
-    assert result.outcome == "failed" and "no triggered test sample counts" in str(result.reason)
+    assert result.outcome == "failed" and "no sample of class 5" in str(result.reason)
 
 
 @pytest.mark.parametrize("defense", ["fewer_steps", "threshold_recalibration"])

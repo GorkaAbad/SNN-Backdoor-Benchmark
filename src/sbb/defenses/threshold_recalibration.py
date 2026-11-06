@@ -27,7 +27,7 @@ class ThresholdRecalibration(ModelDefense):
 
     def __init__(self, hparams: dict[str, Any]) -> None:
         super().__init__(hparams)
-        self._scale: Scale | None = None
+        self._scale = Scale()
 
     def repair(self, view: DefenderView) -> SNNModel:
         """Choose the factor on the clean subset, then restore the thresholds of the model."""
@@ -51,8 +51,6 @@ class ThresholdRecalibration(ModelDefense):
 
     def extra(self, model: SNNModel) -> "Scale":
         """The threshold factor, chosen by repair or loaded by the Game."""
-        if self._scale is None:
-            self._scale = Scale()
         return self._scale
 
     def attach(self, model: SNNModel, extra: nn.Module) -> None:

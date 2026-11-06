@@ -83,7 +83,7 @@ class VerificationPolicy:
         """
         if r.outcome != "ok":
             return OUTCOME_STATUS[r.outcome]
-        tolerance = self._tolerance(r, seeds)
+        tolerance = self.tolerance_pp(r, seeds)
         verdicts = [
             matches(r, v.delta, tolerance, v.notes)
             for v in checks
@@ -110,21 +110,25 @@ class VerificationPolicy:
         statuses = [self.status(r, checks, valid) for r in valid]
         if Status.DISPUTED in statuses:
             return Status.DISPUTED
-        lite = valid[0].cell.track == "lite"
-        done = all if lite else any
+        done = all if valid[0].cell.track == "lite" else any
         return (
             Status.REPRODUCED
             if done(s == Status.REPRODUCED for s in statuses)
-            else (Status.SELF_REPORTED)
+            else Status.SELF_REPORTED
         )
 
-    def _tolerance(self, r: CellResult, seeds: Sequence[CellResult]) -> dict[str, float]:
-        """Per metric, in percentage points."""
+    def tolerance_pp(self, r: CellResult, seeds: Sequence[CellResult]) -> dict[str, float]:
+        """The tolerance of each metric of r, in percentage points. seeds as in status."""
         t = self.tolerance
         if r.cell.track == "lite":
             return {m: t.lite_pp for m in r.metrics}
         values = {m: [s.metrics[m] for s in seeds if m in s.metrics] for m in r.metrics}
         return {m: max(t.full_pp, t.full_sigma * 100 * _spread(m, v)) for m, v in values.items()}
+
+
+def unseeded(cell: Cell) -> str:
+    """The key of a cell without its seed, shared by the cell's results over its seeds."""
+    return cell.model_copy(update={"seed": 0}).key()
 
 
 def _spread(metric: str, values: list[float]) -> float:

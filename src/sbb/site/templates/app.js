@@ -517,8 +517,11 @@ function renderPareto() {
       hovertemplate: "%{text}<br>CA %{x:.1f} · 100 − ASR %{y:.1f}<br>mean over %{customdata} attacks<extra></extra>",
     });
     const front = ofGroup.filter((p) => p.front).sort((a, b) => a.ca - b.ca);
+    const partial = trace(ofGroup.filter((p) => !p.complete), "Not against every attack", css("--muted"), "markers+text");
+    partial.marker.symbol = "circle-open";
     Plotly.react(plot, [
-      trace(ofGroup.filter((p) => !p.front), "Dominated", css("--muted"), "markers+text"),
+      trace(ofGroup.filter((p) => p.complete && !p.front), "Dominated", css("--muted"), "markers+text"),
+      partial,
       trace(front, "Pareto front", css("--accent"), "lines+markers+text"),
     ], plotLayout({
       plot_bgcolor: css("--panel"),

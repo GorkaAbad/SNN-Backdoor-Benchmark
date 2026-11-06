@@ -39,10 +39,8 @@ class FewerSteps(ModelDefense):
         try:
             for k in range(1, model.spec.T + 1):
                 steps.k.fill_(k)
-                if trainer.evaluate(model, clean)["accuracy"] >= floor:
+                if trainer.evaluate(model, clean)["accuracy"] >= floor:  # holds at T at the latest
                     break
-            else:
-                steps.k.fill_(model.spec.T)
         finally:
             handle.remove()
         return model

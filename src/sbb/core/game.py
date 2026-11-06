@@ -231,8 +231,9 @@ class Game:
                 clean_pred, clean_true = trainer.predict(defended.model, test, ties)
         rejection: dict[str, np.ndarray] = {}
         detector = defended.detector
+        # No metric reads the synaptic operations of the triggered set, only its spike rate.
         if detector is None:
-            with defended.model.activity() as triggered_activity:
+            with defended.model.activity(synops=False) as triggered_activity:
                 triggered_pred, triggered_true = trainer.predict(defended.model, triggered, ties)
         else:
             # The triggered batches are made once, for the scores and the predictions, since a
@@ -240,7 +241,7 @@ class Game:
             clean_scores = self._scores(detector, test)
             parts: list[torch.Tensor] = []
             batches = self._scored(detector, triggered, parts)
-            with defended.model.activity() as triggered_activity:
+            with defended.model.activity(synops=False) as triggered_activity:
                 triggered_pred, triggered_true = trainer.predict(defended.model, batches, ties)
             triggered_scores = torch.cat(parts).numpy() if parts else np.empty(0)
             rejection = {

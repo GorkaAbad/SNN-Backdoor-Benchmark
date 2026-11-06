@@ -18,6 +18,7 @@ official code swaps the width and the height in places. That changes nothing for
 and every ported setting uses square frames.
 """
 
+import functools
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -311,6 +312,12 @@ def _blend(
         frames[:, channel, ys, xs] = region + alpha * (bit * level - region)
 
 
+@functools.cache
+def _pattern(seed: int, density: float, shape: tuple[int, int, int]) -> np.ndarray:
+    """The pixels a blend pattern sets, drawn once per seed, density and frame shape."""
+    return np.random.default_rng(seed).random(shape) < density
+
+
 @dataclass(frozen=True)
 class BlendTrigger(FrameTrigger):
     """Blends a fixed random binary pattern into every frame (Adap-Blend, after Blend).
@@ -343,7 +350,7 @@ class BlendTrigger(FrameTrigger):
     def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:
         """Blend the kept pieces of the pattern into every frame."""
         _, channels, height, width = frames.shape
-        drawn = np.random.default_rng(self.seed).random((channels, height, width)) < self.density
+        drawn = _pattern(self.seed, self.density, (channels, height, width))
         pattern = torch.from_numpy(drawn).to(frames.dtype) * frames.max()
         mask = torch.ones(height, width, dtype=frames.dtype)
         pieces = self.grid**2

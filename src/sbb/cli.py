@@ -23,7 +23,7 @@ from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
 from sbb.results.bundle import Manifest, check_manifest, make_manifest
 from sbb.results.carry import carry, carry_check, unversioned
-from sbb.results.policy import VerificationPolicy
+from sbb.results.policy import VerificationPolicy, unseeded
 from sbb.results.replication import REPLICATION_TOLERANCE_PP, ReplicationRecord
 from sbb.results.store import LocalResultStore, ResultStore
 from sbb.results.table import markdown_table
@@ -288,9 +288,13 @@ def reproduce(
 ) -> None:
     """Rerun the cell of RESULT_JSON on this site and write a Verification record."""
     original = CellResult.model_validate_json(result_json.read_text())
-    track_pp = _track_tolerance(original.cell, benchmarks)  # before the rerun, which can be long
+    # Before the rerun, which can be long. An explicit 0 asks for an exact match.
+    tolerance: float | dict[str, float] = (
+        _default_tolerance(original, result_json.parent, benchmarks)
+        if tolerance_pp is None
+        else tolerance_pp
+    )
     rerun = _site(site).game("reproduce").run(original.cell)
-    tolerance = track_pp if tolerance_pp is None else tolerance_pp  # 0 asks for an exact match
     check = verify(original, rerun, verifier, verifier_org, tolerance)
     path = check.path(verifications, original)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -370,17 +374,26 @@ def spot_check(
         console.print(f"sbb reproduce {paths[cell.key()][1]}  # {description}")
 
 
-def _track_tolerance(cell: Cell, benchmarks: Path) -> float:
-    """The tolerance of the cell's track in the spec of its benchmark version, in pp.
+def _default_tolerance(original: CellResult, results: Path, benchmarks: Path) -> dict[str, float]:
+    """The tolerance of each metric of original, in pp, as the VerificationPolicy judges it.
 
-    Replications have no spec and use the replication tolerance.
+    It uses the tolerances of the spec of the result's benchmark version, and on the full
+    tracks the std over the cell's seeds whose results sit next to it in results. Replications
+    have no spec and use the replication tolerance.
     """
+    cell = original.cell
     if cell.track == "replication":
-        return REPLICATION_TOLERANCE_PP
+        return dict.fromkeys(original.metrics, REPLICATION_TOLERANCE_PP)
     for path in sorted(benchmarks.glob("*.yaml")):
         spec = BenchmarkSpec.load(path)
         if spec.version == cell.benchmark_version:
-            return spec.tolerance.lite_pp if cell.track == "lite" else spec.tolerance.full_pp
+            siblings = (
+                CellResult.model_validate_json(p.read_text()) for p in results.glob("*.json")
+            )
+            seeds = [
+                r for r in siblings if r.outcome == "ok" and unseeded(r.cell) == unseeded(cell)
+            ]
+            return VerificationPolicy(spec.tolerance).tolerance_pp(original, seeds)
     raise SbbError(f"no benchmark spec of version {cell.benchmark_version} in {benchmarks}")
 
 

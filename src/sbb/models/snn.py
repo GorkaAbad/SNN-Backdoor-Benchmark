@@ -95,9 +95,12 @@ class SNNModel(nn.Module):
             raise SbbError(f"no neuron layer {layer!r}, known: {list(neurons)}")
         return Probe(neurons[layer], kind, detach)
 
-    def activity(self) -> "Activity":
-        """Return a context manager that counts spikes and synaptic operations (Activity)."""
-        return Activity(self)
+    def activity(self, synops: bool = True) -> "Activity":
+        """Return a context manager that counts spikes and synaptic operations (Activity).
+
+        synops=False skips the synaptic operations, which cost one more convolution per layer.
+        """
+        return Activity(self, synops)
 
 
 class Probe:
@@ -180,8 +183,9 @@ class Activity:
     (activation sparsity, synaptic operations) without depending on it.
     """
 
-    def __init__(self, model: SNNModel) -> None:
+    def __init__(self, model: SNNModel, synops: bool = True) -> None:
         self.model = model
+        self.synops = synops
         self._samples = 0
         self._spikes = self._steps = self._synops = 0.0
 
@@ -194,7 +198,7 @@ class Activity:
         self._handles += [
             module.register_forward_hook(self._count_synops)
             for module in self.model.modules()
-            if isinstance(module, nn.Linear | nn.modules.conv._ConvNd)
+            if self.synops and isinstance(module, nn.Linear | nn.modules.conv._ConvNd)
         ]
         return self
 
