@@ -155,6 +155,7 @@ def test_slurm_executor_submits_one_array_job(
         "#SBATCH --qos=normal",
         "apptainer exec --nv",
         "docker://ghcr.io/org/sbb@sha256:abc",
+        "--env SBB_IMAGE_DIGEST=sha256:abc",  # a container cannot read its own digest
     ]:
         assert line in script, line
     # The task runs in its job folder, so the array index is never inside a quoted path.

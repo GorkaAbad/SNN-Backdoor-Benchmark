@@ -62,5 +62,8 @@ class SlurmExecutor(Executor):
                 raise SbbError(f"site {self.site.name} runs apptainer but sets no image")
             gpu = "--nv " if self.site.device == "cuda" else ""
             binds = shlex.quote(f"{self.site.cache_dir},{out_dir}")
-            return f"apptainer exec {gpu}--bind {binds} {shlex.quote(self.site.image)} "
+            # A container cannot read its own digest. An image pinned by digest passes it on.
+            digest = self.site.image.partition("@")[2]
+            env = f"--env SBB_IMAGE_DIGEST={shlex.quote(digest)} " if digest else ""
+            return f"apptainer exec {gpu}{env}--bind {binds} {shlex.quote(self.site.image)} "
         raise SbbError(f"Slurm sites run apptainer or no container, not {runtime}")

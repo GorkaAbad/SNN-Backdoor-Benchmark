@@ -66,13 +66,15 @@ profile that has `scheduler: none`: the cells then run inside that job.
 
 Every release tag `v*` publishes `ghcr.io/gorkaabad/sbb:<tag>` for `linux/amd64` and
 `linux/arm64`, and its digest is in the release notes. It holds the environment of `uv.lock`, sbb
-and every plugin of the release. Pin images by digest, so a result records exactly what ran.
+and every plugin of the release. Results from the image record the commit it was built from and
+the hash of its `uv.lock`. Pin images by digest: a Slurm site passes the digest into each task,
+and with `docker run` you pass it with `-e SBB_IMAGE_DIGEST`, so a result records exactly what ran.
 
 Docker:
 
 ```bash
 docker run --rm --gpus all -v "$PWD:/work" -v ~/.cache/sbb:/cache \
-  ghcr.io/gorkaabad/sbb@sha256:<digest> \
+  -e SBB_IMAGE_DIGEST=sha256:<digest> ghcr.io/gorkaabad/sbb@sha256:<digest> \
   sbb run benchmarks/v1.0.yaml --site site.yaml --out results
 ```
 

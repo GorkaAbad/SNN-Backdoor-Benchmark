@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -14,7 +15,7 @@ from sbb.data.poison import PoisonSet
 from sbb.models.snn import SNNModel, build_model
 from sbb.models.spec import ArchSpec
 from sbb.utils.errors import SbbError, ThreatModelViolation
-from sbb.utils.hashing import sha256_hex
+from sbb.utils.hashing import file_sha256, sha256_hex
 from tests.cards import attack_card, defense_card
 
 INFO = ScenarioInfo(
@@ -197,6 +198,23 @@ def test_provenance_keeps_the_versions_read_at_import(monkeypatch: pytest.Monkey
     assert provenance.git_commit != "changed"
     assert provenance.lockfile_sha256 != "changed"
     assert provenance.spikingjelly != "changed"
+
+
+def test_provenance_names_the_code_without_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The container image has neither .git nor git: the commit comes from the build, the
+    # lockfile from the copy next to the code.
+    monkeypatch.setattr(result, "_git", lambda *args: None)
+    monkeypatch.setenv("SBB_GIT_COMMIT", "abc123")
+    assert result._commit() == "abc123"
+    monkeypatch.delenv("SBB_GIT_COMMIT")
+    assert result._commit() == "unknown"
+    lock = tmp_path / "uv.lock"
+    lock.write_text("locked")
+    module = tmp_path / "src" / "sbb" / "core" / "result.py"
+    assert result._lockfile_sha256(module) == file_sha256(lock)
+    assert result._lockfile_sha256(Path("/no/such/checkout/result.py")) == "unknown"
 
 
 def test_per_sample_losses() -> None:

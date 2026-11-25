@@ -21,7 +21,10 @@ COPY benchmarks ./benchmarks
 COPY replications ./replications
 RUN uv sync --frozen --no-dev
 
-ENV PATH=/opt/sbb/venv/bin:$PATH
+# The image has no .git: results read the commit it was built from here (image.yml sets it).
+ARG SBB_GIT_COMMIT=unknown
+ENV PATH=/opt/sbb/venv/bin:$PATH \
+    SBB_GIT_COMMIT=$SBB_GIT_COMMIT
 # Run from a mounted working directory, with the cache and results there.
 WORKDIR /work
 CMD ["sbb", "--help"]
