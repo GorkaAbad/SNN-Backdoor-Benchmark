@@ -74,5 +74,5 @@ battery:
     - fewer_steps
     - threshold_recalibration
   dev: [static_patch]
-# lite_pp returns to 1.0 if the lite results reproduce within 1.0 pp on GitHub runners (D10).
-tolerance: {lite_pp: 3.0, full_pp: 2.0, full_sigma: 2.0}
+# lite_pp 10.0: lite results come from GPUs and verify-lite reruns them on CPUs (D10).
+tolerance: {lite_pp: 10.0, full_pp: 2.0, full_sigma: 2.0}

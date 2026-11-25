@@ -167,7 +167,8 @@ A maintainer reviews the code. Code review is the control against deliberate che
 example an input detector that recognises the public test set.
 
 After the merge, the `verify-lite` workflow reruns your lite cells on GitHub runners. A match
-within 3 percentage points on every metric makes a cell `reproduced` on the leaderboard, a mismatch makes it
+within the spec's `lite_pp` (10 percentage points in benchmark 1.0) on every metric makes a cell
+`reproduced` on the leaderboard, a mismatch makes it
 `disputed`. Full-track cells stay `self-reported` until a group from another organization
 reproduces them ([verifying.md](verifying.md)).
 
