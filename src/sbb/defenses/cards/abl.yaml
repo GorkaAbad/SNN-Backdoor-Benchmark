@@ -1,4 +1,5 @@
 name: abl
+display_name: ABL
 version: 1.0.0
 title: ABL, anti-backdoor learning
 paper: "Li, Lyu, Koren, Lyu, Li, Ma. Anti-Backdoor Learning: Training Clean Models on Poisoned Data. NeurIPS 2021"

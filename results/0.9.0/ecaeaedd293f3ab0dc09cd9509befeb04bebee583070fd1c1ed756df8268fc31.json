@@ -60,10 +60,10 @@
   "metrics": {},
   "artifacts": {},
   "provenance": {
-    "sbb_version": "0.1.0",
-    "git_commit": "f0adb77ee3c2efd4c317e9d8df23e800fe23b96d",
+    "sbb_version": "1.0.0",
+    "git_commit": "50e26111b1f1665f10cac8b747bc395a5b38a597",
     "image_digest": null,
-    "lockfile_sha256": "5f2811709d21ce6ce46a7489a66d325c649d686014847956767c68a3765f5801",
+    "lockfile_sha256": "7c23765bbf6eb06d433c3c4b6e0eec99ea7c272e51754f5f1b27da883ab89eff",
     "python": "3.11.11",
     "torch": "2.14.1+cu130",
     "spikingjelly": "0.0.0.0.14",
@@ -74,7 +74,7 @@
     "deterministic": true,
     "submitter": "GorkaAbad",
     "submitter_org": "SNN-Backdoor-Benchmark",
-    "started_at": "2026-10-24T14:18:27.331762Z",
-    "duration_s": 0.000035359058529138565
+    "started_at": "2026-10-27T03:18:46.187721Z",
+    "duration_s": 4.937499761581421e-05
   }
 }

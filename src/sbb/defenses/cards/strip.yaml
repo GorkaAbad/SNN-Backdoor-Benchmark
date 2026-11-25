@@ -1,4 +1,5 @@
 name: strip
+display_name: STRIP
 version: 1.0.0
 title: STRIP, adapted to SNNs
 paper: "Gao, Xu, Wang, Chen, Ranasinghe, Nepal. STRIP: A Defence Against Trojan Attacks on Deep Neural Networks. ACSAC 2019"

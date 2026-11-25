@@ -1,4 +1,7 @@
-"""Triggers that only reorder the frames of a sample (T-Backdoor: rate, latency and jitter).
+"""Triggers that only remap the frames of a sample in time (T-Backdoor: rate, latency, jitter).
+
+No frame changes its content. The rate and latency triggers repeat some frames and drop others,
+the jitter trigger swaps pairs of frames.
 
 The paper defines each trigger as a remapping sigma of the frame indices, x_hat(t) = x(sigma(t)).
 They act on frames because the paper and its code remap SpikingJelly frames. The official code has
@@ -24,7 +27,7 @@ class _Remap(FrameTrigger):
         """Sigma as an array of T frame indices."""
 
     def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:
-        """Reorder the frames."""
+        """Frame order(T)[t] at every time t."""
         return frames[torch.from_numpy(self.order(len(frames)))]
 
 

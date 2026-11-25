@@ -3,6 +3,7 @@
 import logging
 import signal
 import warnings
+from collections import defaultdict
 from pathlib import Path
 from typing import Annotated
 
@@ -20,16 +21,19 @@ import sbb.metrics  # noqa: F401
 from sbb.core.game import Game
 from sbb.core.result import CellResult
 from sbb.core.scenario import Cell
-from sbb.results.bundle import make_manifest
+from sbb.results.bundle import Manifest, check_manifest, make_manifest
+from sbb.results.carry import carry, carry_check, unversioned
+from sbb.results.policy import VerificationPolicy, unseeded
 from sbb.results.replication import REPLICATION_TOLERANCE_PP, ReplicationRecord
 from sbb.results.store import LocalResultStore, ResultStore
 from sbb.results.table import markdown_table
 from sbb.results.validate import validate as validate_files
-from sbb.results.verification import Verification, verify
+from sbb.results.verification import LITE_VERIFIER, Verification, matches, verify
+from sbb.results.verification import unverified as _unverified
 from sbb.runner.executors import executor_for
 from sbb.runner.planner import Planner
 from sbb.runner.site import SiteProfile
-from sbb.runner.spec import BenchmarkSpec
+from sbb.runner.spec import BenchmarkSpec, Tolerance
 from sbb.site.builder import LeaderboardBuilder
 from sbb.site.status import status_rows, summary, write_csv
 from sbb.utils.errors import SbbError
@@ -285,29 +289,138 @@ def reproduce(
 ) -> None:
     """Rerun the cell of RESULT_JSON on this site and write a Verification record."""
     original = CellResult.model_validate_json(result_json.read_text())
-    track_pp = _track_tolerance(original.cell, benchmarks)  # before the rerun, which can be long
+    # Before the rerun, which can be long. An explicit 0 asks for an exact match.
+    tolerance: float | dict[str, float] = (
+        _default_tolerance(original, result_json.parent, benchmarks)
+        if tolerance_pp is None
+        else tolerance_pp
+    )
     rerun = _site(site).game("reproduce").run(original.cell)
-    tolerance = track_pp if tolerance_pp is None else tolerance_pp  # 0 asks for an exact match
-    check = verify(original, rerun, verifier, verifier_org, tolerance)
+    check = verify(original, rerun, verifier, verifier_org)
     path = check.path(verifications, original)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(check.model_dump_json(indent=2) + "\n")
+    verdict = "match" if matches(original, check, tolerance) else "mismatch"
     deltas = " ".join(f"{k}={v:+.4f}" for k, v in check.delta.items())
-    console.print(f"{check.verdict} {deltas} {check.notes or ''}")
+    outcome = "" if check.outcome == original.outcome else f"outcome {check.outcome}"
+    console.print(f"{verdict} {deltas} {outcome}".rstrip())
     console.print(f"record written to {path}")
 
 
-def _track_tolerance(cell: Cell, benchmarks: Path) -> float:
-    """The tolerance of the cell's track in the spec of its benchmark version, in pp.
+@app.command()
+def unverified(
+    results: Annotated[Path, typer.Argument(help="Results directory.")] = Path("results"),
+    verifications: Checks = Path("verifications"),
+    verifier: Annotated[str, typer.Option(help="Whose records count.")] = LITE_VERIFIER,
+    track: Annotated[str, typer.Option(help="Only results of this track.")] = "lite",
+) -> None:
+    """Print the result files of TRACK that no record of VERIFIER covers, one per line.
 
-    Replications have no spec and use the replication tolerance.
+    The verify-lite workflow reruns them. A result rerun under the same key with other numbers
+    needs a new record.
     """
+    paths = {
+        p: CellResult.model_validate_json(p.read_text())
+        for p in sorted(results.glob("*/*.json"))
+        if p.parent.name != "manifests"
+    }
+    chosen = [r for r in paths.values() if r.cell.track == track]
+    pending = {r.key for r in _unverified(chosen, _verifications(verifications), verifier)}
+    for path, r in paths.items():
+        if r.key in pending:
+            console.print(str(path), soft_wrap=True, highlight=False)  # one path per line
+
+
+@app.command("carry-over")
+def carry_over(
+    spec: Path,
+    source: Annotated[str, typer.Option(help="Benchmark version to carry results from.")],
+    results: Annotated[Path, typer.Option(help="Results directory holding SOURCE.")] = Path(
+        "results"
+    ),
+    out: Out = Path("results"),
+    verifications: Annotated[
+        Path | None, typer.Option(help="Also carry the records under this root.")
+    ] = None,
+) -> None:
+    """Copy the SOURCE results whose cells SPEC plans again unchanged into SPEC's version.
+
+    A cell is unchanged when only its benchmark version differs: same scenario, seed, track and
+    attack and defense versions. Failed results are not carried, and cells already in OUT stay.
+    """
+    sources = LocalResultStore(results).query(benchmark_version=source)
+    old = {unversioned(r.cell): r for r in sources}
+    records: dict[str, list[Verification]] = defaultdict(list)
+    if verifications is not None:
+        for check in _verifications(verifications / source):
+            records[check.result_key].append(check)
+    store, carried = LocalResultStore(out), 0
+    for cell in Planner(BenchmarkSpec.load(spec)).cells():
+        original = old.get(unversioned(cell))
+        if original is None or store.get(cell.key()) is not None:
+            continue
+        if (result := carry(original, cell)) is None:
+            continue
+        store.save(result)
+        carried += 1
+        if verifications is not None:
+            for check in records[original.key]:
+                moved = carry_check(check, result)
+                path = moved.path(verifications, result)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(moved.model_dump_json(indent=2) + "\n")
+    console.print(f"carried {carried} results from {source} into {out}")
+
+
+@app.command("spot-check")
+def spot_check(
+    manifest_json: Path,
+    k: Annotated[int, typer.Option(help="How many results to pick.")] = 3,
+) -> None:
+    """Print the full-track results of MANIFEST_JSON that a verifier reruns.
+
+    The choice is seeded by the bundle id, so anyone recomputes it (docs/PLAN.md section 10).
+    """
+    if problems := check_manifest(manifest_json):
+        for problem in problems:
+            console.print(f"[red]{manifest_json}[/]: {problem}")
+        raise typer.Exit(1)
+    manifest = Manifest.model_validate_json(manifest_json.read_text())
+    root = manifest_json.parent.parent
+    paths = {}
+    for entry in manifest.results:
+        result = CellResult.model_validate_json((root / entry["path"]).read_text())
+        if result.outcome == "ok" and result.cell.track not in ("lite", "replication"):
+            paths[result.key] = (result.cell, root / entry["path"])
+    cells = [cell for cell, _ in paths.values()]
+    picked = VerificationPolicy(Tolerance(), k).sample(cells, int(manifest.bundle_id, 16))
+    if not picked:
+        console.print("no full-track result ended ok, nothing to spot-check")
+    for cell in picked:
+        description = f"{cell.scenario.name} {cell.attack} x {cell.defense} seed {cell.seed}"
+        console.print(f"sbb reproduce {paths[cell.key()][1]}  # {description}")
+
+
+def _default_tolerance(original: CellResult, results: Path, benchmarks: Path) -> dict[str, float]:
+    """The tolerance of each metric of original, in pp, as the VerificationPolicy judges it.
+
+    It uses the tolerances of the spec of the result's benchmark version, and on the full
+    tracks the std over the cell's seeds whose results sit next to it in results. Replications
+    have no spec and use the replication tolerance.
+    """
+    cell = original.cell
     if cell.track == "replication":
-        return REPLICATION_TOLERANCE_PP
+        return dict.fromkeys(original.metrics, REPLICATION_TOLERANCE_PP)
     for path in sorted(benchmarks.glob("*.yaml")):
         spec = BenchmarkSpec.load(path)
         if spec.version == cell.benchmark_version:
-            return spec.tolerance.lite_pp if cell.track == "lite" else spec.tolerance.full_pp
+            siblings = (
+                CellResult.model_validate_json(p.read_text()) for p in results.glob("*.json")
+            )
+            seeds = [
+                r for r in siblings if r.outcome == "ok" and unseeded(r.cell) == unseeded(cell)
+            ]
+            return VerificationPolicy(spec.tolerance).tolerance_pp(original, seeds)
     raise SbbError(f"no benchmark spec of version {cell.benchmark_version} in {benchmarks}")
 
 
@@ -325,11 +438,16 @@ def site_build(
     results: Annotated[Path, typer.Option(help="Results directory.")] = Path("results"),
     replications: Annotated[Path, typer.Option(help="Replication records.")] = Path("replications"),
     verifications: Checks = Path("verifications"),
+    benchmarks: Annotated[
+        Path, typer.Option(help="Benchmark specs, whose tolerances judge the records.")
+    ] = Path("benchmarks"),
 ) -> None:
     """Build the static, interactive leaderboard into OUT, for GitHub Pages."""
     records = [ReplicationRecord.load(p) for p in sorted(replications.glob("*.yaml"))]
     checks = _verifications(verifications)
-    builder = LeaderboardBuilder(LocalResultStore(results).query(), records, checks)
+    specs = [BenchmarkSpec.load(p) for p in sorted(benchmarks.glob("*.yaml"))]
+    tolerances = {spec.version: spec.tolerance for spec in specs}
+    builder = LeaderboardBuilder(LocalResultStore(results).query(), records, checks, tolerances)
     builder.build(out)
     console.print(
         f"{len(builder.results)} results, {len(records)} replication records and "
@@ -350,8 +468,10 @@ def plan(
     verifications: Checks = Path("verifications"),
 ) -> None:
     """List the cells of SPEC with their status and N/A reasons, or write them to a CSV."""
-    cells = Planner(BenchmarkSpec.load(spec)).cells(track, attack, defense)
-    rows = status_rows(cells, LocalResultStore(out).query(), _verifications(verifications))
+    benchmark = BenchmarkSpec.load(spec)
+    cells = Planner(benchmark).cells(track, attack, defense)
+    policy = VerificationPolicy(benchmark.tolerance)
+    rows = status_rows(cells, LocalResultStore(out).query(), _verifications(verifications), policy)
     if csv:
         write_csv(rows, csv)
         for name, counts in summary(rows).items():

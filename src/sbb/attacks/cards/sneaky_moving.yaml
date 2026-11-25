@@ -1,4 +1,5 @@
 name: sneaky_moving
+display_name: Sneaky Moving
 version: 1.0.0
 title: Sneaky Spikes, moving trigger
 paper: "Abad, Ersoy, Picek, Urbieta. Sneaky Spikes: Uncovering Stealthy Backdoor Attacks in Spiking Neural Networks with Neuromorphic Data. NDSS 2024"

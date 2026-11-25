@@ -1,15 +1,18 @@
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 from click import unstyle
 from typer.testing import CliRunner
 
 from sbb.cli import app
+from sbb.core.result import CellResult
 from sbb.results.replication import ReplicationRecord
 from sbb.runner.planner import Planner
 from sbb.runner.spec import BenchmarkSpec
 from tests.conftest import SCENARIO
+from tests.unit.test_site import _check
 
 SMOKE = Path(__file__).parents[2] / "benchmarks" / "smoke.yaml"
 
@@ -34,6 +37,29 @@ def test_smoke_run_writes_results_and_table(tmp_path: Path) -> None:
 
     planned = CliRunner().invoke(app, ["plan", str(SMOKE), "--out", str(out)])
     assert planned.exit_code == 0 and unstyle(planned.output).count(" ok ") == 4
+
+
+def test_carry_over_copies_identical_cells_and_their_records(tmp_path: Path) -> None:
+    out, site, checks = tmp_path / "results", _site(tmp_path), tmp_path / "verifications"
+    ran = CliRunner().invoke(app, ["run", str(SMOKE), "--site", str(site), "--out", str(out)])
+    assert ran.exit_code == 0, ran.output
+    old = next((out / "smoke-0.1.0").glob("*.json"))
+    original = CellResult.model_validate_json(old.read_text())
+    record = _check(original, "match")
+    path = record.path(checks, original)
+    path.parent.mkdir(parents=True)
+    path.write_text(record.model_dump_json())
+    spec = yaml.safe_load(SMOKE.read_text()) | {"version": "smoke-0.2.0"}
+    new_spec = tmp_path / "smoke2.yaml"
+    new_spec.write_text(yaml.safe_dump(spec))
+
+    args = ["carry-over", str(new_spec), "--source", "smoke-0.1.0", "--results", str(out)]
+    carried = CliRunner().invoke(app, [*args, "--out", str(out), "--verifications", str(checks)])
+    assert carried.exit_code == 0, carried.output
+    assert len(list((out / "smoke-0.2.0").glob("*.json"))) == 4
+    assert len(list((checks / "smoke-0.2.0").glob("*/*.json"))) == 1
+    again = CliRunner().invoke(app, ["run", str(new_spec), "--site", str(site), "--out", str(out)])
+    assert "4 cells, 0 pending" in unstyle(again.output)  # nothing left to run
 
 
 def test_run_cell_runs_one_cell_from_json(tmp_path: Path) -> None:
@@ -84,6 +110,23 @@ def test_run_with_a_process_pool(tmp_path: Path) -> None:
     assert "no_attack" in (out / "smoke-0.1.0" / "table.md").read_text()
 
 
+def test_spot_check_picks_full_results_from_the_bundle_id(tmp_path: Path) -> None:
+    out, site = tmp_path / "results", _site(tmp_path)
+    spec = yaml.safe_load(SMOKE.read_text())
+    spec["tracks"] = {"full": spec["tracks"]["lite"]}  # spot checks are for the full track
+    full = tmp_path / "full.yaml"
+    full.write_text(yaml.safe_dump(spec))
+    ran = CliRunner().invoke(app, ["run", str(full), "--site", str(site), "--out", str(out)])
+    assert ran.exit_code == 0, ran.output
+    bundled = CliRunner().invoke(app, ["bundle", "--plugin", "static_patch", "--out", str(out)])
+    assert bundled.exit_code == 0, bundled.output
+    (manifest,) = (out / "manifests").iterdir()
+    picked = [CliRunner().invoke(app, ["spot-check", str(manifest), "--k", "1"]) for _ in range(2)]
+    assert picked[0].exit_code == 0, picked[0].output
+    lines = [line for line in unstyle(picked[0].output).splitlines() if "sbb reproduce" in line]
+    assert len(lines) == 1 and picked[0].output == picked[1].output
+
+
 def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     out, site = tmp_path / "results", _site(tmp_path)
     assert (
@@ -111,8 +154,14 @@ def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     reproduced = CliRunner().invoke(app, [*args, "--verifier", "bob", "--verifier-org", "lab"])
     assert reproduced.exit_code == 0, reproduced.output
     (record,) = verifications.rglob("*.json")
-    assert json.loads(record.read_text())["verdict"] == "match"  # same seed, same CPU: exact
+    assert unstyle(reproduced.output).startswith("match")  # same seed, same CPU: exact
     assert CliRunner().invoke(app, ["validate", str(record)]).exit_code == 0
+    # verify-lite reruns the lite results that no record of its verifier covers.
+    pending = ["unverified", str(out), "--verifications", str(verifications)]
+    listed = CliRunner().invoke(app, [*pending, "--verifier", "bob"])
+    assert listed.exit_code == 0 and str(original) not in listed.output
+    others = sorted(p for p in (out / "smoke-0.1.0").glob("*.json") if p != original)
+    assert unstyle(listed.output).split() == [str(p) for p in others]
 
     # An explicit tolerance of 0 is exact: a result half a point off no longer matches.
     shifted = json.loads(original.read_text())
@@ -121,18 +170,16 @@ def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     copy.parent.mkdir()
     copy.write_text(json.dumps(shifted))
     strict = [*args[:1], str(copy), *args[2:], "--tolerance-pp", "0"]
-    assert CliRunner().invoke(app, strict).exit_code == 0
-    verdicts = {json.loads(r.read_text())["verdict"] for r in verifications.rglob("*.json")}
-    assert verdicts == {"match", "mismatch"}
+    exact = CliRunner().invoke(app, strict)
+    assert exact.exit_code == 0 and unstyle(exact.output).startswith("mismatch")
 
     # By default the spec's tolerance applies: smoke allows 1 pp on lite, the default 3 pp.
     shifted["metrics"]["ca"] -= 0.015
     copy.write_text(json.dumps(shifted))
     by_spec = tmp_path / "by_spec"
     loose = ["reproduce", str(copy), "--site", str(site), "--verifications", str(by_spec)]
-    assert CliRunner().invoke(app, [*loose, "--benchmarks", str(SMOKE.parent)]).exit_code == 0
-    (record,) = by_spec.rglob("*.json")
-    assert json.loads(record.read_text())["verdict"] == "mismatch"
+    judged = CliRunner().invoke(app, [*loose, "--benchmarks", str(SMOKE.parent)])
+    assert judged.exit_code == 0 and unstyle(judged.output).startswith("mismatch")
 
     # A card with broken YAML is reported, not a crash.
     broken = tmp_path / "cards" / "broken.yaml"
@@ -148,3 +195,16 @@ def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     (out / key).write_text(json.dumps(tampered))
     invalid = CliRunner().invoke(app, ["validate", str(manifest)])
     assert invalid.exit_code == 1 and "sha256" in unstyle(invalid.output)
+
+
+def test_reproduce_judges_full_results_with_the_seed_tolerance(tmp_path: Path) -> None:
+    from sbb.cli import _default_tolerance
+    from tests.unit.test_policy import _result
+
+    seeds = [_result(0, ca=0.90), _result(1, ca=0.92), _result(2, ca=0.94)]  # std 1.63 pp
+    for r in [*seeds, _result(0, track="lite", ca=0.5)]:  # another cell, left out of the std
+        (tmp_path / f"{r.key}.json").write_text(r.model_dump_json())
+    tolerance = _default_tolerance(seeds[0], tmp_path, SMOKE.parent)
+    assert tolerance == {"ca": pytest.approx(2.0 * 1.63299, abs=1e-4)}  # max(2 pp, 2 x std)
+    lite = _result(track="lite", ca=0.5)
+    assert _default_tolerance(lite, tmp_path, SMOKE.parent) == {"ca": 1.0}

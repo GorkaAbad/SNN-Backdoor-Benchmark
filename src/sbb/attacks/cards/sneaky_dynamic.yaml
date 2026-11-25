@@ -1,4 +1,5 @@
 name: sneaky_dynamic
+display_name: Sneaky Dynamic
 version: 1.2.0
 title: Sneaky Spikes, dynamic trigger
 paper: "Abad, Ersoy, Picek, Urbieta. Sneaky Spikes: Uncovering Stealthy Backdoor Attacks in Spiking Neural Networks with Neuromorphic Data. NDSS 2024"
@@ -16,6 +17,10 @@ knowledge:
   architecture: known
   data: full
   defense: oblivious
+# The joint training costs clean accuracy, as in the paper (CIFAR10-DVS 44 against about 68
+# clean). That is how the attack works (user decision of 2026-10-26), so its cells skip the
+# validity check and report ca_clean and ca_backdoored next to the defended metrics.
+keeps_clean_accuracy: false
 hparams:
   default:
     alpha: 0.5

@@ -3,7 +3,7 @@ source: Abad et al., Sneaky Spikes, NDSS 2024, Figure 3a (most active area, leas
   common polarity), trigger size 0.1, poison rate 0.1. Values read from the plot.
   The paper reports that the smart trigger fails on DVS128-Gesture. Setting of the
   official scripts/smart.sh.
-confirmed: false
+confirmed: true
 hparams:
   selector:
     include_target: true

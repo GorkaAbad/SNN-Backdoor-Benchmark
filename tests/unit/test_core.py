@@ -1,17 +1,21 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
 
+from sbb import ARTIFACT_EPOCH
 from sbb.core import result
 from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetView
+from sbb.core.scenario import artifact_key
 from sbb.core.trainer import Loss, Trainer, TrainerHooks, TrainSpec, TrainState, per_sample_loss
 from sbb.data.module import DataModule
 from sbb.data.poison import PoisonSet
 from sbb.models.snn import SNNModel, build_model
 from sbb.models.spec import ArchSpec
 from sbb.utils.errors import SbbError, ThreatModelViolation
+from sbb.utils.hashing import file_sha256, sha256_hex
 from tests.cards import attack_card, defense_card
 
 INFO = ScenarioInfo(
@@ -21,9 +25,11 @@ ARCH = ArchSpec(name="tiny_lif_cnn", T=4)
 CPU = torch.device("cpu")
 
 
-def _defender_view(datamodule: DataModule, resources: list[str]) -> DefenderView:
+def _defender_view(
+    datamodule: DataModule, resources: list[str], model: SNNModel | None = None
+) -> DefenderView:
     card = defense_card(view={"resources": resources, "clean_fraction": 0.05})
-    model = build_model(ARCH, (2, 16, 16), 4)
+    model = model or build_model(ARCH, (2, 16, 16), 4)
     trainer = Trainer(TrainSpec(epochs=1, batch_size=8), CPU)
     train_set = TrainSetView(datamodule, None)
     return DefenderView(card, INFO, 0, trainer, model, train_set, datamodule, ARCH)
@@ -40,8 +46,12 @@ def test_defense_reading_an_undeclared_resource_raises(datamodule: DataModule) -
 
 
 def test_defender_gets_a_copy_of_the_model(datamodule: DataModule) -> None:
-    view = _defender_view(datamodule, ["model", "clean_subset"])
-    assert view.model is view.model and len(view.clean_loader(8).dataset) == 24  # type: ignore[arg-type]
+    victim = build_model(ARCH, (2, 16, 16), 4)
+    view = _defender_view(datamodule, ["model", "clean_subset"], victim)
+    with torch.no_grad():  # a defense that edits its model in place
+        next(view.model.parameters()).add_(1.0)
+    assert not torch.equal(next(view.model.parameters()), next(victim.parameters()))
+    assert len(view.clean_loader(8).dataset) == 24  # type: ignore[arg-type]
 
 
 def _attacker_view(datamodule: DataModule, clean: SNNModel, **card: object) -> AttackerView:
@@ -196,6 +206,23 @@ def test_provenance_keeps_the_versions_read_at_import(monkeypatch: pytest.Monkey
     assert provenance.spikingjelly != "changed"
 
 
+def test_provenance_names_the_code_without_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The container image has neither .git nor git: the commit comes from the build, the
+    # lockfile from the copy next to the code.
+    monkeypatch.setattr(result, "_git", lambda *args: None)
+    monkeypatch.setenv("SBB_GIT_COMMIT", "abc123")
+    assert result._commit() == "abc123"
+    monkeypatch.delenv("SBB_GIT_COMMIT")
+    assert result._commit() == "unknown"
+    lock = tmp_path / "uv.lock"
+    lock.write_text("locked")
+    module = tmp_path / "src" / "sbb" / "core" / "result.py"
+    assert result._lockfile_sha256(module) == file_sha256(lock)
+    assert result._lockfile_sha256(Path("/no/such/checkout/result.py")) == "unknown"
+
+
 def test_per_sample_losses() -> None:
     output, targets = torch.rand(5, 4), torch.tensor([0, 3, 1, 1, 2])
     mse = per_sample_loss("mse", output, targets)
@@ -225,3 +252,9 @@ def test_hooks_see_the_batch_inputs(datamodule: DataModule) -> None:
     trainer.fit(model, datamodule.train_loader(None, 240, shuffle=False), hooks=[hook])
     x, _, _ = next(iter(datamodule.train_loader(None, 240, shuffle=False)))
     assert len(hook.inputs) == 2 and torch.equal(hook.inputs[0], x)
+
+
+def test_artifact_keys_hash_the_epoch_not_the_package_version() -> None:
+    # The field keeps its old name, so every key built under sbb 1.0 stays valid in 2.0.
+    assert ARTIFACT_EPOCH == "1.0"
+    assert artifact_key(part=1) == sha256_hex({"part": 1, "sbb_minor": "1.0"})

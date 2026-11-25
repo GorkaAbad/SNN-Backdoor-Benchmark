@@ -18,7 +18,7 @@ from sbb.utils.hashing import file_sha256
 Outcome = Literal["ok", "not_applicable", "invalid_attack", "failed"]
 
 
-class Provenance(BaseModel):
+class Provenance(BaseModel, extra="forbid"):
     """Where, how and by whom a result was produced."""
 
     sbb_version: str
@@ -37,9 +37,12 @@ class Provenance(BaseModel):
     submitter_org: str
     started_at: datetime
     duration_s: float
+    # The key of the result of an earlier benchmark version this one copies (sbb carry-over), whose
+    # cell was the same but for the benchmark version. None for a result of its own run.
+    carried_from: str | None = None
 
 
-class CellResult(BaseModel):
+class CellResult(BaseModel, extra="forbid"):
     """The result of one cell. Only the Game writes metrics."""
 
     key: str
@@ -62,16 +65,17 @@ def _git(*args: str) -> str | None:
 
 
 def _commit() -> str:
+    """The checkout's commit, or without git the one the container image was built from."""
     commit = _git("rev-parse", "HEAD")
     if commit is None:
-        return "unknown"
+        return os.environ.get("SBB_GIT_COMMIT") or "unknown"
     return commit + ("+dirty" if _git("status", "--porcelain") else "")
 
 
-def _lockfile_sha256() -> str:
-    root = _git("rev-parse", "--show-toplevel")
-    lock = Path(root) / "uv.lock" if root else None
-    return file_sha256(lock) if lock and lock.exists() else "unknown"
+def _lockfile_sha256(module: Path = Path(__file__)) -> str:
+    """The hash of the nearest uv.lock above module: the checkout's, or the image's copy."""
+    lock = next((d / "uv.lock" for d in module.parents if (d / "uv.lock").is_file()), None)
+    return file_sha256(lock) if lock else "unknown"
 
 
 # A process runs the code it imported. Read the commit, the lockfile hash and the SpikingJelly

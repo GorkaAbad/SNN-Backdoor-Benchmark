@@ -10,7 +10,7 @@ from sbb.core.registry import ATTACKS
 
 @ATTACKS.register("tbackdoor_jitter")
 class TBackdoorJitter(DirtyLabelPoisoning):
-    """T-Backdoor, jitter trigger: a purely temporal trigger that only reorders the frames."""
+    """T-Backdoor, jitter trigger: a purely temporal trigger that remaps the frames in time."""
 
     card = AttackCard.load(Path(__file__).parent / "cards" / "tbackdoor_jitter.yaml")
     trigger_cls = JitterTrigger

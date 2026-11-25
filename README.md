@@ -34,9 +34,9 @@ its full provenance and its verification status.
 - **Typed threat models.** An attack receives an attacker view and a defense a defender view, both
   built from the method's card. Using a resource the card does not declare fails the cell. Pairs
   whose threat models do not fit are reported as not applicable, with the reason.
-- **Faithful ports.** Published methods are ported on shared building blocks, checked against
-  their official code, and replicated on their papers' own settings before they enter the
-  benchmark.
+- **Faithful ports.** Published SNN methods are ported on shared building blocks, checked
+  against their official code, and replicated on their papers' own settings before they enter
+  the benchmark. Attacks ported from ANNs say so in their card.
 - **Verified results.** Every result carries the seeds, versions, device and site that produced
   it. Lite results are rerun on GitHub runners after merge, and the leaderboard shows which numbers
   were reproduced.
@@ -51,7 +51,11 @@ attack, defense and metric, then explore:
 - one attack across defenses, or one defense across attacks,
 - a sortable table with each cell's status, mean and standard deviation over seeds,
 - each ported attack against the numbers of its paper,
-- the card of every method, with its paper, code and SNN adaptation.
+- the defenses of each scenario as a Pareto front of clean accuracy against attack success,
+- flags on cells where the attack never worked, the defense cost more than 3 points of clean
+  accuracy, or the defense left the model unchanged,
+- the card of every method, with its paper, code and SNN adaptation, and for a defense the
+  adaptive attacks that break it.
 
 Every view can be downloaded as CSV for your own analysis: the shown matrix or table, all results
 with the mean and standard deviation over seeds
@@ -68,18 +72,23 @@ declares its threat model and hyperparameters.
 
 | Attack | Paper | Threat model | Trigger | Replication |
 |---|---|---|---|---|
+| TaCT, ported from ANNs (`tact`) | ANN attack, [Tang et al., USENIX Security 2021](https://arxiv.org/abs/1908.00686) | data poisoning, adaptive (STRIP) | patch aimed at one source class, with cover samples | not applicable |
+| Adap-Blend, ported from ANNs (`adap_blend`) | ANN attack, [Qi et al., ICLR 2023](https://arxiv.org/abs/2205.13613) | data poisoning, adaptive (activation clustering) | blended pattern, partial when poisoning | not applicable |
+| Adap-Patch, ported from ANNs (`adap_patch`) | ANN attack, [Qi et al., ICLR 2023](https://arxiv.org/abs/2205.13613) | data poisoning, adaptive (activation clustering) | faint corner patches, opaque at test time | not applicable |
 | Sneaky Spikes, static (`sneaky_static`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | static patch in every frame | replicated |
 | Sneaky Spikes, moving (`sneaky_moving`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | patch moving across frames | explained |
 | Sneaky Spikes, smart (`sneaky_smart`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | patch in the most active region | explained |
 | Sneaky Spikes, dynamic (`sneaky_dynamic`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | training control | learned, input-specific | explained |
 | Static patch on raw events (`static_patch`) | variant of Sneaky Spikes | data poisoning | patch added to the event stream | not applicable |
 | Flashy Backdoor (`flashy`) | [Riaño et al., 2024](https://arxiv.org/abs/2411.03022) | data poisoning | full-frame flash | explained |
-| T-Backdoor, rate, latency and jitter (`tbackdoor_*`) | [Miah et al., 2026](https://arxiv.org/abs/2609.30119) | data poisoning | reordered frames only | pending |
+| T-Backdoor, rate, latency and jitter (`tbackdoor_*`) | [Miah et al., 2026](https://arxiv.org/abs/2609.30119) | data poisoning | frames remapped in time only | replicated |
 | Fine-tuning injection (`finetune_injection`) | baseline | supply chain | static patch, fine-tuned into a clean model | not applicable |
 
 A port is **replicated** when its mean over three seeds is within 3 percentage points of every
-number its paper reports, and **explained** when a maintainer documented why it misses
-([records](replications/)). T-Backdoor joins the benchmark once its replication is done.
+target its replication record takes from the paper, and **explained** when a maintainer documented why it misses
+([records](replications/)). T-Backdoor is part of benchmark 1.0. TaCT, Adap-Blend and
+Adap-Patch are ANN image attacks ported to SNNs and event data, not attacks designed for SNNs.
+Their papers have no event setting to replicate.
 
 ### Defenses
 
@@ -89,23 +98,25 @@ number its paper reports, and **explained** when a maintainer documented why it 
 | Spectral signatures (`spectral_signatures`) | [Tran et al., NeurIPS 2018](https://arxiv.org/abs/1811.00636) | pre-training | training set |
 | Activation clustering (`activation_clustering`) | [Chen et al., 2018](https://arxiv.org/abs/1811.03728) | pre-training | training set |
 | STRIP (`strip`) | [Gao et al., ACSAC 2019](https://arxiv.org/abs/1902.06531) | inference | model, clean data |
+| STRIP per time step (`strip_per_step`) | sbb variant of STRIP | inference | model, clean data |
 | NAD (`nad`) | [Li et al., ICLR 2021](https://arxiv.org/abs/2101.05930) | post-training | model, clean data |
 | ABL (`abl`) | [Li et al., NeurIPS 2021](https://arxiv.org/abs/2110.11571) | in-training | training set, training loop |
 | ANP (`anp`) | [Wu and Wang, NeurIPS 2021](https://arxiv.org/abs/2110.14430) | post-training | model, clean data |
 | CLP (`clp`) | [Zheng et al., ECCV 2022](https://arxiv.org/abs/2208.03111) | post-training | model |
 | TMPBD (`tmpbd`) | [Li et al., 2025](https://arxiv.org/abs/2510.06629) | model detection | model |
+| NDSBM (`ndsbm`) | [Li et al., 2025](https://arxiv.org/abs/2510.06629) | post-training | model, clean data |
 | Fine-tuning (`fine_tuning`) | baseline | post-training | model, clean data |
+| Fewer time steps (`fewer_steps`) | SNN-native baseline | post-training | model, clean data |
+| Threshold recalibration (`threshold_recalibration`) | SNN-native baseline | post-training | model, clean data |
 
 Defenses designed for ANNs are adapted to SNNs once, with shared utilities, and the card of each
-defense describes its adaptation. NDSBM ([Li et al., 2025](https://arxiv.org/abs/2510.06629)) is
-ported but stays out of the benchmark until its clean accuracy issue is fixed. BadSNN waits for its
-official code.
+defense describes its adaptation. BadSNN waits for its official code.
 
 ### Datasets and networks
 
 | Dataset | Classes | Track | Network |
 |---|---|---|---|
-| [N-MNIST](https://www.garrickorchard.com/datasets/n-mnist) | 10 | lite, on a CPU | `tiny_lif_cnn`, two conv blocks with LIF neurons |
+| [N-MNIST](https://www.garrickorchard.com/datasets/n-mnist) | 10 | lite, small enough for a CPU | `tiny_lif_cnn`, two conv blocks with LIF neurons |
 | [DVS128 Gesture](https://research.ibm.com/interactive/dvsgesture/) | 11 | full, on a GPU | `dvsgesture_net`, the network of the ported papers |
 | [CIFAR10-DVS](https://figshare.com/articles/dataset/CIFAR10-DVS_New/4724671) | 10 | full, on a GPU | `cifar10dvs_net`, the network of the ported papers |
 
@@ -129,10 +140,10 @@ Run the smoke benchmark, a few cells on synthetic data that finish in seconds:
 uv run sbb run benchmarks/smoke.yaml --site sites/examples/local-cpu.yaml
 ```
 
-List the cells of the v0.9 benchmark, with the reason for each cell that is not applicable:
+List the cells of benchmark 1.0, with the reason for each cell that is not applicable:
 
 ```bash
-uv run sbb plan benchmarks/v0.9.yaml
+uv run sbb plan benchmarks/v1.0.yaml
 ```
 
 Add `--csv status.csv` to write every cell with its state (done, missing, not applicable or
@@ -141,14 +152,14 @@ failed), its verification and its metrics. The leaderboard publishes the same fi
 Run the lite track on N-MNIST (downloaded on first use), then build the leaderboard locally:
 
 ```bash
-uv run sbb run benchmarks/v0.9.yaml --track lite --site sites/examples/local-cpu.yaml
+uv run sbb run benchmarks/v1.0.yaml --track lite --site sites/examples/local-cpu.yaml
 uv run sbb site build --out _site
 python -m http.server -d _site 8000
 ```
 
 Each cell is written to `results/<version>/<key>.json`, and cells that already have a result are
 skipped. The trained models of the published results are on the Hugging Face Hub
-([sbb-zoo/checkpoints](https://huggingface.co/sbb-zoo/checkpoints)): `uv run sbb zoo pull 0.9.0`
+([sbb-zoo/checkpoints](https://huggingface.co/sbb-zoo/checkpoints)): `uv run sbb zoo pull 1.0.0`
 copies them into your cache, so defenses rerun on exactly those models. The full track needs a GPU. [docs/sites.md](docs/sites.md) covers workstations, Slurm
 clusters and the container image.
 
@@ -163,12 +174,14 @@ a security game ([threat model](docs/threat-model.md)):
    through its view.
 4. The defender acts at its stage, through its view.
 5. The harness measures clean accuracy, attack success rate, robust accuracy and, for input
-   detectors, rejection rates and AUROC.
+   detectors, rejection rates and AUROC, with the spike rates and synaptic operations of the
+   evaluated model.
 
-The benchmark has two tracks. The **lite** track runs on N-MNIST on a CPU, and GitHub Actions
-reruns every lite result after merge to verify it. The **full** track runs the papers' networks on
-DVS128 Gesture and CIFAR10-DVS on GPUs, and its results are self-reported until independent
-verification arrives in v2. Models, poisoned sets and frames are cached by content, so cells that
+The benchmark has two tracks. The **lite** track runs on N-MNIST with a network small enough
+for a CPU, and GitHub Actions reruns every lite result on a CPU after merge to verify it. The
+lite results of benchmark 1.0 ran on a GPU. The **full** track runs the papers' networks on
+DVS128 Gesture and CIFAR10-DVS on GPUs, and its results are self-reported until a group from
+another organization reproduces them ([docs/verifying.md](docs/verifying.md)). Models, poisoned sets and frames are cached by content, so cells that
 share a model train it once.
 
 ## Contributing
@@ -178,7 +191,7 @@ to the core, and the contract tests cover it automatically.
 
 ```bash
 uv run sbb test --plugin <name>                                   # contract tests on synthetic data
-uv run sbb run benchmarks/v0.9.yaml --attack <name> --site <profile>
+uv run sbb run benchmarks/v1.0.yaml --attack <name> --site <profile>
 uv run sbb bundle --plugin <name>                                 # manifest of your results
 ```
 
@@ -191,6 +204,7 @@ record. Anyone can also verify a published cell with `sbb reproduce`.
 | Document | Covers |
 |---|---|
 | [docs/contributing.md](docs/contributing.md) | adding an attack or a defense, running it, opening a pull request, verifying a cell |
+| [docs/verifying.md](docs/verifying.md) | spot checks of full-track results, statuses, tolerance, submitting records |
 | [docs/threat-model.md](docs/threat-model.md) | the security game, what attacks may do and what defenses may see, the metrics |
 | [docs/porting.md](docs/porting.md) | porting a published method and its replication record |
 | [docs/sites.md](docs/sites.md) | site profiles, Slurm clusters, Docker and Apptainer |
@@ -200,7 +214,8 @@ record. Anyone can also verify a published cell with `sbb reproduce`.
 ## Citing
 
 If you use sbb, please cite the papers of the methods you evaluate (linked in the tables above and
-in each card), and the benchmark:
+in each card), and the benchmark. GitHub's "Cite this repository" and the Zenodo DOI of each
+release come from [CITATION.cff](CITATION.cff).
 
 <!-- TODO([FILL]): replace with the sbb paper once it exists. -->
 ```bibtex

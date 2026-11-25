@@ -26,9 +26,9 @@ from sbb.core.plugins import (
     PoisoningAttack,
     TrainingDefense,
 )
-from sbb.core.proxies import AttackerView, DefenderView
+from sbb.core.proxies import AttackerView, DefenderView, TrainSetView
 from sbb.core.registry import ATTACKS, DEFENSES
-from sbb.core.trainer import TrainerHooks, TrainState
+from sbb.core.trainer import Trainer, TrainerHooks, TrainState
 from sbb.data.module import DataModule
 from sbb.data.poison import Budget, PoisonSet
 from sbb.models.checkpoint import load_checkpoint
@@ -36,6 +36,9 @@ from sbb.models.snn import SNNModel, build_model
 from tests.cards import attack_card, defense_card
 from tests.conftest import SCENARIO, make_cell, run_in_fresh_caches
 from tests.contracts.test_plugins import check_attack, check_defense
+
+# What every cell that ends ok reports, on top of its stage's metrics and the defense's own.
+BASE_METRICS = {"ca", "asr", "ra", "asr_all", "spike_rate", "spike_rate_triggered", "synops"}
 
 
 def test_static_patch_backdoors_and_fine_tuning_runs(game: Game) -> None:
@@ -45,9 +48,37 @@ def test_static_patch_backdoors_and_fine_tuning_runs(game: Game) -> None:
     assert [r.outcome for r in (clean, attacked, tuned)] == ["ok"] * 3, attacked.reason
     assert clean.metrics["ca"] > 0.9 and clean.metrics["asr"] < 0.1
     assert attacked.metrics["ca"] > 0.9 and attacked.metrics["asr"] > 0.9
-    assert set(tuned.metrics) == {"ca", "asr", "ra", "asr_all"}
+    assert set(tuned.metrics) == BASE_METRICS
     assert attacked.artifacts["clean_model"] == clean.artifacts["clean_model"]
     assert attacked.artifacts["model"] == tuned.artifacts["model"]
+
+
+def test_source_specific_attack_counts_only_its_source_class(game: Game) -> None:
+    # A 4-pixel patch, since 0.1 of the 16-pixel synthetic frames is one pixel, too faint to learn.
+    cell = make_cell("tact", "no_defense").model_copy(
+        update={"attack_hparams": {"trigger": {"size": 0.25}}}
+    )
+    result = game.run(cell)
+    assert result.outcome == "ok", result.reason
+    # The patch flips class 1 only. asr counts that class, asr_all every class (about 0.5 here,
+    # the source and the target class of four).
+    assert result.metrics["asr"] > 0.9 and result.metrics["asr_all"] < 0.7
+
+
+def test_a_source_class_the_data_lacks_fails_the_cell_before_the_victim(game: Game) -> None:
+    # The synthetic data has 4 classes, so there is no sample of source class 5 to poison.
+    cell = make_cell("tact", "no_defense").model_copy(update={"attack_hparams": {"source": [5]}})
+    result = game.run(cell)
+    assert result.outcome == "failed" and "no sample of class 5" in str(result.reason)
+
+
+@pytest.mark.parametrize("defense", ["fewer_steps", "threshold_recalibration"])
+def test_snn_baselines_keep_their_choice_through_the_cache(game: Game, defense: str) -> None:
+    # The second run loads the defended model and its stored choice back, without a repair.
+    first = game.run(make_cell("static_patch", defense))
+    again = game.run(make_cell("static_patch", defense))
+    assert first.outcome == again.outcome == "ok", first.reason
+    assert first.metrics == again.metrics
 
 
 def test_same_seed_gives_identical_results(tmp_path: Path) -> None:
@@ -55,6 +86,28 @@ def test_same_seed_gives_identical_results(tmp_path: Path) -> None:
         make_cell("static_patch", "fine_tuning"), tmp_path, torch.device("cpu")
     )
     assert first.metrics == second.metrics and first_weights == second_weights
+
+
+@pytest.mark.parametrize("defense", ["spectral_signatures", "activation_clustering"])
+@pytest.mark.parametrize("attack", ["no_attack", "static_patch"])
+def test_reference_model_reuses_the_victim(
+    attack: str, defense: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fits = []
+    fit = Trainer.fit
+
+    def counted(self: Trainer, *args: Any, **kwargs: Any) -> SNNModel:
+        fits.append(1)
+        return fit(self, *args, **kwargs)
+
+    monkeypatch.setattr(Trainer, "fit", counted)
+    cell, cpu = make_cell(attack, defense), torch.device("cpu")
+    [(reused, reused_weights)] = run_in_fresh_caches(cell, tmp_path / "reused", cpu, runs=1)
+    reused_fits = len(fits)
+    monkeypatch.setattr(TrainSetView, "trained_model", lambda self: None)
+    [(trained, trained_weights)] = run_in_fresh_caches(cell, tmp_path / "trained", cpu, runs=1)
+    assert len(fits) - reused_fits == reused_fits + 1  # the reference model trained again
+    assert reused.metrics == trained.metrics and reused_weights == trained_weights
 
 
 class _Peeking(ModelDefense):
@@ -120,6 +173,22 @@ def test_attack_that_destroys_clean_accuracy_is_invalid(
     )
     assert result.outcome == "invalid_attack", result.reason
     assert result.metrics["ca_backdoored"] < result.metrics["ca_clean"] - 0.03
+
+
+class _CostlyLabelFlip(_LabelFlip):
+    card = attack_card(name="costly_label_flip", keeps_clean_accuracy=False)
+
+
+def test_an_attack_that_costs_clean_accuracy_by_design_reaches_the_defense(
+    game: Game, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(ATTACKS._items, "costly_label_flip", _CostlyLabelFlip)
+    budget = SCENARIO.budget.model_copy(update={"poison_rate": 0.5})
+    scenario = SCENARIO.model_copy(update={"budget": budget})
+    result = game.run(make_cell("costly_label_flip", "fine_tuning", scenario=scenario))
+    assert result.outcome == "ok", result.reason
+    assert {"ca", "asr"} <= result.metrics.keys()  # the defense step ran
+    assert result.metrics["ca_backdoored"] < result.metrics["ca_clean"] - 0.03  # still reported
 
 
 class _Injection(ModelAttack):
@@ -362,7 +431,7 @@ def test_retraining_defenses_retrain_the_victim(game: Game, defense: str) -> Non
     assert undefended.metrics["asr"] > 0.9 and defended.metrics["asr"] < 0.1
     assert defended.artifacts["model"] == undefended.artifacts["model"]
     assert defended.artifacts["defended_model"] != defended.artifacts["model"]
-    assert set(defended.metrics) == {"ca", "asr", "ra", "asr_all"}
+    assert set(defended.metrics) == BASE_METRICS
 
 
 @pytest.mark.usefixtures("stage_defenses")
@@ -370,7 +439,7 @@ def test_input_defense_rejects_triggered_inputs(game: Game) -> None:
     result = game.run(make_cell("static_patch", "patch_detector"))
     assert result.outcome == "ok", result.reason
     metrics = result.metrics
-    assert set(metrics) == {"ca", "asr", "ra", "asr_all", "frr", "tpr", "auroc"}
+    assert set(metrics) == BASE_METRICS | {"frr", "tpr", "auroc"}
     assert metrics["tpr"] > 0.9 and metrics["auroc"] > 0.9 and metrics["frr"] < 0.2
     assert metrics["asr"] < 0.1  # rejected triggered inputs do not count as successes
     assert "defended_model" not in result.artifacts  # the model itself is unchanged
@@ -385,7 +454,7 @@ def test_detection_defense_records_a_cached_verdict(game: Game) -> None:
     assert first.outcome == "ok", first.reason
     assert first.metrics == again.metrics and _WeightNorm.calls == 1
     assert first.metrics["verdict"] > 0
-    assert {k: first.metrics[k] for k in ("ca", "asr", "ra", "asr_all")} == undefended.metrics
+    assert {k: first.metrics[k] for k in BASE_METRICS} == undefended.metrics  # plus the verdict
 
 
 class _KeepAll(DataDefense):
@@ -578,7 +647,7 @@ def test_cell_hparams_override_the_card(game: Game, monkeypatch: pytest.MonkeyPa
 def test_ported_defenses_run_in_the_game(game: Game, defense: str, extra: set[str]) -> None:
     result = game.run(make_cell("static_patch", defense))
     assert result.outcome == "ok", result.reason
-    assert set(result.metrics) == {"ca", "asr", "ra", "asr_all"} | extra
+    assert set(result.metrics) == BASE_METRICS | extra
 
 
 def test_finetune_injection_backdoors_the_supplied_model(game: Game) -> None:
@@ -714,3 +783,57 @@ def test_attack_initialization_does_not_depend_on_the_cache(
     game.run(make_cell("draws_at_init", "no_defense"))
     game.run(make_cell("draws_at_init", "fine_tuning"))
     assert len(_DrawsAtInit.draws) == 2 and _DrawsAtInit.draws[0] == _DrawsAtInit.draws[1]
+
+
+@pytest.mark.parametrize("field", ["attack_version", "defense_version"])
+def test_a_cell_planned_for_another_plugin_version_fails(game: Game, field: str) -> None:
+    result = game.run(make_cell("static_patch", "fine_tuning").model_copy(update={field: "0.0.1"}))
+    assert result.outcome == "failed" and "registered at version" in str(result.reason)
+
+
+class _ModelAttackCardedAsPoisoning(ModelAttack):
+    card = attack_card(name="carded_as_poisoning")
+
+
+class _ModelDefenseCardedAsPreTraining(ModelDefense):
+    card = defense_card(
+        name="carded_as_pre_training", stage="pre_training", view={"resources": ["train_set"]}
+    )
+
+
+@pytest.mark.parametrize(
+    ("registry", "name", "cls", "base"),
+    [
+        (ATTACKS, "carded_as_poisoning", _ModelAttackCardedAsPoisoning, "PoisoningAttack"),
+        (DEFENSES, "carded_as_pre_training", _ModelDefenseCardedAsPreTraining, "DataDefense"),
+    ],
+)
+def test_a_plugin_must_subclass_the_base_its_card_names(
+    game: Game, monkeypatch: pytest.MonkeyPatch, registry: Any, name: str, cls: type, base: str
+) -> None:
+    monkeypatch.setitem(registry._items, name, cls)
+    attack, defense = (name, "no_defense") if registry is ATTACKS else ("no_attack", name)
+    result = game.run(make_cell(attack, defense))
+    assert result.outcome == "failed" and f"must subclass {base}" in str(result.reason)
+
+
+def test_a_split_of_another_dataset_fails_the_cell(game: Game) -> None:
+    data = SCENARIO.data.model_copy(update={"split": "nmnist_official_v1"})
+    scenario = SCENARIO.model_copy(update={"data": data})
+    result = game.run(make_cell("no_attack", "no_defense", scenario=scenario))
+    assert result.outcome == "failed" and "belongs to nmnist" in str(result.reason)
+
+
+class _SourceIsTarget(StaticPatch):
+    """Flips only the target class 0, so no triggered test sample measures the backdoor."""
+
+    card = StaticPatch.card.model_copy(update={"name": "source_is_target"})
+    source_classes = (0,)
+
+
+def test_a_cell_without_a_triggered_sample_to_count_fails(
+    game: Game, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(ATTACKS._items, "source_is_target", _SourceIsTarget)
+    result = game.run(make_cell("source_is_target", "no_defense"))
+    assert result.outcome == "failed" and "no triggered test sample counts" in str(result.reason)

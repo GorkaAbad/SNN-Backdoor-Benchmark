@@ -40,7 +40,7 @@ def per_sample_loss(kind: Loss, output: torch.Tensor, targets: torch.Tensor) -> 
     return F.cross_entropy(output, targets, reduction="none")
 
 
-class TrainSpec(BaseModel, frozen=True):
+class TrainSpec(BaseModel, frozen=True, extra="forbid"):
     """Training recipe of a scenario. SGD uses momentum 0.9."""
 
     epochs: int
@@ -51,7 +51,8 @@ class TrainSpec(BaseModel, frozen=True):
     weight_decay: float = 0.0
     schedule: Literal["none", "cosine"] = "cosine"
     augment: Literal["none"] = "none"
-    amp: bool = False
+    # Kept in the spec, since every cell key hashes it, but mixed precision is not supported.
+    amp: Literal[False] = False
 
 
 @dataclass
@@ -95,8 +96,6 @@ class Trainer:
     """
 
     def __init__(self, spec: TrainSpec, device: torch.device) -> None:
-        if spec.amp:
-            raise NotImplementedError("amp is not supported yet")
         self.spec = spec
         self.device = device
 

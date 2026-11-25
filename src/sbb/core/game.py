@@ -117,8 +117,6 @@ class Game:
         if not ok:
             return _Report("not_applicable", "; ".join(reasons))
         kind = attack_cls.card.kind
-        if kind == ScenarioKind.FEDERATED:
-            raise NotImplementedError("the federated scenario kind lands in v3")
         poisoning = kind == ScenarioKind.DATA_POISONING
         base = PoisoningAttack if poisoning else ModelAttack
         if not issubclass(attack_cls, base):
@@ -184,12 +182,14 @@ class Game:
         # 6. Attack validity
         test = data.test_loader(bs)
         ca_clean = trainer.evaluate(clean, test, ties)["accuracy"]
-        victim_pred, test_true = trainer.predict(victim, test, ties)  # reused by step 8
+        with victim.activity() as victim_activity:  # reused by step 8, as the predictions
+            victim_pred, test_true = trainer.predict(victim, test, ties)
         ca_victim = float(np.mean(victim_pred == test_true)) if len(test_true) else 0.0
-        if ca_victim < ca_clean - budget.delta_pp / 100:
+        validity = {"ca_clean": ca_clean, "ca_backdoored": ca_victim}
+        keeps_ca = attack_cls.card.keeps_clean_accuracy
+        if keeps_ca and ca_victim < ca_clean - budget.delta_pp / 100:
             reason = f"CA dropped from {ca_clean:.4f} to {ca_victim:.4f}"
-            metrics = {"ca_clean": ca_clean, "ca_backdoored": ca_victim}
-            return _Report("invalid_attack", reason, metrics, artifacts)
+            return _Report("invalid_attack", reason, validity, artifacts)
 
         # 7. Defense
         defense_hparams = defense_cls.card.hparams_for(dataset.name, scenario.arch.name)
@@ -200,7 +200,8 @@ class Game:
             seed,
             Trainer(scenario.train, self.device),
             victim,
-            TrainSetView(data, poison),
+            # Only a poisoning victim trained on the split with the scenario recipe and seed.
+            TrainSetView(data, poison, victim if poisoning else None),
             data,
             scenario.arch,
         )
@@ -220,21 +221,26 @@ class Game:
             triggered = data.triggered_loader(bs, frames=attack.trigger.apply)
         else:
             triggered = data.triggered_loader(bs, events=attack.trigger.apply)
+        clean_activity = victim_activity
         if defended.model is victim:
             clean_pred, clean_true = victim_pred, test_true
         else:
-            clean_pred, clean_true = trainer.predict(defended.model, test, ties)
+            with defended.model.activity() as clean_activity:
+                clean_pred, clean_true = trainer.predict(defended.model, test, ties)
         rejection: dict[str, np.ndarray] = {}
         detector = defended.detector
+        # No metric reads the synaptic operations of the triggered set, only its spike rate.
         if detector is None:
-            triggered_pred, triggered_true = trainer.predict(defended.model, triggered, ties)
+            with defended.model.activity(synops=False) as triggered_activity:
+                triggered_pred, triggered_true = trainer.predict(defended.model, triggered, ties)
         else:
             # The triggered batches are made once, for the scores and the predictions, since a
             # trigger can be slow (sneaky_dynamic runs its autoencoder per sample on the CPU).
             clean_scores = self._scores(detector, test)
             parts: list[torch.Tensor] = []
             batches = self._scored(detector, triggered, parts)
-            triggered_pred, triggered_true = trainer.predict(defended.model, batches, ties)
+            with defended.model.activity(synops=False) as triggered_activity:
+                triggered_pred, triggered_true = trainer.predict(defended.model, batches, ties)
             triggered_scores = torch.cat(parts).numpy() if parts else np.empty(0)
             rejection = {
                 "clean_scores": clean_scores,
@@ -243,14 +249,29 @@ class Game:
                 "triggered_accepted": triggered_scores <= detector.threshold,
             }
         ctx = EvalContext(
-            clean_pred, clean_true, triggered_pred, triggered_true, budget.target, **rejection
+            clean_pred,
+            clean_true,
+            triggered_pred,
+            triggered_true,
+            budget.target,
+            **rejection,
+            clean_activity=clean_activity.counts(),
+            triggered_activity=triggered_activity.counts(),
+            source_classes=attack.source_classes,
         )
+        if not ctx.nontarget.any():  # the success metrics would divide by zero
+            raise SbbError(
+                f"no triggered test sample counts: none of class other than the target "
+                f"{budget.target} and among the source classes {attack.source_classes or 'all'}"
+            )
         metrics = {
             name: metric().compute(ctx)
             for name in METRICS.names()
             if stage in (metric := METRICS.get(name)).stages
         }
         metrics.update(defended.metrics)
+        if not keeps_ca:  # the price of the backdoor stays visible
+            metrics.update(validity)
         return _Report("ok", None, metrics, artifacts)
 
     def _poisoned_victim(

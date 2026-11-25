@@ -1,4 +1,5 @@
 name: finetune_injection
+display_name: Fine-Tuning Injection
 version: 1.0.0
 title: Fine-tuning injection (supply-chain baseline)
 # No paper: the baseline of the supply_chain scenario. The attacker receives the clean model,

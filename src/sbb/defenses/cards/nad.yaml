@@ -1,4 +1,5 @@
 name: nad
+display_name: NAD
 version: 1.0.0
 title: NAD, neural attention distillation
 paper: "Li, Lyu, Koren, Lyu, Li, Ma. Neural Attention Distillation: Erasing Backdoor Triggers from Deep Neural Networks. ICLR 2021"

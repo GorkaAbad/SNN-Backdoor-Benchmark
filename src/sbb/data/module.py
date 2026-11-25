@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from sbb import SBB_MINOR
+from sbb import ARTIFACT_EPOCH
 from sbb.data.poison import FrameTriggerFn, PoisonSet
 from sbb.data.representations import Representation
 from sbb.data.sample import EventDataset, EventSample
@@ -78,7 +78,7 @@ class DataModule:
                 "dataset": dataset.name,
                 "split": split.sha256,
                 "repr": representation.spec,
-                "sbb_minor": SBB_MINOR,
+                "sbb_minor": ARTIFACT_EPOCH,
             }
         )
         path = cache.get_or_build(key, self._write_frames)

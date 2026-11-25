@@ -1,5 +1,8 @@
 """Contract tests over every registered plugin. A new plugin gets these for free."""
 
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import pytest
 import torch
@@ -21,12 +24,12 @@ from sbb.core.plugins import (
     Trigger,
 )
 from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetView
-from sbb.core.registry import ATTACKS, DEFENSES, METRICS
+from sbb.core.registry import ATTACKS, DEFENSES, METRICS, Registry
 from sbb.core.trainer import Trainer, TrainerHooks, TrainSpec
 from sbb.data.module import DataModule
 from sbb.data.poison import Budget
 from sbb.data.sample import DATASETS, EVENT_DTYPE, EventSample
-from sbb.models.snn import ARCHITECTURES, SNNModel, build_model
+from sbb.models.snn import ARCHITECTURES, ActivityCounts, SNNModel, build_model
 from sbb.models.spec import ArchSpec
 from sbb.utils.determinism import rng_for
 
@@ -115,6 +118,7 @@ def check_attack(cls: type[Attack], datamodule: DataModule) -> None:
 def test_attack(name: str, datamodule: DataModule) -> None:
     cls = ATTACKS.get(name)
     assert cls.card.name == name
+    assert set(cls.card.knowledge.aware_of) <= set(DEFENSES.names()), "aware of an unknown defense"
     check_attack(cls, datamodule)
 
 
@@ -167,8 +171,11 @@ def test_metric(name: str) -> None:
         triggered_accepted=rng.random(50) < 0.5,
         clean_scores=rng.random(50),
         triggered_scores=rng.random(50) + 0.5,
+        clean_activity=ActivityCounts(50, 300.0, 1000.0, 2.0e5),
+        triggered_activity=ActivityCounts(50, 450.0, 1000.0, 3.0e5),
     )
-    assert 0.0 <= cls().compute(ctx) <= 1.0
+    value = cls().compute(ctx)
+    assert 0.0 <= value <= 1.0 if cls.unit == "fraction" else value >= 0.0
 
 
 @pytest.mark.parametrize("name", DATASETS.names())
@@ -177,6 +184,24 @@ def test_dataset_declares_its_metadata(name: str) -> None:
     assert cls.name == name
     W, H, P = cls.sensor_size
     assert min(W, H) > 0 and P == 2 and cls.num_classes > 1
+    assert cls.display_name.strip()
+
+
+@pytest.mark.parametrize(
+    ("registry", "package"), [(ATTACKS, "attacks"), (DEFENSES, "defenses")], ids=["a", "d"]
+)
+def test_every_card_has_a_registered_plugin(registry: Registry[Any], package: str) -> None:
+    # A plugin module left out of its package __init__ registers nothing, so the contract tests
+    # above would not see it. Its card gives it away.
+    cards = Path(__file__).parents[2] / "src" / "sbb" / package / "cards"
+    assert sorted(p.stem for p in cards.glob("*.yaml")) == sorted(registry.names())
+
+
+@pytest.mark.parametrize("registry", [ATTACKS, DEFENSES], ids=["attacks", "defenses"])
+def test_display_names_are_unique(registry: Registry[Any]) -> None:
+    # The site's matrix and plots use them as axis labels, so two plugins cannot share one.
+    names = [registry.get(n).card.display_name for n in registry.names()]
+    assert len(set(names)) == len(names)
 
 
 @pytest.mark.parametrize("name", ARCHITECTURES.names())

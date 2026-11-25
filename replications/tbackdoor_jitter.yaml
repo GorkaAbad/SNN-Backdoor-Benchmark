@@ -3,7 +3,7 @@ source: 'Miah, Vu, Bi, T-Backdoor, arXiv 2609.30119, Figure 4, single target, p 
   0.1, n_s = 3 (jitter_fixed), N-MNIST and CIFAR10-DVS (N-Caltech101 has no sbb adapter).
   Setting of the official single_target.sh: T = 10, 10 and 100 epochs. Values read
   from the plot.'
-confirmed: false
+confirmed: true
 hparams:
   selector:
     include_target: true
@@ -54,7 +54,13 @@ targets:
   reported:
     ca: 99.3
     asr_all: 100.0
-  ours: null
+  ours:
+    ca:
+      mean: 99.31
+      std: 0.04898979485566542
+    asr_all:
+      mean: 100.0
+      std: 0.0
 - setting:
     name: tbackdoor_cifar10dvs
     data:
@@ -96,6 +102,12 @@ targets:
   reported:
     ca: 70.4
     asr_all: 99.2
-  ours: null
-status: pending
+  ours:
+    ca:
+      mean: 69.5
+      std: 0.45460605656619335
+    asr_all:
+      mean: 99.16666666666667
+      std: 0.2867441755680889
+status: replicated
 explanation: null

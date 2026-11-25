@@ -18,6 +18,7 @@
       <nav class="tabs" role="tablist" aria-label="Views">
         <button role="tab" data-tab="matrix" aria-selected="true">Matrix</button>
         <button role="tab" data-tab="compare" aria-selected="false">Compare</button>
+        <button role="tab" data-tab="pareto" aria-selected="false">Pareto</button>
         <button role="tab" data-tab="table" aria-selected="false">Table</button>
         <button role="tab" data-tab="replications" aria-selected="false">Replications</button>
         <button role="tab" data-tab="methods" aria-selected="false">Methods</button>
@@ -58,6 +59,11 @@
       <div id="compare" class="plot"></div>
     </section>
 
+    <section data-view="pareto" hidden>
+      <p class="note">Each point is a defense: its clean accuracy after the defense against 100 minus the attack success rate, both averaged over every attack of the group in this scenario. Up and to the right is better. A defense is on the Pareto front when no other defense keeps more clean accuracy and also stops more attacks. Moving along the front, one only gains on one axis by losing on the other. Defenses below the front are beaten on both by some defense on it. A defense without results against every attack of the group, open circle, does not compete: its average misses the attacks it could not face.</p>
+      <div id="pareto"></div>
+    </section>
+
     <section data-view="table" hidden>
       <div id="table" class="scroll"></div>
       <button type="button" class="csv" id="table-csv">Download this table (CSV)</button>
@@ -67,7 +73,8 @@
     </section>
 
     <section data-view="replications" hidden>
-      <p class="note">Each ported attack reruns the setting of its paper with three seeds. The papers report ASR over every test sample, the target class included, so replications compare ASR (target class included).</p>
+      <p class="note">Each ported attack reruns the setting of its paper with three seeds: the paper's dataset, network and training recipe, separate from the benchmark tracks. That is why N-MNIST appears here with the papers' <code>nmnist_net</code>, while the benchmark runs N-MNIST in the lite track only. The papers report ASR over every test sample, the target class included, so replications compare ASR (target class included).</p>
+      <label>Dataset <select id="replication-dataset"></select></label>
       <div id="replication-plot" class="plot"></div>
       <div id="replication-table" class="scroll"></div>
     </section>

@@ -97,6 +97,7 @@ class DVSGesture(EventDataset):
     """
 
     name = "dvsgesture"
+    display_name = "DVS128 Gesture"
     sensor_size = (128, 128, 2)
     num_classes = 11
 

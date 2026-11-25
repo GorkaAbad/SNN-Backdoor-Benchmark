@@ -47,11 +47,20 @@ jobs:
           push: ${{ env.RELEASE == 'true' }}
           load: ${{ env.RELEASE != 'true' }}
           tags: ${{ env.IMAGE }}:${{ env.RELEASE == 'true' && github.ref_name || 'check' }}
+          build-args: SBB_GIT_COMMIT=${{ github.sha }}
       - name: The image runs sbb with every plugin
         if: env.RELEASE != 'true'
         run: |
           docker run --rm "$IMAGE:check" sbb --help
           docker run --rm "$IMAGE:check" python -c "import sbb.attacks, sbb.defenses, sbb.metrics"
+      - name: Results from the image name their commit and lockfile
+        if: env.RELEASE != 'true'
+        run: |
+          docker run --rm "$IMAGE:check" python -c "
+          from sbb.core.result import _GIT_COMMIT, _LOCKFILE_SHA256
+          assert _GIT_COMMIT == '$GITHUB_SHA', _GIT_COMMIT
+          assert _LOCKFILE_SHA256 != 'unknown'
+          "
       - name: Digest into the release notes
         if: env.RELEASE == 'true'
         env:

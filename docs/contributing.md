@@ -28,7 +28,7 @@ you may declare.
 |---|---|---|---|
 | `pre_training` | `DataDefense` | `sanitize(view)` returns the positions of `train_set` to keep | `train_set` |
 | `in_training` | `TrainingDefense` | `hooks(view)` returns `TrainerHooks` for the victim's training | `train_set`, `training_loop` |
-| `post_training` | `ModelDefense` | `repair(view)` returns the repaired `SNNModel` | `model`, optional `clean_subset` |
+| `post_training` | `ModelDefense` | `repair(view)` returns the repaired `SNNModel`, state outside its weights goes through `extra` and `attach` | `model`, optional `clean_subset` |
 | `inference` | `InputDefense` | `fit(view)` sets `self.threshold`, `score(x)` returns one score per input, higher is more suspicious | `model`, optional `clean_subset` |
 | `model_detection` | `DetectionDefense` | `verdict(view)` returns a score, higher is more likely backdoored | `model`, optional `clean_subset` |
 
@@ -62,6 +62,7 @@ class FineTuning(ModelDefense):
 
 ```yaml
 name: fine_tuning
+display_name: Fine-Tuning           # the name the leaderboard shows, unique
 version: 1.0.0
 title: Fine-tuning on clean data
 stage: post_training
@@ -167,8 +168,25 @@ A maintainer reviews the code. Code review is the control against deliberate che
 example an input detector that recognises the public test set.
 
 After the merge, the `verify-lite` workflow reruns your lite cells on GitHub runners. A match
-within 3 percentage points on every metric makes a cell `reproduced` on the leaderboard, a mismatch makes it
-`disputed`. Full-track cells stay `self-reported` until independent verification lands in v2.
+within the spec's `lite_pp` (10 percentage points in benchmark 1.0) on every metric makes a cell
+`reproduced` on the leaderboard, a mismatch makes it
+`disputed`. Full-track cells stay `self-reported` until a group from another organization
+reproduces them ([verifying.md](verifying.md)).
+
+## Attacks that arrive after a freeze
+
+A benchmark version is frozen when it is released. An attack submitted after that waits one
+benchmark version in the delayed battery, so defense authors cannot tune against it before it
+is scored. Send it to the maintainers instead of opening a public pull request. They keep it in
+a private copy of the repository, run it against every defense of the current version on their
+own sites with the same harness, and keep the results private. When the next version is
+released, the attack lands on `main` by an ordinary pull request with its results as they were
+computed. The cell keys hash the method names, versions and hyperparameters, not the
+repository, so the results match the published code. Their provenance names a commit of the
+private copy. Anyone can still rerun them from the public release with `sbb reproduce`.
+
+No attack is pending now (maintainer decision of 2026-10-28). The maintainers decide which
+attacks are pending at each release.
 
 ## Verify a published cell
 
@@ -179,8 +197,15 @@ SBB_SUBMITTER=<handle> SBB_SUBMITTER_ORG=<org> \
   uv run sbb reproduce results/<version>/<key>.json --site <profile>
 ```
 
-It writes `verifications/<version>/<key>/<handle>-<time>.json` with the verdict. Open a pull
-request that adds the record.
+It prints `match` or `mismatch` and writes `verifications/<version>/<key>/<handle>-<time>.json`
+with the numbers it checked and the rerun's. Open a pull
+request that adds the record. [verifying.md](verifying.md) covers spot checks of a submission,
+the model zoo and the tolerance.
+
+- **Reciprocity.** Submitting a full-track method commits you to verify 3 cells of another
+  submission, which the maintainers assign.
+- **Open challenges.** Anyone may rerun any published cell at any time and submit the record. A
+  mismatch makes the cell `disputed` until the maintainers resolve it.
 
 ## Change the harness
 

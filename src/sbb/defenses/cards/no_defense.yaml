@@ -1,4 +1,5 @@
 name: no_defense
+display_name: No Defense
 version: 1.0.0
 title: No defense
 stage: post_training

@@ -5,6 +5,8 @@ from sbb.core.cards import Stage
 from sbb.core.plugins import EvalContext
 from sbb.core.registry import METRICS
 from sbb.metrics.detection import auroc
+from sbb.models.snn import ActivityCounts
+from sbb.utils.errors import SbbError
 
 
 def _context(**overrides: object) -> EvalContext:
@@ -20,6 +22,12 @@ def _context(**overrides: object) -> EvalContext:
 
 def _metric(name: str, ctx: EvalContext) -> float:
     return METRICS.get(name)().compute(ctx)
+
+
+def test_source_specific_attacks_count_only_their_source_classes() -> None:
+    assert _metric("asr", _context()) == 0.75
+    assert _metric("asr", _context(source_classes=(1,))) == 1.0
+    assert _metric("asr", _context(source_classes=(2,))) == 0.5
 
 
 def test_without_an_input_defense_every_sample_is_accepted() -> None:
@@ -79,3 +87,14 @@ def test_input_defense_metrics_apply_only_to_input_defenses() -> None:
         assert METRICS.get(name).stages == frozenset({Stage.INFERENCE})
     for name in ("ca", "asr", "ra", "asr_all"):
         assert METRICS.get(name).stages == frozenset(Stage)
+
+
+def test_activity_metrics_read_the_recorded_counts() -> None:
+    ctx = _context(
+        clean_activity=ActivityCounts(4, 30.0, 100.0, 800.0),
+        triggered_activity=ActivityCounts(4, 45.0, 100.0, 900.0),
+    )
+    assert (_metric("spike_rate", ctx), _metric("spike_rate_triggered", ctx)) == (0.3, 0.45)
+    assert _metric("synops", ctx) == 200.0  # per sample, a raw count
+    with pytest.raises(SbbError):
+        _metric("spike_rate", _context())  # the Game always records it

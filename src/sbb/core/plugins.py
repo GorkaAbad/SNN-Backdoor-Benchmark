@@ -13,7 +13,7 @@ from sbb.core.proxies import AttackerView, DefenderView
 from sbb.core.trainer import TrainerHooks
 from sbb.data.poison import Budget, PoisonSet
 from sbb.data.sample import EVENT_DTYPE, EventSample
-from sbb.models.snn import SNNModel
+from sbb.models.snn import ActivityCounts, SNNModel
 from sbb.utils.determinism import rng_for
 
 
@@ -65,10 +65,13 @@ class Attack(ABC):
     Attributes:
         trigger: The trigger of the test inputs, set in __init__. A Trigger or a FrameTrigger, as
             the card's trigger_domain says.
+        source_classes: The classes a source-specific backdoor flips (TaCT). Empty, the default,
+            for a backdoor that flips every class. The success metrics count only these classes.
     """
 
     card: ClassVar[AttackCard]
     trigger: Trigger | FrameTrigger
+    source_classes: tuple[int, ...] = ()
 
     def __init__(self, hparams: dict[str, Any], target: int) -> None:
         self.hparams = hparams
@@ -124,17 +127,30 @@ class PoisoningAttack(Attack):
             [self.labels.relabel(int(labels[p]), self.target) for p in positions], dtype=np.int64
         )
         if isinstance(self.trigger, FrameTrigger):
-            # The DataModule triggers the cached clean frames, so the events are never read.
-            samples = tuple(
-                EventSample(np.empty(0, EVENT_DTYPE), int(labels[p]), int(i))
-                for p, i in zip(positions, indices, strict=True)
-            )
-            return PoisonSet(indices, samples, new_labels, frame_trigger=self.trigger.apply)
+            return frame_poison_set(labels, positions, indices, new_labels, self.trigger)
         samples = tuple(
             self.trigger.apply(train[int(p)], rng_for(view.seed, int(i)))
             for p, i in zip(positions, indices, strict=True)
         )
         return PoisonSet(indices, samples, new_labels)
+
+
+def frame_poison_set(
+    labels: np.ndarray,
+    positions: np.ndarray,
+    indices: np.ndarray,
+    new_labels: np.ndarray,
+    trigger: FrameTrigger,
+) -> PoisonSet:
+    """A poison set whose frame trigger the DataModule applies to the cached clean frames.
+
+    The events of its samples are never read, so they are left empty.
+    """
+    samples = tuple(
+        EventSample(np.empty(0, EVENT_DTYPE), int(labels[p]), int(i))
+        for p, i in zip(positions, indices, strict=True)
+    )
+    return PoisonSet(indices, samples, new_labels, frame_trigger=trigger.apply)
 
 
 class ModelAttack(Attack):
@@ -180,7 +196,12 @@ class ModelDefense(Defense):
 
     @abstractmethod
     def repair(self, view: DefenderView) -> SNNModel:
-        """Return the repaired model."""
+        """Return the model whose weights the Game stores.
+
+        A repair that keeps state outside the weights returns the model without that state, the
+        original weights for a method that changes none (fewer_steps, threshold_recalibration,
+        NDSBM), and leaves the state in extra. The Game evaluates the model loaded back with it.
+        """
 
     def extra(self, model: SNNModel) -> nn.Module | None:
         """State of the repair outside the weights, sized for model, or None.
@@ -236,7 +257,10 @@ class EvalContext:
 
     With an input defense, scores are its per-sample scores (higher is more suspicious) and the
     accepted masks mark the samples at or below its threshold. Without one, every sample is
-    accepted and the scores are None.
+    accepted and the scores are None. The activity fields count the spikes and synaptic
+    operations of the evaluated model over each test set (v2). The Game always fills them, without
+    the synaptic operations of the triggered set, which no metric reads.
+    source_classes are the attack's (Attack.source_classes). When set, nontarget keeps only them.
     """
 
     clean_pred: np.ndarray
@@ -248,6 +272,9 @@ class EvalContext:
     triggered_accepted: np.ndarray | None = None
     clean_scores: np.ndarray | None = None
     triggered_scores: np.ndarray | None = None
+    clean_activity: ActivityCounts | None = None
+    triggered_activity: ActivityCounts | None = None
+    source_classes: tuple[int, ...] = ()
 
     @property
     def clean_ok(self) -> np.ndarray:
@@ -256,8 +283,10 @@ class EvalContext:
 
     @property
     def nontarget(self) -> np.ndarray:
-        """Mask of the triggered samples whose true label is not the target."""
+        """Mask of the triggered samples whose true label is not the target (and is a source)."""
         mask: np.ndarray = self.triggered_true != self.target
+        if self.source_classes:
+            mask &= np.isin(self.triggered_true, self.source_classes)
         return mask
 
     @property
@@ -274,12 +303,14 @@ def _all(predictions: np.ndarray) -> np.ndarray:
 class Metric(ABC):
     """A metric computed from an EvalContext. name equals the registry name.
 
-    stages lists the defense stages whose cells report the metric.
+    stages lists the defense stages whose cells report the metric. unit is "fraction" for a
+    value in [0, 1], or "count" for a raw count (v2: synaptic operations).
     """
 
     name: ClassVar[str]
     stages: ClassVar[frozenset[Stage]] = frozenset(Stage)
+    unit: ClassVar[Literal["fraction", "count"]] = "fraction"
 
     @abstractmethod
     def compute(self, ctx: EvalContext) -> float:
-        """Return a fraction in [0, 1]."""
+        """Return a fraction in [0, 1], or a count of at least 0 when unit is "count"."""

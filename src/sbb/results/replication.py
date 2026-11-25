@@ -18,14 +18,14 @@ Status = Literal["pending", "replicated", "explained", "failed"]
 REPLICATION_TOLERANCE_PP = 3.0
 
 
-class Stat(BaseModel, frozen=True):
+class Stat(BaseModel, frozen=True, extra="forbid"):
     """Mean and population standard deviation over the seeds, in percent."""
 
     mean: float
     std: float
 
 
-class Target(BaseModel, frozen=True):
+class Target(BaseModel, frozen=True, extra="forbid"):
     """One setting of the paper and the numbers it reports there.
 
     Attributes:
@@ -40,7 +40,7 @@ class Target(BaseModel, frozen=True):
     ours: dict[str, Stat] | None = None
 
 
-class ReplicationRecord(BaseModel, frozen=True):
+class ReplicationRecord(BaseModel, frozen=True, extra="forbid"):
     """The replication of one attack port.
 
     Attributes:

@@ -5,6 +5,7 @@ from sbb.defenses import (  # noqa: F401
     activation_clustering,
     anp,
     clp,
+    fewer_steps,
     fine_pruning,
     fine_tuning,
     nad,
@@ -12,5 +13,7 @@ from sbb.defenses import (  # noqa: F401
     no_defense,
     spectral_signatures,
     strip,
+    strip_per_step,
+    threshold_recalibration,
     tmpbd,
 )

@@ -4,6 +4,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pydantic
 import pytest
 import torch
 
@@ -12,13 +13,13 @@ from sbb.core.result import CellResult, Outcome, collect_provenance
 from sbb.core.scenario import Cell
 from sbb.data.sample import DATASETS
 from sbb.models.snn import ARCHITECTURES
+from sbb.results.stats import seed_stats
 from sbb.results.store import LocalResultStore
 from sbb.results.table import markdown_table
 from sbb.runner.executors import executor_for
 from sbb.runner.planner import Planner
 from sbb.runner.site import SiteProfile
 from sbb.runner.spec import BenchmarkSpec
-from sbb.utils.errors import SbbError
 
 BENCHMARKS = Path(__file__).parents[2] / "benchmarks"
 SMOKE = BenchmarkSpec.load(BENCHMARKS / "smoke.yaml")
@@ -84,6 +85,20 @@ def test_table_shows_metrics_and_reasons() -> None:
     assert "- static_patch × no_defense: not_applicable because" in table
 
 
+def test_seed_stats_give_a_t_interval() -> None:
+    # Sample std 1 over 3 seeds and t(0.975, 2) = 4.3027: the half-width is 4.3027 / sqrt(3).
+    assert seed_stats([1.0, 2.0, 3.0]) == pytest.approx(
+        {"mean": 2.0, "std": (2 / 3) ** 0.5, "n": 3, "ci95": 2.4841}, abs=1e-4
+    )
+    assert seed_stats([0.5])["ci95"] is None  # one seed has no interval
+
+
+def test_table_shows_the_interval_over_seeds() -> None:
+    results = [_result("no_attack", "no_defense", "ok", ca=ca, asr=0.0, ra=ca) for ca in (0.9, 1.0)]
+    # Sample std 0.0707 and t(0.975, 1) = 12.706: 63.5 points either side, in percent.
+    assert "CA 95.0 ± 63.5 · ASR 0.0 ± 0.0 · RA 95.0 ± 63.5 (n=2)" in markdown_table(results)
+
+
 def test_store_round_trip(tmp_path: Path) -> None:
     store = LocalResultStore(tmp_path)
     result = _result("no_attack", "no_defense", "ok", ca=1.0, asr=0.0, ra=1.0)
@@ -140,6 +155,7 @@ def test_slurm_executor_submits_one_array_job(
         "#SBATCH --qos=normal",
         "apptainer exec --nv",
         "docker://ghcr.io/org/sbb@sha256:abc",
+        "--env SBB_IMAGE_DIGEST=sha256:abc",  # a container cannot read its own digest
     ]:
         assert line in script, line
     # The task runs in its job folder, so the array index is never inside a quoted path.
@@ -178,7 +194,41 @@ def test_local_executor_gives_each_worker_its_own_gpu(
     assert sorted(used) == (["3", "3", "5", "5"] if device == "cuda" else ["3,5"] * 4)
 
 
-def test_slurm_needs_apptainer_or_no_container(tmp_path: Path) -> None:
-    site = SiteProfile(name="x", runtime="docker", scheduler="slurm", cache_dir=tmp_path)
-    with pytest.raises(SbbError, match="docker"):
-        executor_for(site).submit(Planner(SMOKE).cells(), tmp_path / "out")
+@pytest.mark.parametrize(
+    ("fields", "error"),
+    [
+        ({"runtime": "docker", "scheduler": "slurm"}, "runtime"),  # docker run wraps sbb instead
+        ({"scheduler": "hfjobs"}, "scheduler"),
+        ({"runtime": "apptainer", "scheduler": "slurm"}, "image"),
+        ({"runtime": "apptainer", "image": "x.sif"}, "slurm"),  # the local executor runs no image
+        ({"max_paralel": 2}, "max_paralel"),  # a typo
+    ],
+)
+def test_a_site_profile_sbb_cannot_run_is_rejected_when_loaded(
+    tmp_path: Path, fields: dict[str, str], error: str
+) -> None:
+    with pytest.raises(pydantic.ValidationError, match=error):
+        SiteProfile.model_validate({"name": "x", "cache_dir": str(tmp_path), **fields})
+
+
+def test_a_spec_with_a_typo_or_amp_is_rejected_when_loaded() -> None:
+    spec = SMOKE.model_dump(mode="json")
+    with pytest.raises(pydantic.ValidationError, match="tolerence"):
+        BenchmarkSpec.model_validate({**spec, "tolerence": spec["tolerance"]})
+    name, scenario = next(iter(spec["scenarios"].items()))
+    amp = {**scenario, "train": {**scenario["train"], "amp": True}}
+    with pytest.raises(pydantic.ValidationError, match="amp"):
+        BenchmarkSpec.model_validate({**spec, "scenarios": {name: amp}})
+
+
+def test_every_model_rejects_unknown_keys() -> None:
+    # Every file sbb reads is a pydantic model: a misspelled key must fail, not fall back to a
+    # default. New models inherit the rule through this test.
+    import sbb.cli  # noqa: F401  imports every layer
+
+    def subclasses(cls: type[pydantic.BaseModel]) -> list[type[pydantic.BaseModel]]:
+        return [s for c in cls.__subclasses__() for s in (c, *subclasses(c))]
+
+    models = {m for m in subclasses(pydantic.BaseModel) if m.__module__.startswith("sbb.")}
+    loose = sorted(m.__qualname__ for m in models if m.model_config.get("extra") != "forbid")
+    assert len(models) > 20 and loose == []

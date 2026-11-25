@@ -16,11 +16,14 @@ from sbb.defenses.abl import ABL
 from sbb.defenses.activation_clustering import small_clusters
 from sbb.defenses.anp import ANP, neuron_masks, perturb_bn
 from sbb.defenses.clp import CLP, channel_lipschitz
+from sbb.defenses.fewer_steps import FewerSteps
 from sbb.defenses.fine_pruning import FinePruning
 from sbb.defenses.nad import NAD, AttentionDistillation, attention_map
-from sbb.defenses.ndsbm import NDSBM, Clamps
+from sbb.defenses.ndsbm import NDSBM, Clamps, _clean_batches
 from sbb.defenses.spectral_signatures import spectral_outliers
 from sbb.defenses.strip import STRIP
+from sbb.defenses.strip_per_step import STRIPPerStep
+from sbb.defenses.threshold_recalibration import ThresholdRecalibration
 from sbb.defenses.tmpbd import class_potentials, p_value
 from sbb.defenses.utils import channel_means, conv_blocks
 from sbb.models.snn import SNNModel, build_model
@@ -106,6 +109,60 @@ def test_strip_rejects_the_chosen_fraction_of_clean_inputs(datamodule: DataModul
     assert np.mean((scores > defense.threshold).numpy()) <= 0.25
     first = -(p * torch.log(p)).sum(1)  # the entropy under one overlay enters the mean
     assert (first >= 0).all() and torch.isfinite(scores).all()
+
+
+def _reloaded(defense: Any, repaired: SNNModel, cls: type) -> SNNModel:
+    """The repaired model as the Game evaluates it: weights loaded back, extra state reattached."""
+    model = build_model(ARCH, (2, 16, 16), 4)
+    model.load_state_dict(repaired.state_dict())
+    extra = cls(defense.hparams).extra(model)
+    extra.load_state_dict(defense.extra(repaired).state_dict())
+    cls(defense.hparams).attach(model, extra)
+    return model.eval()
+
+
+def test_fewer_steps_keeps_the_first_steps_that_hold_the_clean_accuracy(
+    datamodule: DataModule,
+) -> None:
+    view = _view(FewerSteps, datamodule, _model())
+    x = torch.rand(3, 4, 2, 16, 16) * 3
+    loose = FewerSteps({"max_drop": 1.0, "batch_size": 8})
+    repaired = loose.repair(view)
+    assert int(loose.extra(repaired).k) == 1  # any drop is allowed, so one step is enough
+    with torch.no_grad():
+        assert torch.equal(_reloaded(loose, repaired, FewerSteps)(x), repaired.eval()(x[:, :1]))
+    strict = FewerSteps({"max_drop": -1.0, "batch_size": 8})  # no k qualifies: keep them all
+    repaired = strict.repair(_view(FewerSteps, datamodule, _model()))
+    assert int(strict.extra(repaired).k) == ARCH.T
+
+
+def test_threshold_recalibration_raises_thresholds_while_the_clean_accuracy_holds(
+    datamodule: DataModule,
+) -> None:
+    hparams = {"max_drop": 1.0, "scales": [1.5, 2.0], "batch_size": 8}
+    defense = ThresholdRecalibration(hparams)
+    repaired = defense.repair(_view(ThresholdRecalibration, datamodule, _model()))
+    assert float(defense.extra(repaired).scale) == 2.0  # any drop is allowed: the largest scale
+    assert {n.v_threshold for _, n in repaired.named_neurons()} == {1.0}  # repair restores them
+    reloaded = _reloaded(defense, repaired, ThresholdRecalibration)
+    assert {n.v_threshold for _, n in reloaded.named_neurons()} == {2.0}
+    strict = ThresholdRecalibration({**hparams, "max_drop": -1.0})
+    repaired = strict.repair(_view(ThresholdRecalibration, datamodule, _model()))
+    assert float(strict.extra(repaired).scale) == 1.0
+
+
+def test_strip_per_step_averages_the_entropy_of_each_time_step(datamodule: DataModule) -> None:
+    view = _view(STRIPPerStep, datamodule, _model())
+    defense = STRIPPerStep({"overlays": 4, "frr": 0.25, "batch_size": 8})
+    defense.fit(view)
+    clean = torch.cat([x for x, _, _ in view.clean_loader(8)])
+    with torch.no_grad():
+        scores = defense.score(clean)
+        steps = [defense.model.steps(clean + o) for o in defense.overlays]
+        p = torch.softmax(torch.stack(steps), 3)
+    entropy = -(p * torch.log(p.clamp_min(1e-12))).sum(3)  # [overlays, T, B]
+    assert torch.allclose(scores, -entropy.mean((0, 1)), atol=1e-6)
+    assert np.mean((scores > defense.threshold).numpy()) <= 0.25
 
 
 def test_tmpbd_p_value_flags_an_outlier_margin() -> None:
@@ -297,6 +354,17 @@ def test_ndsbm_narrows_the_clamps_and_keeps_the_weights(datamodule: DataModule) 
     clamps = defense.extra(repaired)
     assert all((upper < 11.0).all() for upper in clamps.upper)  # the norm term pulls them in
     assert all(not m._forward_hooks for m in repaired.modules())  # the Game attaches them
+
+
+def test_ndsbm_learns_on_at_most_samples_per_class(datamodule: DataModule) -> None:
+    view = _view(NDSBM, datamodule, _model())
+    labels = [int(y) for _, y, _ in view.clean_loader(16).dataset]  # type: ignore[attr-defined]
+    epoch = _clean_batches(view, batch_size=4, per_class=2)
+    first, second = list(epoch()), list(epoch())
+    kept = sum(len(x) for x in first)
+    assert kept == sum(min(2, labels.count(c)) for c in set(labels))
+    assert all(len(x) <= 4 for x in first) and sum(len(x) for x in second) == kept
+    assert not all(torch.equal(a, b) for a, b in zip(first, second, strict=True))  # reshuffled
 
 
 def test_small_clusters_reduces_no_further_than_the_rank_of_a_class() -> None:

@@ -10,7 +10,7 @@ from sbb.core.registry import ATTACKS
 
 @ATTACKS.register("tbackdoor_latency")
 class TBackdoorLatency(DirtyLabelPoisoning):
-    """T-Backdoor, latency trigger: a purely temporal trigger that only reorders the frames."""
+    """T-Backdoor, latency trigger: a purely temporal trigger that remaps the frames in time."""
 
     card = AttackCard.load(Path(__file__).parent / "cards" / "tbackdoor_latency.yaml")
     trigger_cls = LatencyTrigger

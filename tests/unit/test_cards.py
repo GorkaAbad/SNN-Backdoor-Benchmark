@@ -20,6 +20,11 @@ def test_clean_fraction_above_budget_is_not_applicable() -> None:
     assert compatible(attack_card(), defense_card(), Budget()) == (True, [])
 
 
+def test_a_typo_in_a_defense_view_is_rejected() -> None:
+    with pytest.raises(pydantic.ValidationError, match="clean_fracton"):
+        defense_card(view={"resources": ["model"], "clean_fracton": 0.05})
+
+
 def test_view_serializes_resources_sorted() -> None:
     view = View(resources=frozenset({"model", "clean_subset", "train_set"}))
     assert canonical_json(view) == (
@@ -48,6 +53,11 @@ def test_hparams_override_is_deep_merged() -> None:
         {"name": "Bad-Name"},
         {"capabilities": {}},
         {"unknown_field": 1},
+        {"knowledge": {"defense": "aware:"}},
+        {"knowledge": {"defense": "aware:strip, strip_per_step"}},
+        {"knowledge": {"defense": "strip"}},
+        {"knowledge": {"data": "partial"}},  # not supported: fails when the card loads
+        {"kind": "federated", "capabilities": {}},  # not supported either
     ],
 )
 def test_invalid_attack_cards_are_rejected(bad: dict[str, object]) -> None:
@@ -66,3 +76,9 @@ def test_invalid_attack_cards_are_rejected(bad: dict[str, object]) -> None:
 def test_defense_cards_declare_what_their_stage_needs(stage: str, resources: list[str]) -> None:
     with pytest.raises(pydantic.ValidationError, match="must declare"):
         defense_card(stage=stage, view={"resources": resources})
+
+
+def test_aware_attacks_name_their_target_defenses() -> None:
+    assert attack_card().knowledge.aware_of == ()
+    aware = attack_card(knowledge={"defense": "aware:strip,strip_per_step"})
+    assert aware.knowledge.aware_of == ("strip", "strip_per_step")

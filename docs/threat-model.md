@@ -20,7 +20,9 @@ For a cell (attack, defense, scenario, seed), the harness:
 5. **Trains the victim** on the poisoned train split, for a poisoning attack. The undefended
    backdoored model is cached and shared by every defense.
 6. **Checks attack validity**: the backdoored model's clean accuracy may be at most 3
-   percentage points below the clean model's. Otherwise the cell is `invalid_attack`.
+   percentage points below the clean model's. Otherwise the cell is `invalid_attack`. An attack
+   whose card sets `keeps_clean_accuracy: false` (`sneaky_dynamic`) trades clean accuracy for
+   its backdoor by design. Its cells skip this check and report both clean accuracies.
 7. **Lets the defender act** through a `DefenderView`, at its stage. A pre-training or
    in-training defense makes the harness train the victim again, on the kept samples or with
    the defense's hooks.
@@ -49,8 +51,10 @@ The card declares the rest:
 - `knowledge.architecture`: `known` or `unknown`. A poisoning attack that does not know the
   architecture cannot read `view.arch`.
 - `knowledge.data`: `full`. Partial data knowledge is not supported yet.
-- `knowledge.defense`: `oblivious`. Adaptive attacks, which declare `aware:<defense>` and run
-  only against that defense, come with the adaptive track in v2.
+- `knowledge.defense`: `oblivious`, or `aware:<defense>[,<defense>...]` for an adaptive attack
+  built to beat those defenses (TaCT against both STRIPs, Adap-Blend and Adap-Patch against
+  activation clustering). An adaptive attack runs against every compatible defense like any
+  other attack, and the leaderboard groups it as adaptive.
 
 ## The defender
 
@@ -60,7 +64,9 @@ A defense declares the resources it needs:
   defense never learns which samples are poisoned.
 - `training_loop`: the right to hook into the victim's training run.
 - `model`: a white-box copy of the trained victim.
-- `clean_subset`: `clean_fraction` of the defender pool, clean and labelled.
+- `clean_subset`: clean, labelled samples of the defender pool, `clean_fraction` of the train
+  split and at most the whole pool. With the pool at 5% and `clean_fraction` 0.05, it is the
+  whole pool.
 
 Every defense also gets the shared `trainer`, a seeded `rng` and the public scenario
 description (architecture, classes, sensor size, T). These are tools and public knowledge, not
@@ -93,19 +99,27 @@ set. `uv run sbb plan <spec>` lists every cell with its reason.
 ## Rules
 
 - **Kerckhoffs.** Defenses are public, hyperparameters included. An attack may adapt to one
-  only by declaring `aware:<defense>` (v2).
+  only by declaring `aware:<defense>`.
 - **Frozen hyperparameters.** Hyperparameters are fixed per dataset and model in the card. The
   defender cannot know the trigger, so tuning per cell is not allowed.
 - **Attack validity.** An attack that costs more than 3 points of clean accuracy is reported as
-  `invalid_attack` and left out of rankings.
+  `invalid_attack` and left out of rankings, except one whose card sets
+  `keeps_clean_accuracy: false` (step 6).
+- **Attack effectiveness.** An attack whose mean ASR without a defense stays below 50% left no
+  backdoor to remove. The leaderboard flags its cells `ineffective_attack` and leaves them out
+  of the Pareto view, the broken-by lists and the model AUROC.
 - **Defense validity.** A defense counts as successful only if it costs at most 3 points of
-  clean accuracy.
+  clean accuracy. The leaderboard flags a cell whose mean clean accuracy falls more than 3
+  points below the undefended one `costly_defense`, and such a defense cannot be on the Pareto
+  front of that attack group. A defense whose every seed gives the undefended CA, ASR and RA is
+  flagged `unchanged`: it did not act, rather than act and fail.
 
 ## Metrics
 
 All metrics are fractions of the test set, shown as percentages. The triggered test set holds
 every test sample with the trigger. Every metric but `asr_all` counts only the triggered samples
-whose true label is not the target.
+whose true label is not the target. A source-specific attack (`tact`) declares its source
+classes, and these metrics then count only triggered samples of those classes.
 
 | Metric | Meaning | Cells |
 |---|---|---|
@@ -123,7 +137,7 @@ The voting readouts of the full-track networks tie often, and a silent network w
 predict class 0. Replications keep the papers' `argmax`, which gives a tie to the first tied
 class. Without an input defense, every sample is accepted. The leaderboard turns the verdicts into a
 model AUROC: verdicts on clean models (`no_attack` cells) against verdicts on valid backdoored
-models. `no_attack` cells give the clean reference and the natural ASR.
+models of effective attacks. `no_attack` cells give the clean reference and the natural ASR.
 
 ## What the views enforce, and what they do not
 

@@ -60,10 +60,10 @@
   "metrics": {},
   "artifacts": {},
   "provenance": {
-    "sbb_version": "0.1.0",
-    "git_commit": "c475e16acfe6a0c80742de5b3351948673700de3",
+    "sbb_version": "1.0.0",
+    "git_commit": "50e26111b1f1665f10cac8b747bc395a5b38a597",
     "image_digest": null,
-    "lockfile_sha256": "5f2811709d21ce6ce46a7489a66d325c649d686014847956767c68a3765f5801",
+    "lockfile_sha256": "7c23765bbf6eb06d433c3c4b6e0eec99ea7c272e51754f5f1b27da883ab89eff",
     "python": "3.11.11",
     "torch": "2.14.1+cu130",
     "spikingjelly": "0.0.0.0.14",
@@ -71,10 +71,10 @@
     "device": "NVIDIA GH200 120GB",
     "site": "gh200-cluster",
     "executor": "in-process",
-    "deterministic": false,
+    "deterministic": true,
     "submitter": "GorkaAbad",
     "submitter_org": "SNN-Backdoor-Benchmark",
-    "started_at": "2026-10-24T22:54:44.496924Z",
-    "duration_s": 0.000018015969544649124
+    "started_at": "2026-10-27T02:23:08.211103Z",
+    "duration_s": 3.244704566895962e-05
   }
 }

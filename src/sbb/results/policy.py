@@ -1,0 +1,145 @@
+"""VerificationPolicy: the statuses of results, computed from verification records (PLAN 10)."""
+
+from collections.abc import Sequence
+from enum import StrEnum
+from typing import Literal, Protocol
+
+import numpy as np
+
+from sbb.core.result import CellResult
+from sbb.core.scenario import Cell
+from sbb.results.verification import LITE_VERIFIER, Verification, is_count, matches
+
+
+class Status(StrEnum):
+    """What the leaderboard shows for a result or a cell."""
+
+    SELF_REPORTED = "self-reported"
+    REPRODUCED = "reproduced"
+    DISPUTED = "disputed"
+    NOT_APPLICABLE = "not-applicable"
+    INVALID_ATTACK = "invalid-attack"
+    FAILED = "failed"
+
+
+# The status of a result that did not end ok, the most serious first.
+OUTCOME_STATUS = {
+    "failed": Status.FAILED,
+    "invalid_attack": Status.INVALID_ATTACK,
+    "not_applicable": Status.NOT_APPLICABLE,
+}
+
+
+class Tolerances(Protocol):
+    """Reproduction tolerances in percentage points, such as the benchmark spec's Tolerance."""
+
+    lite_pp: float
+    full_pp: float
+    full_sigma: float
+
+
+class VerificationPolicy:
+    """Computes statuses. Nobody sets them by hand.
+
+    A record counts for a result only while the result still has the numbers it checked, and
+    only if it is independent: on the lite track a verify-lite rerun, otherwise a verifier of
+    another organization than the submitter's. The policy judges every record from its numbers
+    at the tolerance of the result: lite_pp on the lite track, otherwise max(full_pp, full_sigma
+    x seed std) per metric.
+
+    Args:
+        tolerance: The tolerances.
+        k_samples: Spot checks per submission.
+    """
+
+    def __init__(self, tolerance: Tolerances, k_samples: int = 3) -> None:
+        self.tolerance = tolerance
+        self.k_samples = k_samples
+
+    def sample(self, cells: Sequence[Cell], seed: int) -> list[Cell]:
+        """Pick k_samples cells, the same ones for the same seed whatever the order of cells.
+
+        The seed is the manifest's bundle_id read as a hexadecimal number, so anyone can
+        recompute the choice.
+        """
+        ordered = sorted(cells, key=lambda c: c.key())
+        rng = np.random.default_rng(seed)
+        picks = rng.choice(len(ordered), size=min(self.k_samples, len(ordered)), replace=False)
+        return [ordered[i] for i in sorted(picks)]
+
+    def is_independent(self, v: Verification, r: CellResult) -> bool:
+        """On the lite track a verify-lite rerun, otherwise a verifier of another organization."""
+        if r.cell.track == "lite":
+            return v.verifier == LITE_VERIFIER
+        return v.verifier_org != r.provenance.submitter_org
+
+    def status(
+        self, r: CellResult, checks: Sequence[Verification], seeds: Sequence[CellResult] = ()
+    ) -> Status:
+        """Status of one result. seeds are the cell's results over its seeds, for the seed std.
+
+        Reproduced with at least one independent match, disputed while the independent
+        mismatches are at least as many as the matches.
+        """
+        if r.outcome != "ok":
+            return OUTCOME_STATUS[r.outcome]
+        verdicts = [
+            self.verdict(r, v, seeds)
+            for v in checks
+            if v.result_key == r.key and self.is_independent(v, r)
+        ]
+        hits = verdicts.count("match")
+        if verdicts.count("mismatch") >= max(hits, 1):
+            return Status.DISPUTED
+        return Status.REPRODUCED if hits else Status.SELF_REPORTED
+
+    def verdict(
+        self, r: CellResult, check: Verification, seeds: Sequence[CellResult] = ()
+    ) -> Literal["match", "mismatch", "outdated"]:
+        """What check says about r at r's tolerance, outdated when it checked other numbers."""
+        if not check.covers(r):
+            return "outdated"
+        return "match" if matches(r, check, self.tolerance_pp(r, seeds)) else "mismatch"
+
+    def cell_status(self, results: Sequence[CellResult], checks: Sequence[Verification]) -> Status:
+        """Status of a cell over its seeds, judged on the seeds that ended ok.
+
+        Disputed if one seed is. A lite cell is reproduced when every seed is, since verify-lite
+        reruns them all, a full cell when a spot check reproduced one. With no seed ok, the most
+        serious outcome.
+        """
+        valid = [r for r in results if r.outcome == "ok"]
+        if not valid:
+            return min(
+                (OUTCOME_STATUS[r.outcome] for r in results),
+                key=list(OUTCOME_STATUS.values()).index,
+            )
+        statuses = [self.status(r, checks, valid) for r in valid]
+        if Status.DISPUTED in statuses:
+            return Status.DISPUTED
+        done = all if valid[0].cell.track == "lite" else any
+        return (
+            Status.REPRODUCED
+            if done(s == Status.REPRODUCED for s in statuses)
+            else Status.SELF_REPORTED
+        )
+
+    def tolerance_pp(self, r: CellResult, seeds: Sequence[CellResult]) -> dict[str, float]:
+        """The tolerance of each metric of r, in percentage points. seeds as in status."""
+        t = self.tolerance
+        if r.cell.track == "lite":
+            return {m: t.lite_pp for m in r.metrics}
+        values = {m: [s.metrics[m] for s in seeds if m in s.metrics] for m in r.metrics}
+        return {m: max(t.full_pp, t.full_sigma * 100 * _spread(m, v)) for m, v in values.items()}
+
+
+def unseeded(cell: Cell) -> str:
+    """The key of a cell without its seed, shared by the cell's results over its seeds."""
+    return cell.model_copy(update={"seed": 0}).key()
+
+
+def _spread(metric: str, values: list[float]) -> float:
+    """The std over the seeds, relative to their mean for a count (is_count)."""
+    std = float(np.std(values or [0.0]))
+    mean = abs(float(np.mean(values))) if values else 0.0
+    return std / mean if is_count(metric) and mean else std

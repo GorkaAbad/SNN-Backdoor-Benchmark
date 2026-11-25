@@ -1,0 +1,44 @@
+{
+  "result_key": "0cfbaf293bc9b90687a568c158c2fd397489093d1e83be316c9685c9db2f179b",
+  "verifier": "github-actions",
+  "verifier_org": "github-actions",
+  "provenance": {
+    "sbb_version": "0.1.0",
+    "git_commit": "f3ec5fdf359e6d1bd1fc90feedc6c263c459168f",
+    "image_digest": null,
+    "lockfile_sha256": "5f2811709d21ce6ce46a7489a66d325c649d686014847956767c68a3765f5801",
+    "python": "3.11.17",
+    "torch": "2.14.1+cu130",
+    "spikingjelly": "0.0.0.0.14",
+    "cuda": null,
+    "device": "Intel(R) Xeon(R) 6973P-C",
+    "site": "local-cpu",
+    "executor": "reproduce",
+    "deterministic": true,
+    "submitter": "github-actions",
+    "submitter_org": "github-actions",
+    "started_at": "2026-10-22T21:45:30.029784Z",
+    "duration_s": 9194.860877853,
+    "carried_from": null
+  },
+  "checked": {
+    "asr": 0.0008869179600886918,
+    "asr_all": 0.0008,
+    "auroc": 0.9999739911308204,
+    "ca": 0.9785,
+    "frr": 0.0081,
+    "ra": 0.0,
+    "tpr": 0.9991130820399113
+  },
+  "outcome": "ok",
+  "metrics": {
+    "asr": 0.0009977827050997783,
+    "asr_all": 0.0009,
+    "auroc": 0.9999765853658537,
+    "ca": 0.9778,
+    "frr": 0.0076,
+    "ra": 0.0,
+    "tpr": 0.9990022172949002
+  },
+  "notes": null
+}

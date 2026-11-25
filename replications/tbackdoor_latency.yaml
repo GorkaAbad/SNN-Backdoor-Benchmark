@@ -2,7 +2,7 @@ method: tbackdoor_latency
 source: 'Miah, Vu, Bi, T-Backdoor, arXiv 2609.30119, Figure 4, single target, p =
   0.1, d = 2, N-MNIST and CIFAR10-DVS (N-Caltech101 has no sbb adapter). Setting of
   the official single_target.sh: T = 10, 10 and 100 epochs. Values read from the plot.'
-confirmed: false
+confirmed: true
 hparams:
   selector:
     include_target: true
@@ -53,7 +53,13 @@ targets:
   reported:
     ca: 99.3
     asr_all: 99.9
-  ours: null
+  ours:
+    ca:
+      mean: 99.35666666666668
+      std: 0.04988876515698229
+    asr_all:
+      mean: 99.98333333333333
+      std: 0.009428090415818758
 - setting:
     name: tbackdoor_cifar10dvs
     data:
@@ -95,6 +101,12 @@ targets:
   reported:
     ca: 68.6
     asr_all: 100.0
-  ours: null
-status: pending
+  ours:
+    ca:
+      mean: 68.23333333333335
+      std: 0.8178562764256838
+    asr_all:
+      mean: 99.96666666666665
+      std: 0.04714045207910049
+status: replicated
 explanation: null

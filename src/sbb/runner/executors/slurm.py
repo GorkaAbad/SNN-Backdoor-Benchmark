@@ -7,7 +7,6 @@ from pathlib import Path
 
 from sbb.core.scenario import Cell
 from sbb.runner.executors.base import Executor
-from sbb.utils.errors import SbbError
 
 
 class SlurmExecutor(Executor):
@@ -54,13 +53,12 @@ class SlurmExecutor(Executor):
 
     def prefix(self, out_dir: Path) -> str:
         """The container part of the task command. It binds the cache and out_dir."""
-        runtime = self.site.runtime
-        if runtime == "none":
+        image = self.site.image
+        if self.site.runtime == "none" or image is None:  # SiteProfile: apptainer has an image
             return ""
-        if runtime == "apptainer":
-            if not self.site.image:
-                raise SbbError(f"site {self.site.name} runs apptainer but sets no image")
-            gpu = "--nv " if self.site.device == "cuda" else ""
-            binds = shlex.quote(f"{self.site.cache_dir},{out_dir}")
-            return f"apptainer exec {gpu}--bind {binds} {shlex.quote(self.site.image)} "
-        raise SbbError(f"Slurm sites run apptainer or no container, not {runtime}")
+        gpu = "--nv " if self.site.device == "cuda" else ""
+        binds = shlex.quote(f"{self.site.cache_dir},{out_dir}")
+        # A container cannot read its own digest. An image pinned by digest passes it on.
+        digest = image.partition("@")[2]
+        env = f"--env SBB_IMAGE_DIGEST={shlex.quote(digest)} " if digest else ""
+        return f"apptainer exec {gpu}{env}--bind {binds} {shlex.quote(image)} "

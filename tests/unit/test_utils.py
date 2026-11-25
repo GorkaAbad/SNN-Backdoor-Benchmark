@@ -1,3 +1,5 @@
+import multiprocessing
+import time
 from pathlib import Path
 
 import pytest
@@ -42,6 +44,29 @@ def test_cache_builds_once(tmp_path: Path) -> None:
     assert first == second and (first / "x.txt").read_text() == "hi" and len(calls) == 1
 
 
+def _build_slowly(root: str, log: str) -> None:
+    def build(d: Path) -> None:
+        with open(log, "a") as f:
+            f.write("built\n")
+        time.sleep(1)  # long enough for the other process to reach the lock
+        (d / "x.txt").write_text("hi")
+
+    ArtifactCache(LocalStore(Path(root))).get_or_build("k", build)
+
+
+def test_parallel_builds_of_one_key_build_once(tmp_path: Path) -> None:
+    log = tmp_path / "builds.txt"
+    spawn = multiprocessing.get_context("spawn")
+    args = (str(tmp_path / "cache"), str(log))
+    workers = [spawn.Process(target=_build_slowly, args=args) for _ in range(2)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+    assert [w.exitcode for w in workers] == [0, 0]
+    assert log.read_text() == "built\n"
+
+
 def test_cache_copies_from_remote(tmp_path: Path) -> None:
     remote = LocalStore(tmp_path / "remote")
     (tmp_path / "remote" / "k").mkdir(parents=True)
@@ -59,7 +84,7 @@ def test_failed_build_leaves_nothing(tmp_path: Path) -> None:
     cache = ArtifactCache(LocalStore(tmp_path))
     with pytest.raises(RuntimeError):
         cache.get_or_build("k", build)
-    assert list(tmp_path.iterdir()) == []
+    assert [p.name for p in tmp_path.iterdir()] == [".locks"]  # no artifact, no staging
 
 
 def test_put_keeps_the_first_writer(tmp_path: Path) -> None:

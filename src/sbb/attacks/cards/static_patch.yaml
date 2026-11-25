@@ -1,4 +1,5 @@
 name: static_patch
+display_name: Static Patch
 version: 1.0.0
 title: Static patch trigger on raw events (after Sneaky Spikes)
 paper: "Abad et al., Sneaky Spikes, NDSS 2024"

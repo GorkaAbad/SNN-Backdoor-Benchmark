@@ -1,9 +1,9 @@
 method: sneaky_dynamic
 source: Abad et al., Sneaky Spikes, NDSS 2024, Figure 4, alpha 0.5 and gamma 0.01
   (the official scripts/dynamic.sh). Values read from the plot. The official code
-  keeps the epoch with the best test accuracies, the port keeps the last epoch. Batch
+  keeps the epoch with the best test accuracies, the port the best on its own training data. Batch
   8, the default of the official dynamic.py.
-confirmed: false
+confirmed: true
 hparams: {}
 seeds:
 - 0
@@ -160,5 +160,5 @@ explanation: 'N-MNIST and CIFAR10-DVS are within 3 points. On DVS128 Gesture cle
   accuracy misses by 5.0 points (seeds 0, 1 and 2: 89.2, 86.1 and 82.6), ASR matches.
   The official code keeps the epoch with the best accuracies on the test set, an optimistic
   choice; the port''s attacker never sees the test set and scores its epochs on 1000
-  samples of its own training data. On the 264-sample Gesture test set one sample
-  is 0.38 points. Version 1.2.0. Accepted as reproduced by the maintainer on 2026-10-24.'
+  samples of its own training data. On the 288-sample Gesture test set one sample
+  is 0.35 points. Version 1.2.0. Accepted as reproduced by the maintainer on 2026-10-24.'

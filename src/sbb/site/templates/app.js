@@ -2,9 +2,10 @@
 // The leaderboard page. It loads data.json, written by `sbb site build`, filters it in the
 // browser and draws the views with Plotly. Nothing is computed here that the builder could do.
 
-const KIND_ORDER = ["data_poisoning", "training_control", "supply_chain", "federated"];
+const KIND_ORDER = ["data_poisoning", "training_control", "supply_chain", "federated", "adaptive"];
 const STAGE_ORDER = ["pre_training", "in_training", "post_training", "inference", "model_detection"];
-const METRIC_ORDER = ["ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict"];
+const TRACK_ORDER = ["lite", "full"];
+const METRIC_ORDER = ["ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict", "spike_rate", "spike_rate_triggered", "synops"];
 
 const state = {
   tab: "matrix",
@@ -19,6 +20,7 @@ const state = {
   seen: { attack: new Set(), defense: new Set() }, // methods offered before, to keep unticked ones
   compareBy: "attack",
   compareItem: null,
+  replicationDataset: "", // "" shows every dataset
   sort: { key: -1, dir: 1 }, // column index and direction of the table, -1 for the default order
 };
 let DATA = null;
@@ -30,7 +32,7 @@ function uniq(values) {
 }
 
 function isPercent(metric) {
-  return metric !== "verdict";
+  return metric !== "verdict" && metric !== "synops";  // raw values, as RAW_METRICS in status.py
 }
 
 function formatValue(metric, value) {
@@ -40,7 +42,8 @@ function formatValue(metric, value) {
 
 function formatStat(metric, stat) {
   if (!stat) return "";
-  return `${formatValue(metric, stat.mean)} ± ${formatValue(metric, stat.std)}`;
+  const ci = stat.ci95 == null ? "" : `, 95% CI ± ${formatValue(metric, stat.ci95)}`;
+  return `${formatValue(metric, stat.mean)} ± ${formatValue(metric, stat.std)} (std${ci})`;
 }
 
 function groupIndex(method, methods) {
@@ -82,11 +85,29 @@ function seedCount(cell) {
   return excluded ? `${cell.seeds.length} of ${cell.seeds.length + excluded}` : String(cell.seeds.length);
 }
 
+function runOn(cell) {
+  // The devices a cell ran on. The sites are in the CSVs.
+  return (cell.devices || []).join(", ") || cell.sites.join(", ");
+}
+
+function display(id, names = DATA?.names) {
+  // The display name of an id from data.json's names, which the builder takes from the cards,
+  // the dataset classes and its terms. Every text of the page names things through here. CSV
+  // downloads keep the ids. Networks and scenarios have no display name and stay ids.
+  return names?.[id] ?? String(id);
+}
+
 function excludedText(cell, separator) {
   return (cell.excluded ?? []).map((e) => `seed ${e.seed} left out: ${e.status}, ${e.reason}`).join(separator);
 }
 
-function matrix(cells, metric, methods) {
+// The builder's flags of a cell (an ineffective attack, a defense that costs clean accuracy or
+// left the model unchanged), by their display names.
+function flagText(cell, separator, names = DATA?.names) {
+  return (cell.flags ?? []).map((f) => display(f, names)).join(separator);
+}
+
+function matrix(cells, metric, methods, names = DATA?.names) {
   const attacks = orderMethods(uniq(cells.map((c) => c.attack)), methods);
   const defenses = orderMethods(uniq(cells.map((c) => c.defense)), methods);
   const byPair = new Map(cells.map((c) => [`${c.attack}|${c.defense}`, c]));
@@ -102,10 +123,12 @@ function matrix(cells, metric, methods) {
       const stat = cell ? cell.metrics[metric] : null;
       const scale = isPercent(metric) ? 100 : 1;
       zRow.push(stat ? stat.mean * scale : null);
-      textRow.push(stat ? `${formatValue(metric, stat.mean)}<br>±${formatValue(metric, stat.std)} (${seedCount(cell)})` : cell ? cell.status : "");
+      const flag = cell?.flags?.length ? " ⚑" : "";
+      textRow.push(stat ? `${formatValue(metric, stat.mean)}${flag}<br>±${formatValue(metric, stat.std)} (${seedCount(cell)})` : cell ? cell.status : "");
+      const pair = `${display(attack, names)} × ${display(defense, names)}`;
       hoverRow.push(cell
-        ? `${attack} × ${defense}<br>${stat ? formatStat(metric, stat) : cell.status}${cell.reason ? `<br>${cell.reason}` : ""}${cell.excluded?.length ? `<br>${excludedText(cell, "<br>")}` : ""}<br>seeds ${cell.seeds.join(", ")} · ${cell.sites.join(", ")}`
-        : `${attack} × ${defense}<br>no result`);
+        ? `${pair}<br>${stat ? formatStat(metric, stat) : cell.status}${flag ? `<br>⚑ ${flagText(cell, ", ", names)}` : ""}${cell.reason ? `<br>${cell.reason}` : ""}${cell.excluded?.length ? `<br>${excludedText(cell, "<br>")}` : ""}<br>seeds ${cell.seeds.join(", ")} · ${runOn(cell)}`
+        : `${pair}<br>no result`);
     }
     z.push(zRow);
     text.push(textRow);
@@ -129,7 +152,7 @@ function matrixCsv(m) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, toCsv, matrixCsv };
+  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, runOn, display, toCsv, matrixCsv };
 }
 
 // ---- Page ----
@@ -168,9 +191,11 @@ function visibleCells() {
 
 function syncControls() {
   state.version = setOptions($("version"), newestFirst(uniq(DATA.cells.map((c) => c.version))), state.version);
-  state.track = setOptions($("track"), uniq(DATA.cells.filter((c) => c.version === state.version).map((c) => c.track)), state.track);
+  const tracks = uniq(DATA.cells.filter((c) => c.version === state.version).map((c) => c.track));
+  const trackOrder = TRACK_ORDER.filter((t) => tracks.includes(t)).concat(tracks.filter((t) => !TRACK_ORDER.includes(t)));
+  state.track = setOptions($("track"), trackOrder, state.track, display);
   const cells = versionCells();
-  state.dataset = setOptions($("dataset"), uniq(cells.map((c) => c.dataset)).sort(), state.dataset);
+  state.dataset = setOptions($("dataset"), uniq(cells.map((c) => c.dataset)).sort(), state.dataset, display);
   const ofDataset = cells.filter((c) => c.dataset === state.dataset);
   state.model = setOptions($("model"), uniq(ofDataset.map((c) => c.arch)).sort(), state.model);
   const scenarios = uniq(ofDataset.filter((c) => c.arch === state.model).map((c) => c.scenario)).sort();
@@ -199,7 +224,7 @@ function syncChecks(id, role) {
       group = info.group;
       const heading = document.createElement("div");
       heading.className = "group";
-      heading.textContent = group.replaceAll("_", " ");
+      heading.textContent = display(group);
       box.append(heading);
     }
     const label = document.createElement("label");
@@ -210,7 +235,7 @@ function syncChecks(id, role) {
       input.checked ? chosen.add(name) : chosen.delete(name);
       render();
     });
-    label.append(input, name);
+    label.append(input, display(name));
     box.append(label);
   }
   const shown = names.filter((n) => chosen.has(n)).length;
@@ -247,8 +272,8 @@ function renderMatrix() {
   const percent = isPercent(state.metric);
   Plotly.react(element, [{
     type: "heatmap",
-    x: m.defenses,
-    y: m.attacks,
+    x: m.defenses.map((d) => display(d)),
+    y: m.attacks.map((a) => display(a)),
     z: m.z,
     text: m.text,
     texttemplate: "%{text}",
@@ -275,7 +300,7 @@ function renderModelAuroc() {
   if (!rows.length) return;
   const heading = Object.assign(document.createElement("h2"), { textContent: "Model detection AUROC" });
   box.append(heading, table(["Defense", "AUROC", "Clean models", "Backdoored models"], rows.map((r) => [
-    r.defense, r.auroc === null ? "needs both" : r.auroc.toFixed(3), r.clean_models, r.backdoored_models,
+    display(r.defense), r.auroc === null ? "needs both" : r.auroc.toFixed(3), r.clean_models, r.backdoored_models,
   ])));
 }
 
@@ -284,7 +309,7 @@ function renderCompare() {
   const cells = visibleCells();
   const by = state.compareBy;
   const items = orderMethods(uniq(cells.map((c) => c[by])), DATA.methods);
-  state.compareItem = setOptions($("compare-item"), items, state.compareItem);
+  state.compareItem = setOptions($("compare-item"), items, state.compareItem, display);
   if (!cells.length || state.compareItem === null) return empty(element, "No results for this selection yet.");
   clearMessage(element);
   const other = by === "attack" ? "defense" : "attack";
@@ -294,7 +319,7 @@ function renderCompare() {
   const scale = isPercent(state.metric) ? 100 : 1;
   Plotly.react(element, [{
     type: "bar",
-    x: names,
+    x: names.map((n) => display(n)),
     y: names.map((n) => byName.get(n).metrics[state.metric].mean * scale),
     error_y: { type: "data", array: names.map((n) => byName.get(n).metrics[state.metric].std * scale), visible: true },
     marker: { color: css("--accent") },
@@ -352,19 +377,21 @@ function downloadMatrix() {
   download(selectionName(`${state.metric}-matrix`), matrixCsv(matrix(visibleCells(), state.metric, DATA.methods)));
 }
 
-// The shown cells, one row each, with the mean and std of every metric, in the matrix order.
+// The shown cells, one row each, with the mean, std and 95% interval of every metric, in the matrix order.
 function downloadTable() {
   const cells = visibleCells();
   const metrics = METRIC_ORDER.filter((m) => cells.some((c) => c.metrics[m]));
   const attacks = orderMethods(uniq(cells.map((c) => c.attack)), DATA.methods);
   const defenses = orderMethods(uniq(cells.map((c) => c.defense)), DATA.methods);
   const rank = (c) => attacks.indexOf(c.attack) * defenses.length + defenses.indexOf(c.defense);
-  const scale = (m, v) => (v === undefined ? "" : Number((v * (isPercent(m) ? 100 : 1)).toFixed(4)));
+  const scale = (m, v) => (v == null ? "" : Number((v * (isPercent(m) ? 100 : 1)).toFixed(4)));
+  const stats = ["mean", "std", "ci95"];
   const rows = [...cells].sort((a, b) => rank(a) - rank(b)).map((c) => [
-    c.attack, c.defense, c.seeds.join(" "), excludedText(c, "; "), c.status,
-    ...metrics.flatMap((m) => [scale(m, c.metrics[m]?.mean), scale(m, c.metrics[m]?.std)]),
+    c.attack, c.defense, c.seeds.join(" "), excludedText(c, "; "), c.status, (c.flags ?? []).join(" "),
+    ...metrics.flatMap((m) => stats.map((s) => scale(m, c.metrics[m]?.[s]))),
+    c.sites.join("; "), (c.devices || []).join("; "),
   ]);
-  const headers = ["attack", "defense", "seeds", "excluded", "status", ...metrics.flatMap((m) => [`${m}_mean`, `${m}_std`])];
+  const headers = ["attack", "defense", "seeds", "excluded", "status", "flags", ...metrics.flatMap((m) => stats.map((s) => `${m}_${s}`)), "sites", "devices"];
   download(selectionName("table"), toCsv([headers, ...rows]));
 }
 
@@ -372,10 +399,10 @@ function renderTable() {
   const cells = visibleCells();
   if (!cells.length) return empty($("table"), "No results for this selection yet.");
   const metrics = METRIC_ORDER.filter((m) => cells.some((c) => c.metrics[m]));
-  const headers = ["Attack", "Defense", "Seeds", "Status", ...metrics.map(metricLabel)];
-  // Sort keys: the text of the first four columns, the mean of a metric column.
+  const headers = ["Attack", "Defense", "Seeds", "Status", "Flags", "Run on", ...metrics.map(metricLabel)];
+  // Sort keys: the text of the first six columns, the mean of a metric column.
   const keyOf = (cell, column) =>
-    [cell.attack, cell.defense, cell.seeds.length, cell.status][column] ?? cell.metrics[metrics[column - 4]]?.mean ?? -Infinity;
+    [display(cell.attack), display(cell.defense), cell.seeds.length, cell.status, flagText(cell, ", "), runOn(cell)][column] ?? cell.metrics[metrics[column - 6]]?.mean ?? -Infinity;
   const column = state.sort.key < headers.length ? state.sort.key : -1;
   // The default order follows the matrix: attacks, then defenses, baselines and oldest papers first.
   const attacks = orderMethods(uniq(cells.map((c) => c.attack)), DATA.methods);
@@ -387,9 +414,9 @@ function renderTable() {
     const order = typeof ka === "number" ? ka - kb : String(ka).localeCompare(String(kb));
     return state.sort.dir * order;
   });
-  const rows = sorted.map((c) => [c.attack, c.defense, seedCount(c), badge(c.status), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
+  const rows = sorted.map((c) => [display(c.attack), display(c.defense), seedCount(c), badge(c.status), flagText(c, ", "), runOn(c), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
   $("table").replaceChildren(table(headers, rows, true));
-  const log = cells.flatMap((c) => c.verifications.map((v) => [c.attack, c.defense, v.seed, v.verifier, v.verifier_org, v.site, v.device, v.date, v.verdict]));
+  const log = cells.flatMap((c) => c.verifications.map((v) => [display(c.attack), display(c.defense), v.seed, v.verifier, v.verifier_org, v.site, v.device, v.date, v.verdict]));
   if (!log.length) return empty($("verification-log"), "No verification of these cells yet.");
   $("verification-log").replaceChildren(table(["Attack", "Defense", "Seed", "Verifier", "Organization", "Site", "Device", "Date", "Verdict"], log));
 }
@@ -410,7 +437,9 @@ function replicationRows() {
 }
 
 function renderReplications() {
-  const rows = replicationRows();
+  const datasets = uniq(DATA.replications.flatMap((r) => r.targets.map((t) => t.dataset))).sort();
+  state.replicationDataset = setOptions($("replication-dataset"), ["", ...datasets], state.replicationDataset, (d) => (d ? display(d) : "All datasets"));
+  const rows = replicationRows().filter((r) => !state.replicationDataset || r.target.dataset === state.replicationDataset);
   const metric = state.metric === "asr" ? "asr_all" : state.metric;
   const plotted = rows.filter((r) => r.metric === metric);
   const element = $("replication-plot");
@@ -418,7 +447,7 @@ function renderReplications() {
     empty(element, `No replication target reports ${metricLabel(metric)}. Choose clean accuracy or ASR.`);
   } else {
     clearMessage(element);
-    const x = plotted.map((r) => `${r.record.method}<br>${r.target.dataset}`);
+    const x = plotted.map((r) => `${display(r.record.method)}<br>${display(r.target.dataset)}`);
     Plotly.react(element, [
       { type: "bar", name: "Paper", x, y: plotted.map((r) => r.reported), marker: { color: css("--muted") } },
       {
@@ -440,10 +469,10 @@ function renderReplications() {
   }
   const headers = ["Attack", "Dataset", "Model", "Metric", "Paper %", "Ours %", "Tolerance", "Status", "Targets confirmed", "Source"];
   $("replication-table").replaceChildren(table(headers, rows.map((r) => [
-    r.record.method,
-    r.target.dataset,
+    display(r.record.method),
+    display(r.target.dataset),
     r.target.arch,
-    r.metric,
+    DATA.metrics[r.metric]?.label ?? r.metric,
     r.reported.toFixed(1),
     r.ours ? `${r.ours.mean.toFixed(1)} ± ${r.ours.std.toFixed(1)}` : "pending",
     `${r.record.tolerance_pp} pp`,
@@ -451,6 +480,61 @@ function renderReplications() {
     r.record.confirmed ? "yes" : "proposed",
     r.record.source,
   ])));
+}
+
+function brokenBy(defense) {
+  // The aware attacks that break a defense in the newest benchmark version (builder: broken_by).
+  const newest = newestFirst(uniq(DATA.broken_by.map((b) => b.version)))[0];
+  return DATA.broken_by.filter((b) => b.defense === defense && b.version === newest);
+}
+
+function renderPareto() {
+  // One plot per attack group: each defense's CA after it against 100 minus the ASR, both
+  // averaged over every attack of the group by the builder, with its Pareto front.
+  const box = $("pareto");
+  const points = DATA.pareto.filter((p) => p.version === state.version && p.track === state.track && p.scenario === state.scenario && state.defenses.has(p.defense));
+  if (!points.length) return empty(box, "No attack cells with both CA and ASR for this selection yet.");
+  if (window.Plotly) for (const plot of box.querySelectorAll(".plot")) Plotly.purge(plot);
+  box.replaceChildren();
+  const groups = uniq(points.map((p) => p.group)).sort((a, b) => KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b));
+  for (const group of groups) {
+    const ofGroup = points.filter((p) => p.group === group);
+    const heading = Object.assign(document.createElement("h2"), { textContent: `${display(group)} attacks` });
+    const plot = Object.assign(document.createElement("div"), { className: "plot" });
+    box.append(heading, plot);
+    const trace = (pts, name, color, mode) => ({
+      type: "scatter",
+      name,
+      mode,
+      x: pts.map((p) => 100 * p.ca),
+      y: pts.map((p) => 100 * (1 - p.asr)),
+      text: pts.map((p) => display(p.defense)),
+      customdata: pts.map((p) => p.attacks),
+      textposition: "top center",
+      marker: { color, size: 10 },
+      line: { color, dash: "dot" },
+      hovertemplate: "%{text}<br>CA %{x:.1f} · 100 − ASR %{y:.1f}<br>mean over %{customdata} attacks<extra></extra>",
+    });
+    const front = ofGroup.filter((p) => p.front).sort((a, b) => a.ca - b.ca);
+    const partial = trace(ofGroup.filter((p) => !p.complete), "Not against every attack", css("--muted"), "markers+text");
+    partial.marker.symbol = "circle-open";
+    // A defense that costs more clean accuracy than the budget allows against some attack does
+    // not count as successful there, so it stays off the front (builder: costly).
+    const costly = trace(ofGroup.filter((p) => p.complete && p.costly), "Costs clean accuracy", css("--muted"), "markers+text");
+    costly.marker.symbol = "x";
+    Plotly.react(plot, [
+      trace(ofGroup.filter((p) => p.complete && !p.costly && !p.front), "Dominated", css("--muted"), "markers+text"),
+      partial,
+      costly,
+      trace(front, "Pareto front", css("--accent"), "lines+markers+text"),
+    ], plotLayout({
+      plot_bgcolor: css("--panel"),
+      height: 440,
+      margin: { l: 70, r: 20, t: 30, b: 60 },
+      xaxis: { title: "Clean accuracy after the defense (%)", gridcolor: css("--line") },
+      yaxis: { title: "100 − ASR (%)", gridcolor: css("--line") },
+    }), { responsive: true, displaylogo: false });
+  }
 }
 
 function renderMethods() {
@@ -463,14 +547,17 @@ function renderMethods() {
       const m = DATA.methods[name];
       const card = document.createElement("article");
       card.className = "card";
-      const title = Object.assign(document.createElement("h3"), { textContent: m.title || name });
-      const meta = Object.assign(document.createElement("div"), { className: "meta", textContent: `${name} · ${role} · ${m.group.replaceAll("_", " ")} · v${m.version}${m.published ? ` · ${m.published}` : ""}` });
+      const title = Object.assign(document.createElement("h3"), { textContent: display(name) });
+      // The id is what specs and the command line use, for example `sbb test --plugin <id>`.
+      const meta = Object.assign(document.createElement("div"), { className: "meta", textContent: `id ${name} · ${role} · ${display(m.group)} · v${m.version}${m.published ? ` · ${m.published}` : ""}` });
       card.append(title, meta);
       const lines = [
+        m.title,
         m.paper,
         m.trigger_domain ? `Trigger domain: ${m.trigger_domain.replace("_", " ")}` : null,
+        m.aware_of && m.aware_of.length ? `Built to beat: ${m.aware_of.map((d) => display(d)).join(", ")}` : null,
         m.resources ? `Defender sees: ${m.resources.join(", ") || "nothing"}` : null,
-        m.adaptation_note ? `SNN adaptation: ${m.adaptation_note}` : null,
+        m.adaptation_note ? `Adaptation: ${m.adaptation_note}` : null,
         m.license_note ? `License: ${m.license_note}` : null,
       ];
       for (const line of lines.filter(Boolean)) card.append(Object.assign(document.createElement("p"), { textContent: line }));
@@ -479,6 +566,11 @@ function renderMethods() {
         const url = m.code_reference.split(" ")[0];
         p.append("Code: ", Object.assign(document.createElement("a"), { href: url, textContent: m.code_reference, rel: "noopener" }));
         card.append(p);
+      }
+      const broken = brokenBy(name);
+      if (broken.length) {
+        const text = broken.map((b) => `${display(b.attack)} (${b.scenario}, ${display(b.track)}, ASR ${formatValue("asr", b.asr)})`).join(", ");
+        card.append(Object.assign(document.createElement("p"), { className: "broken", textContent: `Broken by: ${text}` }));
       }
       if (status.has(name)) {
         const p = Object.assign(document.createElement("p"), { textContent: "Replication " });
@@ -491,7 +583,7 @@ function renderMethods() {
 }
 
 // The filters each view uses: the cell filters and the metric.
-const SCOPES = { matrix: ["cells", "metric"], compare: ["cells", "metric"], table: ["cells"], replications: ["metric"], methods: [] };
+const SCOPES = { matrix: ["cells", "metric"], compare: ["cells", "metric"], pareto: ["cells"], table: ["cells"], replications: ["metric"], methods: [] };
 
 function render() {
   syncControls();
@@ -504,10 +596,10 @@ function render() {
   }
   for (const section of document.querySelectorAll("[data-view]")) section.hidden = section.dataset.view !== state.tab;
   for (const button of document.querySelectorAll("[data-tab]")) button.setAttribute("aria-selected", String(button.dataset.tab === state.tab));
-  if (!window.Plotly && ["matrix", "compare", "replications"].includes(state.tab)) {
+  if (!window.Plotly && ["matrix", "compare", "pareto", "replications"].includes(state.tab)) {
     return empty($(state.tab === "replications" ? "replication-plot" : state.tab), "The plotting library did not load. Check the connection to cdn.plot.ly.");
   }
-  ({ matrix: renderMatrix, compare: renderCompare, table: renderTable, replications: renderReplications, methods: renderMethods })[state.tab]();
+  ({ matrix: renderMatrix, compare: renderCompare, pareto: renderPareto, table: renderTable, replications: renderReplications, methods: renderMethods })[state.tab]();
 }
 
 async function main() {
@@ -525,6 +617,10 @@ async function main() {
   }
   $("matrix-csv").addEventListener("click", downloadMatrix);
   $("table-csv").addEventListener("click", downloadTable);
+  $("replication-dataset").addEventListener("change", (event) => {
+    state.replicationDataset = event.target.value;
+    render();
+  });
   $("compare-by").addEventListener("change", (event) => {
     state.compareBy = event.target.value;
     state.compareItem = null;
@@ -544,9 +640,9 @@ async function main() {
       render();
     });
   }
-  $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. Lite cells are verified on GitHub runners after merge. Full-track cells are self-reported until independent verification (v2). `;
+  $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. Lite cells are verified on GitHub runners after merge. Full-track cells are self-reported until an independent group reproduces a spot check of their submission. `;
   const link = (href, textContent) => Object.assign(document.createElement("a"), { href, textContent });
-  $("footer").append("Download ", link("results.csv", "all results"), " (mean and std over seeds) or ", link("status.csv", "the run status of every cell"), ", as CSV.");
+  $("footer").append("Download ", link("results.csv", "all results"), " (mean, std and 95% t-interval over seeds) or ", link("status.csv", "the run status of every cell"), ", as CSV.");
   render();
 }
 
