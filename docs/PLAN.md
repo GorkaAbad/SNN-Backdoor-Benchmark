@@ -1,6 +1,6 @@
 # SNN Backdoor Benchmark: design and implementation plan
 
-Working name: `sbb` (placeholder, see section 16). Scope: versions v0 to v5. Last updated: 2026-10-26.
+Working name: `sbb` (placeholder, see section 16). Scope: versions v0 to v5. Last updated: 2026-11-25.
 
 ## 0. How to use this document
 
@@ -10,6 +10,7 @@ This document is the single source of truth for the project. It is written for t
 - The interfaces in section 6 are contracts. If one has to change, update this document first, in the same pull request.
 - Items marked **[DECIDE]** are open decisions. Use the stated default until a maintainer changes it.
 - Items marked **[FILL]** need information from the maintainers (URLs, table numbers, names). Leave a TODO and continue.
+- Every section but the roadmap (13) says what holds now. How it came to be is in section 13, in `docs/releases/` and in the git history.
 
 ## 1. Goal and scope
 
@@ -38,7 +39,7 @@ Out of scope until v5: federated learning, ANN-to-SNN conversion, static-image d
 | View | The resources a defense needs to see. |
 | Avail(c) | The resources still in the defender's hands when the attacker holds capabilities c. |
 | DefenderView, AttackerView | Proxy objects that give a plugin only the resources its card declares. |
-| Trigger | Transformation of raw events that activates the backdoor. A `FrameTrigger` (v1) transforms the encoded frames instead. |
+| Trigger | Transformation of raw events that activates the backdoor. A `FrameTrigger` transforms the encoded frames instead. |
 | PoisonSet | Overlay of modified training samples: indices, new samples, new labels. |
 | Defender pool | Clean training samples reserved before the attack. The attacker cannot modify them. |
 | Zoo | Cached clean and backdoored models, published on Hugging Face. |
@@ -58,7 +59,7 @@ Each cell is a security game. The harness plays the challenger:
 3. **Clean reference.** Get the clean model for this scenario and seed (cached, shared by all cells).
 4. **Attack.** The attacker acts within its capabilities through an AttackerView. A poisoning attack returns a PoisonSet and a trigger. A model attack returns a model and a trigger.
 5. **Victim.** For poisoning attacks, the harness trains the victim on the train split with the PoisonSet overlay, using the scenario recipe. The undefended backdoored model is cached and shared.
-6. **Attack validity.** `CA(backdoored) >= CA(clean) - delta`. Otherwise the result is `invalid_attack`. v1 note (user decision of 2026-10-23): validity is judged per seed, and the leaderboard averages a cell over its valid seeds, lists the left-out seeds with their reasons, and shows the cell as invalid only when no seed is valid. On DVS128 Gesture, whose test set has 264 samples, the 3-point budget is 8 samples, close to the spread between seeds. v2 change (user decision of 2026-10-26): an attack whose card sets `keeps_clean_accuracy: false` trades clean accuracy for its backdoor by design, and its cells skip this check. They run the defense like any valid cell and report `ca_clean` and `ca_backdoored` next to the defended metrics. `sneaky_dynamic` is the only one: its joint training with the generator costs clean accuracy in the paper too (CIFAR10-DVS 44 against about 68 clean), and every one of its full-track seeds of 0.9.0 failed the check (drops of 3.5 to 11.8 points on DVS128 Gesture, 20 to 29 on CIFAR10-DVS). Its implementation does not change, so it stays at version 1.2.0, its cell keys and cached victims stay the same, and only the 48 invalid results of 0.9.0 rerun, from the defense step on.
+6. **Attack validity.** `CA(backdoored) >= CA(clean) - delta`. Otherwise the result is `invalid_attack`. Validity is judged per seed (user decision of 2026-10-23). The leaderboard averages a cell over its valid seeds, lists the left-out seeds with their reasons, and shows the cell as invalid only when no seed is valid. On DVS128 Gesture, whose test set has 264 samples, the 3-point budget is 8 samples, close to the spread between seeds. An attack whose card sets `keeps_clean_accuracy: false` trades clean accuracy for its backdoor by design, and its cells skip this check (user decision of 2026-10-26). They run the defense like any valid cell and report `ca_clean` and `ca_backdoored` next to the defended metrics. `sneaky_dynamic` is the only one: its joint training with the generator costs clean accuracy in the paper too (CIFAR10-DVS 44 against about 68 clean).
 7. **Defense.** The harness builds a DefenderView with exactly the declared resources. The defense acts according to its stage (3.3). Pre-training and in-training defenses trigger a new victim training run with the sanitized data or the hooks.
 8. **Metrics.** Compute the metrics (section 8) on the clean test set and on the triggered test set. Every metric but `asr_all` counts only triggered samples whose true label is not the target.
 
@@ -68,13 +69,13 @@ Scenario kinds:
 
 - `data_poisoning`: modifies up to `poison_rate x |train|` samples outside the defender pool. Labels may change (dirty-label) or not (clean-label). The victim trains.
 - `training_control`: controls training (loss, schedule, neuron hyperparameters) for the scenario architecture and returns weights.
-- `supply_chain`: receives a clean trained model from the zoo, modifies its weights, returns weights. Neuron parameters can change only where they are weights, such as the trainable time constant of PLIF neurons (v1 clarification: the victim is stored as a state dict and rebuilt from the scenario's `ArchSpec`).
+- `supply_chain`: receives a clean trained model from the zoo, modifies its weights, returns weights. Neuron parameters can change only where they are weights, such as the trainable time constant of PLIF neurons. The victim is stored as a state dict and rebuilt from the scenario's `ArchSpec`.
 - `federated` (v5): controls k of n clients.
 
 Other capability fields:
 
 - `labels`: `clean` or `dirty`. The harness checks it automatically against the PoisonSet.
-- `trigger_domain`: `raw_events` (default) or `frames`. Frame-level injection is a stronger capability because it assumes access after preprocessing. v1: a `frames` attack has a `FrameTrigger`, which acts on the encoded frames [T, P, H, W] of the poisoned training samples and of the triggered test inputs. The Game refuses a trigger of the other domain, and a poison set that edits frames under a `raw_events` card (`ThreatModelViolation`). A train split poisoned in frames exists only as frames: `TrainSetView` refuses raw-event access there, because re-encoding the clean events and comparing them with the frames would reveal every poisoned sample. A defense that reads raw events of such a split fails the cell.
+- `trigger_domain`: `raw_events` (default) or `frames`. Frame-level injection is a stronger capability because it assumes access after preprocessing. A `frames` attack has a `FrameTrigger`, which acts on the encoded frames [T, P, H, W] of the poisoned training samples and of the triggered test inputs. The Game refuses a trigger of the other domain, and a poison set that edits frames under a `raw_events` card (`ThreatModelViolation`). A train split poisoned in frames exists only as frames: `TrainSetView` refuses raw-event access there, because re-encoding the clean events and comparing them with the frames would reveal every poisoned sample. A defense that reads raw events of such a split fails the cell.
 
 Knowledge fields:
 
@@ -572,7 +573,7 @@ flowchart TD
 2. **Composition over inheritance for attacks.** A poisoning attack combines a `Trigger`, a `Selector` and a `LabelPolicy`. Most new attacks are only a new trigger.
 3. **One training loop.** Everything trains through `Trainer`. In-training defenses and training-control attacks provide `TrainerHooks`.
 4. **Proxies enforce threat models.** `DefenderView` and `AttackerView` expose only what the card declares. Any other access raises `ThreatModelViolation`.
-5. **Raw events first.** Triggers and PoisonSets act on raw `EventSample`s. Representations run afterwards. Only an attack whose card declares `trigger_domain: frames` uses a `FrameTrigger`, which the DataModule applies to the encoded frames (v1).
+5. **Raw events first.** Triggers and PoisonSets act on raw `EventSample`s. Representations run afterwards. Only an attack whose card declares `trigger_domain: frames` uses a `FrameTrigger`, which the DataModule applies to the encoded frames.
 6. **One data pipeline.** Only `DataModule` builds loaders. Attacks return overlays, never dataset copies.
 7. **Uniform model surface.** Every architecture is wrapped in `SNNModel`. Defenses reach internal activity only through probes and `named_neurons()`, so an SNN adaptation (for example "activation = spike rate over T") is defined once and reused by every port.
 8. **Configs are data.** Scenarios, budgets and hyperparameters live in YAML validated by pydantic. There are no per-experiment scripts.
@@ -620,12 +621,12 @@ sbb/                                  # repository root, name [DECIDE]
 
 | Repository | Type | Content | Version |
 |---|---|---|---|
-| `<hf-org>/sbb-zoo` | model | `<bench_version>/<model_key>/model.safetensors` and `checkpoint.json` | v1 |
+| `<hf-org>/checkpoints` | model | `<bench_version>/<model_key>/model.safetensors` and `checkpoint.json` | v1 |
 | `<hf-org>/sbb-data` | dataset | dataset mirrors where the license allows redistribution, optional frame caches | v1 |
 | `<hf-org>/sbb-results` | dataset | read-only mirror of `results/` and `verifications/` | v2 |
 | `<hf-org>/sbb-leaderboard` | Space | optional mirror of the leaderboard | v2 |
 
-v1 note: `<hf-org>` is the organization `sbb-zoo` (display name SNN-Backdoor-Benchmark, the organization named in the provenance of the published results). The zoo is `sbb-zoo/checkpoints`, the default of `sbb zoo`, and its model card is `docs/hub/checkpoints.md`. Later repositories follow the same pattern (`sbb-zoo/data`, `sbb-zoo/results`). A maintainer uploads the models from the site whose cache holds them, with a fine-grained token that writes only to the zoo.
+`<hf-org>` is the organization `sbb-zoo` (display name SNN-Backdoor-Benchmark, the organization named in the provenance of the published results). The zoo is `sbb-zoo/checkpoints`, the default of `sbb zoo`, and its model card is `docs/hub/checkpoints.md`. The other repositories keep the names of the table, so the results mirror is `sbb-zoo/sbb-results`. A maintainer uploads the models from the site whose cache holds them, with a fine-grained token that writes only to the zoo.
 
 Rules: weights only as safetensors. Every Hub reference in a spec or manifest pins a commit revision. Free public storage on the Hub is best effort, which is enough because SNN checkpoints are small. Contributors may host their own models in their own Hub repos and reference them by revision and sha256 in their manifest.
 
@@ -633,7 +634,7 @@ The leaderboard itself is a static site built from `results/` and served by GitH
 
 ## 6. Interfaces
 
-These signatures are contracts. Python 3.11, full type hints, pydantic v2 for every spec, card and record. Docstrings and bodies are omitted here.
+These signatures are contracts. Python 3.11, full type hints, pydantic v2 for every spec, card and record. Docstrings and bodies are omitted here. Every model forbids unknown keys, so a misspelled key fails when its file loads, and a value sbb cannot run is not valid either.
 
 ### 6.1 Cards and views (`sbb.core.cards`, `sbb.core.views`)
 
@@ -642,7 +643,7 @@ class ScenarioKind(StrEnum):
     DATA_POISONING = "data_poisoning"
     TRAINING_CONTROL = "training_control"
     SUPPLY_CHAIN = "supply_chain"
-    FEDERATED = "federated"            # v5
+    FEDERATED = "federated"            # v5, cards refuse it until then
 
 class Stage(StrEnum):
     PRE_TRAINING = "pre_training"
@@ -669,18 +670,18 @@ class Capabilities(BaseModel, frozen=True):
 
 class Knowledge(BaseModel, frozen=True):
     architecture: Literal["known", "unknown"] = "unknown"
-    data: Literal["full"] = "full"                          # v2: partial removed until supported
+    data: Literal["full"] = "full"                          # partial knowledge is not supported
     defense: str = "oblivious"                                # or "aware:<defense_id>[,<defense_id>...]"
 
 class CardBase(BaseModel):
     name: str                              # registry name, snake_case, unique
-    display_name: str                      # v2: the name every page and table shows, unique per role
+    display_name: str                      # the name every page and table shows, unique per role
     version: str                           # semver of the implementation
     title: str
     paper: str | None = None
     code_reference: str | None = None
     license_note: str | None = None
-    adaptation_note: str | None = None     # v2: SNN adaptation of a defense, or what an sbb variant changes
+    adaptation_note: str | None = None     # SNN adaptation of a defense, or what an sbb variant changes
     hparams: dict[str, dict[str, Any]] = {}  # keys: "default" or "<dataset>/<arch>"
     def hparams_for(self, dataset: str, arch: str) -> dict[str, Any]: ...   # default merged with override
     @classmethod
@@ -690,7 +691,7 @@ class AttackCard(CardBase):
     kind: ScenarioKind
     capabilities: Capabilities
     knowledge: Knowledge
-    keeps_clean_accuracy: bool = True                         # v2: False skips rule 6 (4.8)
+    keeps_clean_accuracy: bool = True                         # False skips the validity check (3.1, rule 6)
     def avail(self, budget: "Budget") -> View: ...           # Avail table of section 3.4
 
 class DefenseCard(CardBase):
@@ -714,7 +715,7 @@ class EventSample:
 
 class EventDataset(ABC):
     name: ClassVar[str]
-    display_name: ClassVar[str]                   # v2: the name pages and tables show, for example "N-MNIST"
+    display_name: ClassVar[str]                   # the name pages and tables show, for example "N-MNIST"
     sensor_size: ClassVar[tuple[int, int, int]]   # (W, H, P)
     num_classes: ClassVar[int]
     def __init__(self, root: Path) -> None: ...
@@ -760,7 +761,7 @@ class PoisonSet:
     indices: np.ndarray       # dataset indices, unique, disjoint from the defender pool
     samples: tuple[EventSample, ...]
     labels: np.ndarray        # labels used for training
-    frame_trigger: Callable[[torch.Tensor, np.random.Generator], torch.Tensor] | None = None  # v1
+    frame_trigger: Callable[[torch.Tensor, np.random.Generator], torch.Tensor] | None = None
     def validate(self, budget: Budget, n_train: int, original_labels: np.ndarray,
                  label_policy: Literal["clean", "dirty"], pool: np.ndarray) -> None: ...  # raises BudgetViolation
 
@@ -783,9 +784,9 @@ def rng_for(seed: int, index: int) -> np.random.Generator: ...   # per-sample RN
 
 Frames of clean samples are cached by (dataset, split, representation). Overlay samples are encoded on the fly.
 
-v1 change: the `PoisonSet` of a `frames` attack carries its frame trigger, and every loader over the poisoned split applies it to the encoded frames of the poisoned samples with `rng_for(seed, index)`. `triggered_loader` takes the trigger of the test inputs as `events` (raw events, before the representation) or `frames` (after it).
+The `PoisonSet` of a `frames` attack carries its frame trigger and holds no raw events. Every loader over the poisoned split applies the trigger to the cached clean frames of the poisoned samples with `rng_for(seed, index)`. `triggered_loader` takes the trigger of the test inputs as `events` (raw events, before the representation) or `frames` (after it).
 
-v0 notes. `rng_for` lives in `sbb.utils.determinism` and `DatasetSpec` in `sbb.data.splits`. The frame cache is one uint16 `.npy` file read with `mmap_mode="r"` and `allow_pickle=False`, so N-MNIST frames do not have to fit in memory. `DataModule` also exposes `input_shape` (P, H, W), `encode(sample)` and `labels` (all dataset labels). `Budget.max_poison(n_train)` is the single place that rounds the poison budget. `PoisonSet.by_index()` maps each poisoned index to its (sample, label). A `Representation` takes its `ReprSpec` in the constructor (`FrameRepr(spec)`), and the frame cache key uses that spec. `FrameRepr` follows the frame boundaries of SpikingJelly's `integrate_events_by_fixed_frames_number` and rejects events outside the sensor.
+`rng_for` lives in `sbb.utils.determinism` and `DatasetSpec` in `sbb.data.splits`. The frame cache is one uint16 `.npy` file read with `mmap_mode="r"` and `allow_pickle=False`, so N-MNIST frames do not have to fit in memory. `DataModule` also exposes `input_shape` (P, H, W), `encode(sample)` and `labels` (all dataset labels). `Budget.max_poison(n_train)` is the single place that rounds the poison budget. `PoisonSet.by_index()` maps each poisoned index to its (sample, label). A `Representation` takes its `ReprSpec` in the constructor (`FrameRepr(spec)`), and the frame cache key uses that spec. `FrameRepr` follows the frame boundaries of SpikingJelly's `integrate_events_by_fixed_frames_number` and rejects events outside the sensor.
 
 ### 6.3 Models (`sbb.models`)
 
@@ -805,16 +806,16 @@ class ArchSpec(BaseModel, frozen=True):
     backend: Literal["torch", "cupy"] = "torch"
     kwargs: dict[str, Any] = {}
 
-class SNNModel(nn.Module):           # v0: one concrete wrapper around a net mapping [T, B, P, H, W] to [T, B, K]
+class SNNModel(nn.Module):           # one concrete wrapper around a net mapping [T, B, P, H, W] to [T, B, K]
     """Uniform surface over every architecture.
     forward takes x [B, T, P, H, W], resets neuron states first, runs in multi-step mode,
-    and returns logits [B, K] as the mean over T of a non-spiking linear readout."""   # v1: or of voted spikes, see 13.6
+    and returns logits [B, K] as the mean over T of a non-spiking linear readout."""   # or of voted spikes, see 13.6
     def forward(self, x: torch.Tensor) -> torch.Tensor: ...
-    def steps(self, x: torch.Tensor) -> torch.Tensor: ...   # v2: the output [T, B, K] before the mean
+    def steps(self, x: torch.Tensor) -> torch.Tensor: ...   # the output [T, B, K] before the mean
     def reset(self) -> None: ...
     def named_neurons(self) -> Iterator[tuple[str, nn.Module]]: ...
     def probe(self, layer: str, kind: Literal["spikes", "membrane"],
-              detach: bool = True) -> "Probe": ...   # v1: detach False keeps the autograd graph
+              detach: bool = True) -> "Probe": ...   # detach False keeps the autograd graph
     @property
     def spec(self) -> ArchSpec: ...
 
@@ -840,7 +841,7 @@ def save_checkpoint(model: SNNModel, directory: Path, model_key: str) -> Checkpo
 def load_checkpoint(directory: Path) -> SNNModel: ...   # rebuilds from ArchSpec, loads safetensors, never unpickles
 ```
 
-v0 change: builders receive the input shape instead of the number of input channels, because the flatten size of `tiny_lif_cnn` depends on H and W. `SNNModel` is a concrete wrapper: every architecture is a network from `[T, B, P, H, W]` to `[T, B, K]`, so subclasses would add nothing. `build_model(arch, input_shape, num_classes)` plays the role of `ModelFactory`.
+Builders receive the input shape, not the number of input channels, because the flatten size of `tiny_lif_cnn` depends on H and W. `SNNModel` is a concrete wrapper: every architecture is a network from `[T, B, P, H, W]` to `[T, B, K]`, so subclasses would add nothing. `build_model(arch, input_shape, num_classes)` plays the role of `ModelFactory`.
 
 ### 6.4 Storage (`sbb.utils.storage`)
 
@@ -859,7 +860,7 @@ class ArtifactCache:
     def get_or_build(self, key: str, build: Callable[[Path], None]) -> Path: ...   # local, then remote, then build
 ```
 
-v1 notes (task 7). `HubStore(repo_id, revision, prefix, repo_type)` keeps artifacts as `<prefix>/<key>/` folders, with the benchmark version as the zoo's prefix. It reads the repository's file list once, `keys()` lists the artifacts under the prefix, and `put_many` uploads several artifacts in one commit. `sbb zoo push VERSION --repo <hf-org>/sbb-zoo` uploads the cached artifacts that the results of VERSION reference (models as safetensors, verdicts as JSON), and `sbb zoo pull VERSION --repo ... --revision ...` copies them into the local cache, where every run looks first. The organization is `SNN-Backdoor-Benchmark` (5.2).
+`HubStore(repo_id, revision, prefix, repo_type)` keeps artifacts as `<prefix>/<key>/` folders, with the benchmark version as the zoo's prefix. It reads the repository's file list once, `keys()` lists the artifacts under the prefix, and `put_many` uploads several artifacts in one commit. `sbb zoo push VERSION` uploads the cached artifacts that the results of VERSION reference (models as safetensors, verdicts as JSON) to the zoo, `sbb-zoo/checkpoints` unless `--repo` names another (5.2), and `sbb zoo pull VERSION [--revision ...]` copies them into the local cache, where every run looks first.
 
 ### 6.5 Attacks (`sbb.core.plugins`, implementations in `sbb.attacks`)
 
@@ -873,21 +874,21 @@ class AttackerView:
     arch: ArchSpec                         # only if knowledge.architecture == "known" or kind needs it
     trainer: Trainer                       # training_control, supply_chain
     clean_model: SNNModel                  # supply_chain (a copy of the zoo model)
-    def poisoned_loader(self, poison: PoisonSet, batch_size: int, shuffle: bool = True) -> DataLoader: ...  # v1
+    def poisoned_loader(self, poison: PoisonSet, batch_size: int, shuffle: bool = True) -> DataLoader: ...
 
 class Attack(ABC):
     card: ClassVar[AttackCard]
-    trigger: Trigger | FrameTrigger        # v1: the trigger of the test inputs, set in __init__
-    source_classes: tuple[int, ...] = ()   # v2: a source-specific backdoor's classes, the only ones ASR counts
+    trigger: Trigger | FrameTrigger        # the trigger of the test inputs, set in __init__
+    source_classes: tuple[int, ...] = ()   # a source-specific backdoor's classes, the only ones ASR counts
     def __init__(self, hparams: dict[str, Any], target: int) -> None: ...
 
 class Trigger(ABC):                        # trigger_domain raw_events
     def fit(self, view: AttackerView) -> None: ...          # optional, learned triggers only
-    def learned(self) -> nn.Module | None: ...              # v1: a model attack's learned part
+    def learned(self) -> nn.Module | None: ...              # a model attack's learned part
     @abstractmethod
     def apply(self, sample: EventSample, rng: np.random.Generator) -> EventSample: ...
 
-class FrameTrigger(ABC):                   # v1, trigger_domain frames
+class FrameTrigger(ABC):                   # trigger_domain frames
     def fit(self, view: AttackerView) -> None: ...          # optional, learned or data-dependent
     def learned(self) -> nn.Module | None: ...              # a model attack's learned part
     @abstractmethod
@@ -913,7 +914,7 @@ class ModelAttack(Attack):
     def make_model(self, view: AttackerView) -> SNNModel: ...
 ```
 
-v1 change: every attacker sees the clean train split, because a supply-chain attacker also needs data, for example to fine-tune the zoo model on poisoned samples, and `poisoned_loader` gives a loader over the attacker's own poison set for training. Model attacks always get the scenario architecture, because they must return it: the Game raises `ThreatModelViolation` when `make_model` returns a model whose `ArchSpec`, input shape or number of classes differ from the scenario's, whose state dict does not load strictly into a fresh model of that architecture, or whose `repr` differs from that fresh model with the returned weights (a neuron parameter changed in place, which a checkpoint would lose). The Game skips `make_model` when the victim is already cached, so a model attack's trigger may depend only on what `__init__` sets, and the attack contract test checks this. A model attack with a learned trigger exposes the trained part through `Trigger.learned()` or `FrameTrigger.learned()` (an `nn.Module`, None by default). The Game stores its state as `trigger.safetensors` next to the victim and restores it when the victim comes from the cache, and the contract test checks that this state restores the trigger. The first such port is the Sneaky Spikes dynamic attack. `ScenarioInfo` gains `input_shape`, the (P, H, W) of one frame after the representation, so an attacker can build the scenario network. Until the zoo of task 7 exists, the clean model of a supply-chain cell is the clean model of the local cache.
+Every attacker sees the clean train split, because a supply-chain attacker also needs data, for example to fine-tune the zoo model on poisoned samples, and `poisoned_loader` gives a loader over the attacker's own poison set for training. Model attacks always get the scenario architecture, because they must return it: the Game raises `ThreatModelViolation` when `make_model` returns a model whose `ArchSpec`, input shape or number of classes differ from the scenario's, whose state dict does not load strictly into a fresh model of that architecture, or whose `repr` differs from that fresh model with the returned weights (a neuron parameter changed in place, which a checkpoint would lose). The Game skips `make_model` when the victim is already cached, so a model attack's trigger may depend only on what `__init__` sets, and the attack contract test checks this. A model attack with a learned trigger, such as the Sneaky Spikes dynamic attack, exposes the trained part through `Trigger.learned()` or `FrameTrigger.learned()` (an `nn.Module`, None by default). The Game stores its state as `trigger.safetensors` next to the victim and restores it when the victim comes from the cache, and the contract test checks that this state restores the trigger. `ScenarioInfo.input_shape` is the (P, H, W) of one frame after the representation, so an attacker can build the scenario network. The clean model of a supply-chain cell comes from the local cache, which `sbb zoo pull` fills from the zoo.
 
 A typical attack is configuration only:
 
@@ -931,7 +932,7 @@ class StaticPatch(PoisoningAttack):
 
 `no_attack` is a `PoisoningAttack` that selects nothing and whose trigger is the identity. Its cells give the clean reference and the natural ASR.
 
-v1 change: `Attack.trigger_test` is replaced by the attribute `trigger`, a `Trigger` or a `FrameTrigger` as the card's `trigger_domain` says, and the Game builds the triggered test set from it. `PoisoningAttack.poison` selects the samples before it calls `trigger.fit`, so fitting a trigger does not change which samples are poisoned. It applies a raw-event trigger itself and attaches a frame trigger to the `PoisonSet`. A model attack's trigger must not change in `make_model`, which the contract test checks. The shared parts (task 5) are:
+`Attack.trigger` is a `Trigger` or a `FrameTrigger`, as the card's `trigger_domain` says, and the Game builds the triggered test set from it. `PoisoningAttack.poison` selects the samples before it calls `trigger.fit`, so fitting a trigger does not change which samples are poisoned. It applies a raw-event trigger itself and attaches a frame trigger to the `PoisonSet`. A model attack's trigger must not change in `make_model`, which the contract test checks. The shared parts are:
 
 - Raw-event triggers in `sbb.attacks.triggers`: `IdentityTrigger`, `PatchTrigger`.
 - Frame triggers in `sbb.attacks.frame_triggers`, ports of the official code: `FramePatchTrigger`, `MovingPatchTrigger` and `SmartPatchTrigger` (Sneaky Spikes), `FlashTrigger` (Flashy Backdoor). `SmartPatchTrigger.fit` picks its cell, polarity mode and random walk once from the train split, and the test inputs get the same trigger. The official code draws them again from the test set. The walk comes from a child of the view's generator, so like the official walk it depends on the seed and not on the poison rate.
@@ -950,11 +951,12 @@ class TrainSetView:
     def __getitem__(self, i: int) -> EventSample: ...
     def labels(self) -> np.ndarray: ...
     def loader(self, batch_size: int, indices: np.ndarray | None = None, shuffle: bool = False) -> DataLoader: ...
+    def trained_model(self) -> SNNModel | None: ...   # a copy of the victim the recipe trains on this split
 
 class DefenderView:
     """Proxy built from the defense card. Undeclared access raises ThreatModelViolation."""
     scenario: ScenarioInfo         # always
-    arch: ArchSpec                 # always, public (3.3), v1: a DataDefense builds its reference model from it
+    arch: ArchSpec                 # always, public (3.3), so a defense can build its own reference model
     trainer: Trainer               # always, fresh, configured with the scenario recipe
     rng: np.random.Generator       # always
     model: SNNModel                # Resource.MODEL, a copy
@@ -976,8 +978,8 @@ class TrainingDefense(Defense):
 class ModelDefense(Defense):
     @abstractmethod
     def repair(self, view: DefenderView) -> SNNModel: ...          # the model whose weights the Game stores
-    def extra(self, model: SNNModel) -> nn.Module | None: ...      # v1: state outside the weights, stored next to them
-    def attach(self, model: SNNModel, extra: nn.Module) -> None: ...  # v1: applies extra to the model loaded back
+    def extra(self, model: SNNModel) -> nn.Module | None: ...      # state outside the weights, stored next to them
+    def attach(self, model: SNNModel, extra: nn.Module) -> None: ...  # applies extra to the model loaded back
 
 class InputDefense(Defense):
     threshold: float
@@ -991,9 +993,9 @@ class DetectionDefense(Defense):
     def verdict(self, view: DefenderView) -> float: ...             # higher means more likely backdoored
 ```
 
-v1 notes on how the Game plays each stage. The card's stage decides, and the class must subclass the matching base. A card must declare the resources its stage needs (the "Required resources" column of 3.3), which the card validation enforces, so a pre-training or in-training defense is N/A against model attacks. A pre-training defense returns unique positions of the train set (checked), and the victim is retrained on the poisoned split restricted to them. An in-training defense's hooks are passed to a fresh training run. Both retrained models and post-training repairs are cached under the defense key, so `sanitize`, `hooks` and `repair` run only on a cache miss. An input defense is fitted in every cell (its fitted state is not cached), and it rejects an input when its score is above `threshold`. A detection defense's verdict is cached under the defense key as `verdict.json` and reported in the cell's metrics as `verdict`. Input and detection defenses leave the model unchanged, so their cells have no `defended_model` artifact.
+How the Game plays each stage. The card's stage decides, and the class must subclass the matching base. A card must declare the resources its stage needs (the "Required resources" column of 3.3), which the card validation enforces, so a pre-training or in-training defense is N/A against model attacks. A pre-training defense returns unique positions of the train set (checked), and the victim is retrained on the poisoned split restricted to them. An in-training defense's hooks are passed to a fresh training run. Both retrained models and post-training repairs are cached under the defense key, so `sanitize`, `hooks` and `repair` run only on a cache miss. An input defense is fitted in every cell (its fitted state is not cached), and it rejects an input when its score is above `threshold`. A detection defense's verdict is cached under the defense key as `verdict.json` and reported in the cell's metrics as `verdict`. Input and detection defenses leave the model unchanged, so their cells have no `defended_model` artifact. `TrainSetView.trained_model()` gives a defense with `train_set` a copy of the victim, the model it would train itself from the same split and seed, so it reveals nothing the threat model hides and saves that training.
 
-v1 shared parts of the SNN adaptations (task 5), in `sbb.defenses.utils`, chosen from the official code of the group A defenses:
+Shared parts of the SNN adaptations, in `sbb.defenses.utils`, chosen from the official code of the group A defenses:
 
 - `channel_means(model, module, loader, device)`: the mean output per channel of any layer over a loader, in eval mode. On a spiking neuron layer it is the firing rate. sbb's fine-pruning ranks the neurons of the last conv block by it (section 12). It takes any iterable of batches.
 - `zero_channels(module, channels)`: prunes output channels of a convolution or a batch norm by zeroing their weight and bias. Pruning has to live in the weights, because the Game stores a defended model as a state dict. Zeroing a convolution keeps the shift of the following batch norm (Flashy's fine-pruning), and zeroing a batch norm silences the channel (CLP).
@@ -1001,7 +1003,7 @@ v1 shared parts of the SNN adaptations (task 5), in `sbb.defenses.utils`, chosen
 - `superpose(x, overlay)`: STRIP's superposition. Inputs reach an input defense as frames, so it adds the frames, as Flashy's SNN STRIP does.
 - `SNNModel.probe(layer, "membrane", detach=False)`: membrane potentials with their autograd graph, for TMPBD, which optimizes inputs to raise the output layer's membrane potential.
 
-Learned neuron masks (ANP, group B) come with that port.
+ANP keeps its learned neuron masks in its own module.
 
 `no_defense` is a `ModelDefense` with view `{model}` that returns the model unchanged. A typical defense:
 
@@ -1026,7 +1028,7 @@ class TrainSpec(BaseModel, frozen=True):
     weight_decay: float = 0.0
     schedule: Literal["none", "cosine"] = "cosine"
     augment: Literal["none"] = "none"     # augmentation can remove triggers, so none until decided
-    amp: Literal[False] = False         # v2: mixed precision is not supported, kept for the cell keys
+    amp: Literal[False] = False         # mixed precision is not supported, kept for the cell keys
 
 @dataclass
 class TrainState:
@@ -1036,7 +1038,7 @@ class TrainState:
     optimizer: torch.optim.Optimizer
     batch_indices: torch.Tensor           # dataset indices of the current batch
     per_sample_loss: torch.Tensor | None  # filled before hooks are called
-    inputs: torch.Tensor                  # v1: the batch x, for attacks that train a trigger generator
+    inputs: torch.Tensor                  # the batch x, for attacks that train a trigger generator
 
 class TrainerHooks:
     """No-op defaults. Override only what you need. At most one hook set may override the loss."""
@@ -1053,11 +1055,11 @@ class Trainer:
     def evaluate(self, model: SNNModel, loader: DataLoader, ties: Ties = "none") -> dict[str, float]: ...
 ```
 
-v0 change: the Trainer takes no seed. The Game seeds before building each cached artifact, so a stage gives the same weights whether the stages before it were trained or loaded from the cache. Loaders are seeded by the `DataModule`. `SGD` uses momentum 0.9. `amp` raises `NotImplementedError` until it is needed.
+The Trainer takes no seed. The Game seeds before building each cached artifact, so a stage gives the same weights whether the stages before it were trained or loaded from the cache. Loaders are seeded by the `DataModule`. `SGD` uses momentum 0.9. NDSBM and ANP keep their own optimizer loops, since they fit defense parameters (clamps, masks) with the weights frozen and train no model.
 
-v1 change (task 13, user decision of 2026-10-22): `ties` is `"none"` or `"first"`. With `"none"`, the default, an input whose top two scores are within 1e-6 gets the prediction -1 (`NO_PREDICTION`). The voting readouts of the full-track networks output multiples of 1 / (10 T), so silent and tied outputs are common, and `argmax` would send them to class 0. The Game uses `"first"` (plain `argmax`, the papers' rule) only for replication cells.
+`ties` is `"none"` or `"first"` (user decision of 2026-10-22). With `"none"`, the default, an input whose top two scores are within 1e-6 gets the prediction -1 (`NO_PREDICTION`). The voting readouts of the full-track networks output multiples of 1 / (10 T), so silent and tied outputs are common, and `argmax` would send them to class 0. The Game uses `"first"` (plain `argmax`, the papers' rule) only for replication cells.
 
-v1 change: `TrainSpec.loss` is `cross_entropy` (default) or `mse`. `mse` compares the model output with one-hot targets, which is how the ported papers train their networks on firing rates. `SNNModel` returns the mean over T of the network output, which for the papers' networks is a firing rate per class, not logits of a linear readout.
+`TrainSpec.loss` is `cross_entropy` (default) or `mse`. `mse` compares the model output with one-hot targets, which is how the ported papers train their networks on firing rates. `SNNModel` returns the mean over T of the network output, which for the papers' networks is a firing rate per class, not logits of a linear readout.
 
 ### 6.8 Scenario, cell, results and game (`sbb.core`)
 
@@ -1072,14 +1074,14 @@ class Scenario(BaseModel, frozen=True):
 
 class Cell(BaseModel, frozen=True):
     benchmark_version: str
-    track: Literal["lite", "full", "replication"]   # v1: replication
+    track: Literal["lite", "full", "replication"]
     scenario: Scenario
     attack: str
     attack_version: str
     defense: str
     defense_version: str
     seed: int
-    attack_hparams: dict[str, Any] = {}  # v1: merged over the card's, the paper's in a replication
+    attack_hparams: dict[str, Any] = {}  # merged over the card's, the paper's in a replication
     def key(self) -> str: ...            # see 7.6
 
 class Provenance(BaseModel):
@@ -1099,7 +1101,7 @@ class Provenance(BaseModel):
     submitter_org: str
     started_at: datetime
     duration_s: float
-    carried_from: str | None = None      # v2: key of the earlier result this one copies (sbb carry-over)
+    carried_from: str | None = None      # key of the earlier result this one copies (sbb carry-over)
 
 class CellResult(BaseModel):
     key: str
@@ -1112,7 +1114,7 @@ class CellResult(BaseModel):
 
 class Metric(ABC):
     name: ClassVar[str]
-    stages: ClassVar[frozenset[Stage]] = frozenset(Stage)   # v1: defense stages whose cells report it
+    stages: ClassVar[frozenset[Stage]] = frozenset(Stage)   # defense stages whose cells report it
     @abstractmethod
     def compute(self, ctx: "EvalContext") -> float: ...
 
@@ -1122,7 +1124,7 @@ class Game:
     def run(self, cell: Cell) -> CellResult: ...   # template method following section 4.7
 ```
 
-v0 notes. `data_root` holds one directory per dataset. `site` and `executor` go into the provenance. `EvalContext` holds the predictions and true labels on the clean and triggered test sets and the target, and, in v1, the accepted masks and scores of an input defense. A poisoning attack with an empty PoisonSet (`no_attack`) stores the clean weights under its own `model_key`, because its victim run would train exactly the same weights. Keys still follow 7.6. `collect_provenance` reads `SBB_SUBMITTER`, `SBB_SUBMITTER_ORG` and `SBB_IMAGE_DIGEST` from the environment. It records the git commit, the `uv.lock` hash and the SpikingJelly version read once, when `sbb.core.result` is imported, so a long run never records code that changed on disk after it started. v2 change: without git, as in the container image, the commit comes from `SBB_GIT_COMMIT`, which the image build sets, and the lockfile is the nearest `uv.lock` above the code. A Slurm task in an image pinned by digest gets `SBB_IMAGE_DIGEST`, since a container cannot read its own digest. The PoisonSet is rebuilt in every cell and only its key is recorded, a deviation from rule 9 of 4.8: caching it must wait for learned triggers (v1), because a cached set would skip `Trigger.fit`.
+`data_root` holds one directory per dataset. `site` and `executor` go into the provenance. `EvalContext` holds the predictions and true labels on the clean and triggered test sets and the target, and the accepted masks and scores of an input defense. A poisoning attack with an empty PoisonSet (`no_attack`) stores the clean weights under its own `model_key`, because its victim run would train exactly the same weights. Keys still follow 7.6. `collect_provenance` reads `SBB_SUBMITTER`, `SBB_SUBMITTER_ORG` and `SBB_IMAGE_DIGEST` from the environment. It records the git commit, the `uv.lock` hash and the SpikingJelly version read once, when `sbb.core.result` is imported, so a long run never records code that changed on disk after it started. Without git, as in the container image, the commit comes from `SBB_GIT_COMMIT`, which the image build sets, and the lockfile is the nearest `uv.lock` above the code. A Slurm task in an image pinned by digest gets `SBB_IMAGE_DIGEST`, since a container cannot read its own digest. The PoisonSet is rebuilt in every cell and only its key is recorded, a deviation from rule 9 of 4.8, because a cached set would skip `Trigger.fit`.
 
 ### 6.9 Runner (`sbb.runner`)
 
@@ -1133,7 +1135,7 @@ class Battery(BaseModel):
     dev: list[str] = []                 # public dev battery used to tune hyperparameters
 
 class Tolerance(BaseModel):
-    lite_pp: float = 3.0               # v1: was 1.0, see 10.2
+    lite_pp: float = 3.0               # benchmark 1.0 sets 10.0 (section 10)
     full_pp: float = 2.0
     full_sigma: float = 2.0             # full tolerance = max(full_pp, full_sigma x seed std)
 
@@ -1157,8 +1159,8 @@ class Planner:
 
 class SiteProfile(BaseModel):
     name: str
-    runtime: Literal["none", "apptainer"] = "none"   # v2: docker removed, it never ran
-    scheduler: Literal["none", "slurm"] = "none"      # v2: hfjobs removed. apptainer needs slurm and an image
+    runtime: Literal["none", "apptainer"] = "none"
+    scheduler: Literal["none", "slurm"] = "none"      # apptainer needs slurm and an image
     image: str | None = None            # pinned by digest
     device: Literal["cpu", "cuda"] = "cuda"
     cache_dir: Path
@@ -1173,10 +1175,9 @@ class Executor(ABC):
 
 class LocalExecutor(Executor): ...      # in-process or subprocess pool
 class SlurmExecutor(Executor): ...      # sbatch job arrays, apptainer exec --nv when runtime is apptainer
-class HFJobsExecutor(Executor): ...     # optional, huggingface_hub.run_job, v2
 ```
 
-v1 notes (task 7). `Planner.pending` is a static method over any object with `get(key)` (a ResultStore), because the runner and results layers are independent. A cell is pending when it has no result or its last result failed. `sbb run` and `sbb replicate` run the pending cells in their own process on a local site with one worker, start `LocalExecutor`'s pool of `python -m sbb run-cell` processes with more workers, and submit through `SlurmExecutor` on a Slurm site. A submitting command returns at once, and running it again once the jobs end writes the table or fills the record. Every executor writes `<cache_dir>/jobs/<hash of the cell keys>/` with one JSON per cell, the site profile and the logs (`<out>/jobs/` before 1.0.1, which put job folders next to the tracked results). The Slurm job is one array of at most `max_parallel` running tasks. `site.slurm` entries become `#SBATCH --<key>=<value>` lines and its `extra` entry is copied as is. With runtime `apptainer` each task runs `apptainer exec --nv --bind <cache_dir> <image> sbb run-cell ...`.
+`Planner.pending` is a static method over any object with `get(key)` (a ResultStore), because the runner and results layers are independent. A cell is pending when it has no result or its last result failed. `sbb run` and `sbb replicate` run the pending cells in their own process on a local site with one worker, start `LocalExecutor`'s pool of `python -m sbb run-cell` processes with more workers, and submit through `SlurmExecutor` on a Slurm site. A submitting command returns at once, and running it again once the jobs end writes the table or fills the record. Every executor writes `<cache_dir>/jobs/<hash of the cell keys>/` with one JSON per cell, the site profile and the logs. The Slurm job is one array of at most `max_parallel` running tasks. `site.slurm` entries become `#SBATCH --<key>=<value>` lines and its `extra` entry is copied as is. With runtime `apptainer` each task runs `apptainer exec [--nv] [--env SBB_IMAGE_DIGEST=<digest>] --bind <cache_dir>,<out> <image> sbb run-cell ...`, with `--nv` on a CUDA site and the digest when the image is pinned by one.
 
 ### 6.10 Results and verification (`sbb.results`)
 
@@ -1191,32 +1192,40 @@ class ResultStore(ABC):
 
 class LocalResultStore(ResultStore): ...          # results/<bench_version>/<key>.json
 
-class Verification(BaseModel):       # v2: facts only, judged when read (VerificationPolicy)
+class Verification(BaseModel):       # facts only, judged when read (VerificationPolicy)
     result_key: str
     verifier: str                     # GitHub handle
     verifier_org: str
     provenance: Provenance            # of the rerun
-    checked: dict[str, float]         # v2: the result's metrics when checked
-    outcome: Outcome                  # v2: the rerun's outcome
+    checked: dict[str, float]         # the result's metrics when checked
+    outcome: Outcome                  # the rerun's outcome
     metrics: dict[str, float]         # the rerun's metrics
     notes: str | None = None          # free text, read by no code
     @property
     def delta(self) -> dict[str, float]: ...                # rerun minus checked
     def covers(self, result: CellResult) -> bool: ...        # checked == result.metrics
 
+def verify(original: CellResult, rerun: CellResult, verifier: str, verifier_org: str) -> Verification: ...
+def matches(original: CellResult, check: Verification, tolerance_pp: float | Mapping[str, float]) -> bool: ...
+def unverified(results: Sequence[CellResult], checks: Sequence[Verification], verifier: str) -> list[CellResult]: ...
+
 class Status(StrEnum):
     SELF_REPORTED = "self-reported"
     REPRODUCED = "reproduced"
     DISPUTED = "disputed"
     NOT_APPLICABLE = "not-applicable"
+    INVALID_ATTACK = "invalid-attack"
     FAILED = "failed"
 
 class VerificationPolicy:
     def __init__(self, tolerance: Tolerance, k_samples: int = 3) -> None: ...
     def sample(self, cells: Sequence[Cell], seed: int) -> list[Cell]: ...   # seed = hash of the manifest
     def is_independent(self, v: Verification, r: CellResult) -> bool: ...
-    def status(self, r: CellResult, checks: Sequence[Verification]) -> Status: ...
-    def verdict(self, r: CellResult, check: Verification) -> Literal["match", "mismatch", "outdated"]: ...  # v2
+    def status(self, r: CellResult, checks: Sequence[Verification], seeds: Sequence[CellResult] = ()) -> Status: ...
+    def verdict(self, r: CellResult, check: Verification, seeds: Sequence[CellResult] = ()
+                ) -> Literal["match", "mismatch", "outdated"]: ...
+    def cell_status(self, results: Sequence[CellResult], checks: Sequence[Verification]) -> Status: ...
+    def tolerance_pp(self, r: CellResult, seeds: Sequence[CellResult]) -> dict[str, float]: ...
 
 class Manifest(BaseModel):
     bundle_id: str
@@ -1228,9 +1237,9 @@ class Manifest(BaseModel):
     models: list[dict[str, str]]      # model_key, repo, revision, sha256 (optional)
 ```
 
-v1 notes (task 8). `verify(original, rerun, verifier, verifier_org, tolerance_pp)` gives `match` when the outcomes agree, the rerun has every metric of the original, and each differs by at most `tolerance_pp` percentage points. `sbb reproduce RESULT_JSON --site ...` reruns the cell through the Game of the site (its cache included, so a verifier who pulled the zoo checks the defense step on the published models) and writes `verifications/<version>/<key>/<verifier>-<UTC time>.json`, with the track's tolerance by default (`lite_pp`, otherwise `full_pp`, the seed-based full tolerance is v2). Since 1.0.1 it reads them from the spec in `benchmarks/` whose version is the result's, and replications use the replication tolerance of 3 pp. `sbb bundle --plugin NAME` writes `results/manifests/<bundle_id>.json` for the plugin's results of one version and one submitter. `bundle_id` is the first 16 hex digits of the hash of the version and the result hashes, so a manifest names its content. `sbb validate PATH...` checks cards, replication records, results (key equal to the cell hash and to the file name), manifests (files present, sha256, versions, plugins, bundle id) and verification records. `VerificationPolicy` and the computed statuses are v2 (13.4).
+`verify(original, rerun, verifier, verifier_org)` builds a record of facts: the result's metrics it checked (`checked`), the rerun's `outcome` and `metrics`, and free `notes`. It stores no delta and no verdict, so nothing stored can contradict the site, and `delta` is computed. `matches(original, check, tolerance_pp)` judges a record when it is read: the outcomes agree, the rerun has every metric of the original, and each differs by at most its tolerance in percentage points, a count metric (`synops`) relative to its value. A record covers a result while the result still has the numbers it checked, a failed rerun included. `unverified(results, checks, verifier)` gives the results that no record of the verifier covers. `sbb reproduce RESULT_JSON --site ...` reruns the cell through the Game of the site (its cache included, so a verifier who pulled the zoo checks the defense step on the published models), writes `verifications/<version>/<key>/<verifier>-<UTC time>.json` and prints its verdict. It judges at the policy's `tolerance_pp(r, seeds)`, the seeds being the cell's results next to RESULT_JSON, with the tolerances of the spec in `benchmarks/` whose version is the result's, so its verdict and the site agree. Replications use the replication tolerance of 3 pp. `sbb bundle --plugin NAME` writes `results/manifests/<bundle_id>.json` for the plugin's results of one version and one submitter. `bundle_id` is the first 16 hex digits of the hash of the version and the result hashes, so a manifest names its content. `sbb validate PATH...` checks cards, replication records, results (key equal to the cell hash and to the file name), manifests (files present, sha256, versions, plugins, bundle id) and verification records.
 
-v2 change (task 3, 2026-10-26). `VerificationPolicy` lives in `sbb.results.policy` and is the only place that computes statuses. `status(r, checks, seeds=())` also takes the cell's results over its seeds, since the full tolerance needs their std. `cell_status(results, checks)` gives the status of a cell over its seeds. `Status` gains `invalid-attack`, the site's status of a cell whose seeds all failed the validity check. The policy judges every record from its deltas at its own tolerance with `matches(original, delta, tolerance_pp, notes)`, whose tolerance may be one value per metric, and never trusts the stored verdict. A record counts only while the result still has the numbers it checked. Independent means a verify-lite rerun on the lite track, and a verifier of another organization on the other tracks. `sbb.results` and `sbb.runner` are sibling layers, so the policy takes any object with `lite_pp`, `full_pp` and `full_sigma`, and the site and the CLI pass the spec's `Tolerance`. `sbb spot-check MANIFEST [--k 3]` prints the full-track results of a manifest that ended ok and were picked with the bundle id as the seed. `sbb reproduce` judges its record with the policy's `tolerance_pp(r, seeds)`, the seeds being the cell's results next to RESULT_JSON, so the stored verdict and the site agree (code review of 2026-11-06). v2 change (design review of 2026-11-07): a record holds facts only, the result's metrics it checked (`checked`), the rerun's `outcome` and `metrics`, and free `notes`. It stores no delta and no verdict, so nothing stored can contradict the site: `delta` is computed, `matches(original, check, tolerance_pp)` and `VerificationPolicy.verdict` judge it when read, and `sbb reproduce` prints its verdict. A record covers a result while the result still has the numbers it checked, a failed rerun included, and the site's verification log shows `outdated` otherwise. `sbb unverified` lists the results of a track that no record of a verifier covers, and the verify-lite workflow reruns those instead of every result without a record file. The 420 records of 0.9.0 and 1.0.0 were rewritten in this form, each covering its result, and no status changed. v2 change (same review): every file sbb reads fails when it loads, not mid-run. Every pydantic model forbids unknown keys, so a misspelled key in a spec, a site profile or a card section is an error instead of a silent default (a test keeps new models strict). What sbb cannot run is not valid: `SiteProfile` drops runtime `docker` and scheduler `hfjobs` and needs Slurm and an image for `apptainer` (the local executor ran no image and ignored the runtime), `Knowledge.data` is only `full`, `TrainSpec.amp` only `false` (the field stays, since cell keys hash it), and an attack card of kind `federated` is refused. The `NotImplementedError` checks in the Game, the attacker view, the Trainer and the executors went away with it. A contract test checks that every card file has a registered plugin, so a module left out of its package `__init__` cannot escape the contract suite.
+`VerificationPolicy` lives in `sbb.results.policy` and is the only place that computes statuses. `status(r, checks, seeds=())` also takes the cell's results over its seeds, since the full tolerance needs their std. `verdict(r, check, seeds=())` is `match` or `mismatch` at that tolerance, and `outdated` when the record does not cover the result. The site's verification log shows it. `cell_status(results, checks)` gives the status of a cell over its seeds, `invalid-attack` when every seed failed the validity check. Independent means a verify-lite rerun on the lite track, and a verifier of another organization on the other tracks. `sbb.results` and `sbb.runner` are sibling layers, so the policy takes any object with `lite_pp`, `full_pp` and `full_sigma`, and the site and the CLI pass the spec's `Tolerance`. `sbb spot-check MANIFEST [--k 3]` prints the full-track results of a manifest that ended ok and were picked with the bundle id as the seed. `sbb unverified [RESULTS] --track lite --verifier NAME` prints the result files that no record of the verifier covers, and the verify-lite workflow reruns those.
 
 ### 6.11 Registry and errors (`sbb.core.registry`, `sbb.utils.errors`)
 
@@ -1243,7 +1252,7 @@ class Registry(Generic[T]):
     def load_entry_points(self, group: str) -> None: ...                 # v5, third-party plugins
 
 # Module-level registries: ATTACKS, DEFENSES, METRICS (sbb.core.registry), DATASETS (sbb.data.sample),
-# ARCHITECTURES (sbb.models.snn). TRIGGERS and EXECUTORS arrive with v1.
+# ARCHITECTURES (sbb.models.snn).
 
 class SbbError(Exception): ...
 class ThreatModelViolation(SbbError): ...
@@ -1254,7 +1263,7 @@ class ReproducibilityError(SbbError): ...
 
 Plugins register at import. `sbb.attacks.__init__` and `sbb.defenses.__init__` import every plugin module explicitly, so discovery has no magic.
 
-v0 change: the generic `Registry` lives in `sbb.utils.registry`, because the data and model layers need it for `DATASETS` and `ARCHITECTURES` and may not import `sbb.core`. A registry stores any object, so `Registry[type[Attack]]` holds classes and `Registry[ArchBuilder]` holds functions. `IncompatibleCell` is not defined: an incompatible cell is a `not_applicable` result, not an error.
+The generic `Registry` lives in `sbb.utils.registry`, because the data and model layers need it for `DATASETS` and `ARCHITECTURES` and may not import `sbb.core`. A registry stores any object, so `Registry[type[Attack]]` holds classes and `Registry[ArchBuilder]` holds functions. `IncompatibleCell` is not defined: an incompatible cell is a `not_applicable` result, not an error.
 
 ## 7. File formats
 
@@ -1376,10 +1385,10 @@ slurm: {partition: "[FILL]", account: "[FILL]", time: "06:00:00", gres: "gpu:1"}
 
 - Canonical JSON: sorted keys, no whitespace, UTF-8, floats written with `repr`. Hash: sha256, hex.
 - `Cell.key()`: hash of the full cell, benchmark version included.
-- Artifact keys exclude the benchmark version and the track, so artifacts are reused across versions. `sbb_minor` was the package `major.minor` up to 1.0. Since 2.0 (maintainer decision of 2026-10-29: reuse as much as possible) it is `sbb.ARTIFACT_EPOCH`, pinned at "1.0" under the same field name, so every key built under sbb 1.0 stays valid. It moves only when a change alters what an artifact holds without a plugin version bump (the Trainer, the data pipeline, the networks), and a changed golden metric is the signal.
+- Artifact keys exclude the benchmark version and the track, so artifacts are reused across versions. `sbb_minor` holds `sbb.ARTIFACT_EPOCH`, "1.0" (maintainer decision of 2026-10-29: reuse as much as possible). The field keeps the name it had when it held the package `major.minor`, so every key built under sbb 1.0 stays valid. It moves only when a change alters what an artifact holds without a plugin version bump (the Trainer, the data pipeline, the networks), and a changed golden metric is the signal.
   - `clean_model_key = H(data, repr, arch, train, seed, sbb_minor)`
   - `poison_key = H(data, budget, attack, attack_version, attack hparams, seed, sbb_minor)`
-  - `model_key = H(poison_key, repr, arch, train, seed, sbb_minor)` for poisoning attacks, `H(clean_model_key, budget, attack, attack_version, attack hparams, seed, sbb_minor)` for model attacks (v1 change: the representation, the recipe and the budget, which holds the target, also determine the attacker's weights, and the clean model key covers the first two)
+  - `model_key = H(poison_key, repr, arch, train, seed, sbb_minor)` for poisoning attacks, `H(clean_model_key, budget, attack, attack_version, attack hparams, seed, sbb_minor)` for model attacks (the representation, the recipe and the budget, which holds the target, determine the attacker's weights too, and the clean model key covers the first two)
   - `defense_key = H(model_key, defense, defense_version, defense hparams, seed, sbb_minor)`
 - Patch releases must not change any number. Golden tests enforce this.
 
@@ -1402,7 +1411,7 @@ CIFAR10-DVS has no official split: use SpikingJelly's ordered class-stratified 9
 
 ### 7.9 Replication record
 
-v1 format, `replications/<method>.yaml`, the `ReplicationRecord` model in `sbb.results.replication`. A record holds one or more targets, each a scenario with the paper's numbers. `sbb replicate <method>` runs one undefended cell per target and seed (track `replication`, the record's `hparams` merged over the card's), writes the filled record to `<out>/replications/`, and with `--update` back into `replications/`.
+Format: `replications/<method>.yaml`, the `ReplicationRecord` model in `sbb.results.replication`. A record holds one or more targets, each a scenario with the paper's numbers. `sbb replicate <method>` runs one undefended cell per target and seed (track `replication`, the record's `hparams` merged over the card's), writes the filled record to `<out>/replications/`, and with `--update` back into `replications/`.
 
 ```yaml
 method: sneaky_static
@@ -1425,33 +1434,33 @@ status: pending               # pending | replicated | explained | failed
 explanation: null
 ```
 
-Every record uses a tolerance of 3 percentage points (user decision of 2026-10-22): a port whose means are within 3 points of every reported number is replicated. The papers' ASR counts the target class, so records compare `asr_all`. A replication setting has no defender pool, because the papers have none, and a large `delta_pp`, so the validity check never hides the ASR. The status is `replicated` when every reported metric of every target is within `tolerance_pp` of our mean over the seeds (population standard deviation alongside). Otherwise it is `failed`, unless a maintainer marked it `explained` with the reason. v1 records propose their targets from the papers and wait for the maintainer's confirmation (`confirmed`).
+Every record uses a tolerance of 3 percentage points (user decision of 2026-10-22): a port whose means are within 3 points of every reported number is replicated. The papers' ASR counts the target class, so records compare `asr_all`. A replication setting has no defender pool, because the papers have none, and a large `delta_pp`, so the validity check never hides the ASR. The status is `replicated` when every reported metric of every target is within `tolerance_pp` of our mean over the seeds (population standard deviation alongside). Otherwise it is `failed`, unless a maintainer marked it `explained` with the reason. Records propose their targets from the papers and wait for the maintainer's confirmation (`confirmed`).
 
 If a paper used an architecture that is not in the registry, register it under its own name. It is then available for replication and, if useful, for the benchmark.
 
 ## 8. Metrics
 
-All metrics are fractions in [0, 1]. The triggered test set contains every test sample. Every metric but `asr_all` counts only the triggered samples whose true label is not the target (v1 change: before, the triggered test set left them out). A tied top score is no prediction (6.7): it is wrong for CA and RA and never a success for ASR. Replication cells score with `argmax` like the papers.
+All metrics are fractions in [0, 1]. The triggered test set contains every test sample. Every metric but `asr_all` counts only the triggered samples whose true label is not the target. A tied top score is no prediction (6.7): it is wrong for CA and RA and never a success for ASR. Replication cells score with `argmax` like the papers.
 
-v1 notes. Registry names: `ca`, `asr`, `ra`, `frr`, `tpr` and `auroc` (input). A metric lists the defense stages it applies to (`Metric.stages`), so `frr`, `tpr` and `auroc` appear only in inference cells. `EvalContext` carries the accepted masks and scores of an input defense, and CA, ASR and RA count only accepted samples. AUROC counts ties as half. A detection cell also reports its raw `verdict`, which is not a fraction. The LeaderboardBuilder turns verdicts into the model AUROC.
+Registry names: `ca`, `asr`, `ra`, `asr_all`, `spike_rate`, `spike_rate_triggered`, `synops`, and `frr`, `tpr` and `auroc` (input). A metric lists the defense stages it applies to (`Metric.stages`), so `frr`, `tpr` and `auroc` appear only in inference cells. `EvalContext` carries the accepted masks and scores of an input defense, and CA, ASR and RA count only accepted samples. AUROC counts ties as half. A detection cell also reports its raw `verdict`, which is not a fraction. The LeaderboardBuilder turns verdicts into the model AUROC.
 
 | Metric | Definition | Applies to |
 |---|---|---|
 | CA | Clean test samples that are accepted and correctly classified. Without an input defense every sample is accepted. | all |
 | ASR | Triggered samples that are accepted and classified as the target. | all |
-| ASR (all), `asr_all` | ASR over every triggered sample, the target class included, the definition of the ported papers. Replications compare with it (v1). | all |
+| ASR (all), `asr_all` | ASR over every triggered sample, the target class included, the definition of the ported papers. Replications compare with it. | all |
 | RA | Triggered samples that are accepted and classified as their true label. | all |
 | FRR | Clean test samples rejected by the input defense at its threshold. | inference |
 | TPR | Triggered samples rejected by the input defense at its threshold. | inference |
 | AUROC (input) | Clean versus triggered scores of the input defense. | inference |
 | AUROC (model) | Verdicts on clean models (`no_attack` cells) versus valid backdoored models, per (scenario, defense). Computed by the LeaderboardBuilder. | model_detection |
 | DER | `(max(0, ASR_before - ASR_after) - max(0, CA_before - CA_after) + 1) / 2`, as in BackdoorBench. Derived. | defenses |
-| Activity (v2) | `spike_rate` and `spike_rate_triggered`: spikes over neurons and time steps on the clean and triggered test sets. `synops`: connections that carry a nonzero input, per clean sample, a raw count. NeuroBench definitions, own code. | all |
+| Activity | `spike_rate` and `spike_rate_triggered`: spikes over neurons and time steps on the clean and triggered test sets. `synops`: connections that carry a nonzero input, per clean sample, a raw count. NeuroBench definitions, own code. | all |
 | Cost | Wall time per stage, peak GPU memory, device. | all |
 
 `no_attack` cells give the clean reference and the natural ASR (the rate at which clean inputs of other classes are classified as the target).
 
-Aggregation: mean and standard deviation over seeds, with the number of seeds. Seeds: 1 in v0, 3 for both tracks from v1 **[DECIDE]**.
+Aggregation: mean and standard deviation over seeds, with the number of seeds. Seeds: 3 for both tracks (D11).
 
 ## 9. Determinism and reproducibility
 
@@ -1464,7 +1473,7 @@ There are two separate guarantees.
 - **Pin everything.** `uv.lock`, the container image digest, the SpikingJelly version **[FILL after compatibility check]**, split files with hashes, Hub revisions of data and checkpoints, the benchmark spec version.
 - **Seed everything.** `sbb.utils.determinism.seed_everything(seed)` is called only by the Game. It seeds Python, NumPy and torch, sets `torch.use_deterministic_algorithms(True)`, `torch.backends.cudnn.benchmark = False` and `CUBLAS_WORKSPACE_CONFIG=:4096:8`, and seeds DataLoader generators and workers.
 - **Per-sample randomness.** Randomized triggers use `rng_for(seed, sample.index)`, so a sample always gets the same trigger, whatever the batch order.
-- **Backend.** Verified runs use the SpikingJelly `torch` backend. Test in v0 whether the `cupy` backend is deterministic. If it is not, it is allowed only for self-reported runs and recorded in the provenance. v0 result: the `torch` backend is deterministic on GPU (NVIDIA GH200, CUDA 13). The `cupy` backend of SpikingJelly 0.0.0.0.14 does not run with NumPy 1.24 or later (it uses `np.int`), so `ArchSpec` accepts only `torch` (docs/measurements.md).
+- **Backend.** Runs use the SpikingJelly `torch` backend, which is deterministic on GPU (NVIDIA GH200, CUDA 13). The `cupy` backend of SpikingJelly 0.0.0.0.14 does not run with NumPy 1.24 or later (it uses `np.int`), so `ArchSpec` accepts only `torch` (docs/measurements.md).
 - **Rerun from the record.** `sbb reproduce <result.json>` rebuilds the cell from its JSON, runs it on the current site and writes a Verification record.
 - **Golden tests.** Tiny CPU runs on synthetic data with frozen expected metrics (tolerance 0.5 percentage points, 0.5 percent of the value for a count such as `synops`, whose last digits move between CPUs). If a change moves them, it is either a bug or a new benchmark version.
 - **Tolerances.** The same image on the same hardware should reproduce exactly once determinism is on. Across different hardware, only agreement within tolerance is expected: `lite_pp` for the lite track, `max(full_pp, full_sigma x seed std)` for the full track.
@@ -1473,13 +1482,13 @@ There are two separate guarantees.
 
 Statuses are computed by `VerificationPolicy` from CellResults and Verification records. Nobody sets them by hand.
 
-- **Lite track.** After a pull request is merged, the `verify-lite` workflow reruns every new lite cell on GitHub-hosted runners, with the reviewed code from `main`. A match within `lite_pp` makes the cell `reproduced`. This costs nothing: standard runners are free for public repositories. v1 note (user decision of 2026-10-24): `lite_pp` is 3.0, the replication tolerance. At 1.0, 38 of the first 210 records mismatched: the lite results were produced on GH200 GPUs and rerun on GitHub CPUs, and defenses that make discrete choices (fine-pruning's neuron ranking, ANP's masks, TMPBD's p-value) flip on small float differences. `Verification.judged(original, tolerance_pp)` rejudges a record from its deltas, and the existing records were rejudged at 3.0. Producing the lite results on GitHub runners, the verifiers' kind of machine, is a v1.x item. v2 note (user decision of 2026-11-25): `lite_pp` is 10.0 in benchmark 1.0. At 3.0, 31 lite results carried from 0.9.0 were disputed, at 10.0 12 still are, where a defense's discrete choice moves a metric by up to 88 points.
+- **Lite track.** After a pull request is merged, the `verify-lite` workflow reruns every lite result that no verify-lite record covers (`sbb unverified`) on GitHub-hosted runners, with the reviewed code from `main`. A match within `lite_pp` makes the cell `reproduced`. This costs nothing: standard runners are free for public repositories. `lite_pp` is 10.0 in benchmark 1.0 (user decision of 2026-11-25) and 3.0, the replication tolerance, in benchmark 0.9 (user decision of 2026-10-24). The lite results come from GH200 GPUs and verify-lite reruns them on GitHub CPUs, where defenses that make discrete choices (fine-pruning's neuron ranking, ANP's masks, TMPBD's p-value) flip on small float differences. At 3.0, 31 lite results of benchmark 1.0 were disputed. At 10.0, 12 still are, where a defense's discrete choice moves a metric by up to 88 points. Producing the lite results on GitHub runners, the verifiers' kind of machine, would close the gap.
 - **Full track.** A cell becomes `reproduced` when at least one independent Verification matches within tolerance. Independent means the verifier's organization differs from the submitter's. Maintainers decide in doubtful cases.
 - **Disputes.** A cell is `disputed` while it has at least as many independent mismatches as matches.
 - **Spot checks.** Verifiers do not rerun everything. `VerificationPolicy.sample` picks k = 3 random full-track cells per submission **[DECIDE]**, seeded by the manifest hash so anyone can recompute the choice. If half the cells of a submission were wrong, three random checks would catch it 87.5% of the time. Defense cells are cheap to check because they rerun on pinned zoo checkpoints. Attack cells and in-training defense cells need retraining.
 - **Reciprocity.** Submitting a full-track method commits the submitter to verify k cells of another submission, assigned by the maintainers.
 - **Open challenges.** Anyone can rerun any published cell and submit a Verification record.
-- **Delayed battery (v2).** Maintainers keep newly added attacks private for one release cycle, run them on their own resources against all defenses, then publish code and cards.
+- **Delayed battery.** Maintainers keep newly added attacks private for one release cycle, run them on their own resources against all defenses, then publish code and cards.
 
 Heterogeneity is a strength here: a number reproduced at two sites on different hardware says more than one central run. The leaderboard shows the sites and devices behind every status.
 
@@ -1525,24 +1534,16 @@ Protocol for every port:
 1. Choose the replication target (one or more table cells of the paper) and write the replication record with the paper's setting.
 2. Read the paper and the official code. Check the license. Code without a license can only be re-implemented from the paper, never copied.
 3. Implement on the shared parts. Write method-specific code only for what is new.
-4. Run the replication setting with three seeds (`sbb replicate <method>`, v1).
+4. Run the replication setting with three seeds (`sbb replicate <method>`).
 5. If the result misses the tolerance, document the reason in the record. The method enters the battery only with status `replicated` or `explained`.
 6. For ANN defenses, describe the SNN adaptation in the card's `adaptation_note` and implement it with the shared utilities in `sbb.defenses.utils`, never inline.
 7. Ask the original authors to review the port and the adaptation note.
 
-v1 decision (user, 2026-10-21): replication covers the main results of the attack papers, their CA and ASR tables. Results that attack papers report for defenses are not replicated, because each paper adapts each defense in its own way. A defense has one sbb implementation, the SNN adaptation of its original paper described in the card's `adaptation_note`, and every evaluation uses it. Variants can come later as separate methods or versions. So a defense port has no replication record, and only attack ports need status `replicated` or `explained`. Fine-pruning, for example, ranks the neurons of the last conv block by their spike rate on clean data, the SNN counterpart of the activations of the original method, and not by Flashy's conv-output variant.
+Replication covers the main results of the attack papers, their CA and ASR tables (user decision of 2026-10-21). Results that attack papers report for defenses are not replicated, because each paper adapts each defense in its own way. A defense has one sbb implementation, the SNN adaptation of its original paper described in the card's `adaptation_note`, and every evaluation uses it. Variants can come later as separate methods or versions. So a defense port has no replication record, and only attack ports need status `replicated` or `explained`. Fine-pruning, for example, ranks the neurons of the last conv block by their spike rate on clean data, the SNN counterpart of the activations of the original method, and not by Flashy's conv-output variant.
 
-v0 decision: `static_patch` stays a raw-event variant of the Sneaky Spikes static trigger, not an exact port. The official code overwrites a patch in every SpikingJelly frame (size relative to the image, polarity modes 0 to 3) and poisons samples of every class. `static_patch` adds patch events to the raw stream and never poisons the target class. The card states this. An exact port needs frame-domain triggers (`trigger_domain: frames`), which v1 adds (6.5). The exact ports use them, and replications draw poisoned samples from every class (`RandomSelector(include_target=True)`), as the papers do. Benchmark cells keep the target class out.
+`static_patch` is a raw-event variant of the Sneaky Spikes static trigger, not an exact port. The official code overwrites a patch in every SpikingJelly frame (size relative to the image, polarity modes 0 to 3) and poisons samples of every class. `static_patch` adds patch events to the raw stream and never poisons the target class. The card states this. The exact ports use frame-domain triggers (`trigger_domain: frames`, 6.5), and replications draw poisoned samples from every class (`RandomSelector(include_target=True)`), as the papers do. Benchmark cells keep the target class out.
 
-v1 group B progress (2026-10-22). Defenses ported, each a plugin and a card with no replication record: `spectral_signatures` and `activation_clustering` (pre_training, on `reference_features`: a reference model trained on the train set as received, represented by its readout inputs), `abl` (in_training, through TrainerHooks), `nad` and `anp` (post_training). They are not in `benchmarks/v0.9.yaml`, which keeps the group A battery. NDSBM needs a core change first: its clamps are extra modules, and the Game stores a defended model as a state dict rebuilt from its ArchSpec, so a cached NDSBM model would lose them. Proposal: a ModelDefense may return its extra state the way a learned trigger does (`learned()`), stored as safetensors next to the defended model and reattached on a cache hit. The group B attacks wait for their replication targets. Toy check on N-MNIST (`nmnist_tiny`, seed 0, GPU, 2026-10-22): every ported defense keeps CA within 1 point of the undefended 98.7 except ANP (94.1 to 97.7) and NDSBM. Against `static_patch` and `sneaky_static`, STRIP rejects the triggered inputs (ASR 0.1 and 0.0) and the others leave ASR between 98 and 100, as T-Backdoor's Table I reports for ANP, CLP, fine-pruning, fine-tuning and NAD against the static trigger on N-MNIST. NDSBM collapses CA to 21 to 39%, also without an attack, so it stays out of the battery until that is fixed. Its bounds train with Adam, whose steps do not shrink with c, and its loss matches mean membrane potentials, which a clamped layer can match without spiking.
-
-v1 decision on `sneaky_dynamic` (user, 2026-10-23): an attacker that controls training may keep its best epoch, as the official dynamic.py does. Version 1.1.0 keeps an epoch when its clean and backdoor accuracy both beat those of the epoch kept so far, scored on 1000 samples of the attacker's own training split (the official code scores the test set, which an attacker never sees), then trains the official extra epoch with the learned trigger from that snapshot. Version 1.2.0 (user decision of 2026-10-23) scores each epoch as the official test() does: a copy of the classifier first trains one epoch with the frozen generator, the copy is scored, and the best copy is returned. 1.1.0 scored the jointly trained model before that epoch, and its replication failed on DVS128 Gesture (CA 78.6 vs 91) and CIFAR10-DVS (CA 14.8 vs 44): when an early epoch already reaches 100% backdoor accuracy, the strict rule keeps it whatever its clean accuracy. Version 1.0.1 trains with the official batch of 8: at 16, CIFAR10-DVS and DVS128 Gesture ran out of a 95 GB GPU.
-
-v1 code review (2026-10-22). Fixed: the Game reseeds before building the attack, because a learned trigger's initial weights came from an RNG state that depended on whether the clean model was cached; executors write job folders under `<cache_dir>/jobs/`, never next to the tracked results, since `site.yaml` names the site's paths and accounts; Slurm array scripts `cd` into the job folder so no path is quoted around the array index; `sbb reproduce --tolerance-pp 0` asks for an exact match; `sbb validate` reports YAML syntax errors; the site sorts benchmark versions numerically; triggers refuse parameters they cannot apply; TMPBD refuses `steps: 0` and takes its input clamp from the card; ABL's unlearning runs through the Trainer with its weight decay in the card (bit-identical weights); STRIP moves its overlays to the device once; a verification counts on the site only while the result still has the numbers it checked. Deferred to v1.x: reusing the cached victim as the reference model of spectral signatures and activation clustering (the same training, run twice), a lock per cache key against parallel cells building the same model, and a batched dynamic trigger on the GPU.
-
-sbb 1.0.1 (2026-10-27), from a second code review. No metric changes: the fast tests, the golden run and 12 synthetic cells (static_patch, flashy and sneaky_dynamic against no defense, STRIP, activation clustering and spectral signatures) give byte-identical results before and after. Fixed: Slurm tasks with runtime apptainer bind the results directory as well as the cache. `sbb reproduce` takes the tolerance from the benchmark spec of the result's version. `sbb plan` shows the same verification status as the site (`Verification.covers`, `lite_verdicts`), and its table and CSV share `status_rows`. The site's metric labels live in one place (`sbb.site.status.METRICS`). A frame-trigger PoisonSet holds no raw events: the DataModule triggers the cached clean frames, so the poisoned recordings are neither kept in memory nor encoded every epoch. The Game reuses the victim's clean predictions from the validity check, and an input defense scores the triggered batches in the same pass as the predictions, so a slow trigger runs once per test sample. `sbb zoo push` leaves out the poison_set key, which names no stored artifact. Still deferred, because each changes recorded numbers and needs the affected cells rerun under a new card version: the cached victim as the reference model of spectral signatures and activation clustering (the full-track networks use dropout, so skipping the reference training moves the GPU RNG of the retraining), and a batched dynamic trigger on the GPU. NDSBM and ANP keep their own optimizer loops, since they fit defense parameters (clamps, masks) with the weights frozen and train no model. A model attack whose trigger state lives outside learned() is already refused by the attack contract test.
-
-v2 code review (2026-11-06), during the benchmark 1.0 run, so only changes that keep every number. 20 synthetic cells (TaCT, Adap-Blend, Adap-Patch and static_patch against no defense, STRIP, fewer_steps, threshold_recalibration and activation clustering) give byte-identical results before and after, and all tests pass. Fixed: `sbb reproduce` judges with the policy's seed-based tolerance (section 6 notes). `ClassSelector` refuses a class without samples, so a TaCT source or cover class the dataset lacks fails the cell before any victim is trained, instead of silently poisoning without cover samples. The triggered pass skips the synaptic operations, which no metric reads (one convolution per layer less). Adap-Blend draws its fixed pattern once per frame shape. `ConservativePoisoning` and `PoisoningAttack` share `frame_poison_set`. The Pareto view shows defenses without results against every attack of a group apart (`complete`), not as dominated. Not changed: `TrainSetView.trained_model()` gives defenses with `train_set` the victim, which is the model they would train themselves from the same split and seed (task 1), so it reveals nothing the threat model hides. fewer_steps and threshold_recalibration score ties as fine-pruning does, and no replication cell uses them. Deferred, since it changes numbers: Adap-Blend scales its pattern by the sample's peak count without the floor of 1 that Adap-Patch has, so a test sample with no events gets no trigger. It goes into Adap-Blend 1.1.0 with the next benchmark version.
+`sneaky_dynamic` keeps its best epoch, as the official dynamic.py does, since the attacker controls training (user decisions of 2026-10-23). As in the official test(), a copy of the classifier trains one more epoch with the frozen generator of each epoch and is scored. The scores come from a fixed sample of the attacker's own training split (`selection_samples`, 1000), since an attacker never sees the test set, which the official code scores. An epoch is kept when its clean and backdoor accuracy both beat those of the epoch kept so far, and the attack returns the kept copy and generator. It trains with the official batch of 8.
 
 Order: group A first (methods the maintainers authored, where fidelity is easiest to judge, plus the defenses needed to exercise every stage), then group B. Group C lands in v2, group D in v3 and group E in v5 (13.5).
 
@@ -1670,7 +1671,7 @@ v2 plan (2026-10-26, proposed, awaiting the user's review). v2 starts from `main
 
 Tasks, in order:
 
-1. Leftovers of v1. The maintainer confirms the targets of the eight replication records (`confirmed: true`) **[FILL]**. The deferred items of the v1 code review (section 12): spectral signatures and activation clustering reuse the cached victim as their reference model instead of training it twice, a lock per cache key stops parallel cells from building the same model, and the dynamic trigger runs batched on the GPU. Each is checked by a test that the metrics do not change. v2 build (2026-10-26): v1 was checked complete first (all 759 cells of `benchmarks/v0.9.yaml` have a result, every lite cell has a verify-lite record, `sbb validate` passes, no cluster job after the activation clustering 1.2.0 reruns). `TrainSetView.trained_model()` gives a copy of the data poisoning victim, the model the scenario recipe trains on that split from the cell seed, and `reference_features` uses it. It still builds a fresh model, so the global RNG and every later initialization stay the same: a test runs both defenses against `no_attack` and `static_patch` both ways and gets identical metrics and defended weights with one training less. Correction (2026-10-27, after merging sbb 1.0.1): that test runs on the CPU with a network without dropout. The full-track networks use dropout, so on the GPU the skipped training leaves the CUDA RNG elsewhere and the retraining after the cleansing draws other dropout masks. The numbers change, so activation clustering goes to 1.3.0 and spectral signatures to 1.1.0. Their 0.9.0 results keep the old versions, and the v1.0 run computes them again under the new ones. `ArtifactCache.get_or_build` holds an flock on `<cache>/.locks/<key>` around the lookup and the build, and goes on without it, with a warning, on a file system without flock. The batched dynamic trigger is dropped: the trigger runs per sample only to build triggered test sets, every full-track `sneaky_dynamic` cell of 0.9.0 is `invalid_attack`, so its defense and metrics steps never run, and the lite track excludes it. It comes back if a valid dynamic cell becomes slow. Done (2026-10-27): the maintainer confirmed the targets of the eight records. The 48 `sneaky_dynamic` cells reran under `keeps_clean_accuracy: false` (4.8, rule 6) and replace their `invalid_attack` results in `results/0.9.0`, with the same keys and the same `ca_clean` and `ca_backdoored` to the last digit. Only STRIP lowers the dynamic ASR much (DVS128 Gesture 99.5 to 46.7, CIFAR10-DVS 99.9 to 6.9), NAD and fine-pruning partly, the other defenses not at all.
+1. Leftovers of v1. The maintainer confirms the targets of the eight replication records (`confirmed: true`) **[FILL]**. The deferred items of the v1 code review (section 12): spectral signatures and activation clustering reuse the cached victim as their reference model instead of training it twice, a lock per cache key stops parallel cells from building the same model, and the dynamic trigger runs batched on the GPU. Each is checked by a test that the metrics do not change. v2 build (2026-10-26): v1 was checked complete first (all 759 cells of `benchmarks/v0.9.yaml` have a result, every lite cell has a verify-lite record, `sbb validate` passes, no cluster job after the activation clustering 1.2.0 reruns). `TrainSetView.trained_model()` gives a copy of the data poisoning victim, the model the scenario recipe trains on that split from the cell seed, and `reference_features` uses it. It still builds a fresh model, so the global RNG and every later initialization stay the same: a test runs both defenses against `no_attack` and `static_patch` both ways and gets identical metrics and defended weights with one training less. Correction (2026-10-27, after merging sbb 1.0.1): that test runs on the CPU with a network without dropout. The full-track networks use dropout, so on the GPU the skipped training leaves the CUDA RNG elsewhere and the retraining after the cleansing draws other dropout masks. The numbers change, so activation clustering goes to 1.3.0 and spectral signatures to 1.1.0. Their 0.9.0 results keep the old versions, and the v1.0 run computes them again under the new ones. `ArtifactCache.get_or_build` holds an flock on `<cache>/.locks/<key>` around the lookup and the build, and goes on without it, with a warning, on a file system without flock. The batched dynamic trigger is dropped: the trigger runs per sample only to build triggered test sets, every full-track `sneaky_dynamic` cell of 0.9.0 is `invalid_attack`, so its defense and metrics steps never run, and the lite track excludes it. It comes back if a valid dynamic cell becomes slow. Done (2026-10-27): the maintainer confirmed the targets of the eight records. The 48 `sneaky_dynamic` cells reran under `keeps_clean_accuracy: false` (3.1, rule 6) and replace their `invalid_attack` results in `results/0.9.0`, with the same keys and the same `ca_clean` and `ca_backdoored` to the last digit. Only STRIP lowers the dynamic ASR much (DVS128 Gesture 99.5 to 46.7, CIFAR10-DVS 99.9 to 6.9), NAD and fine-pruning partly, the other defenses not at all.
 2. Group B finished. The three T-Backdoor records run on the maintainers' cluster and the attacks join the battery if `replicated` or `explained`. NDSBM: fix the CA collapse noted in section 12 (Adam steps that do not shrink with c, a loss on mean membrane potentials that a clamped layer matches without spiking), with the approved extra-state change, so that CA stays within 3 points of the undefended model on the toy check. Then it joins the battery. BadSNN is ported only if its official code appears before the freeze, otherwise it waits for the next benchmark version. v2 build (2026-10-26), NDSBM: a GPU check on the cached 0.9.0 victims (seed 0, `no_attack` and `static_patch`) compared the whole clean subset of 1.0.1, 20 samples per class (the official `--nsample 20`), and 20 per class with c = 0. The collapse is not a porting bug: it appears only on the lite network, and only with the shrinking term. On `tiny_lif_cnn` CA is 45.1, 60.6 and 98.7, on DVS128 Gesture 92.4, 93.1 and 93.1, on CIFAR10-DVS 69.2, 69.8 and 70.3 (undefended 70.3). Adam moves the bounds by about lr per step whatever c is, so their travel follows the number of steps, which the whole subset raised up to 13 times over the official code. NDSBM 1.1.0 learns on 20 samples per class, as the official code, and runs 20 times faster (2.5 against 53 minutes per CIFAR10-DVS cell). Its loss of CA on the lite network is then the method's behavior with its official hyperparameters, which the defense validity rule reports. It does not remove `static_patch` on CIFAR10-DVS (ASR 98.6 against 99.9), and it joins the battery of `benchmarks/v1.0.yaml`. The original criterion of this task, CA within 3 points on the toy check, was the wrong test. T-Backdoor (2026-10-27): the three records are `replicated` on N-MNIST and CIFAR10-DVS, every mean within 1.2 points of Figure 4 (CIFAR10-DVS CA 68.7, 68.2 and 69.5 against 67.6, 68.6 and 70.4, ASR 99.2 to 100), so the three attacks join the battery of `benchmarks/v1.0.yaml`. Task 2 is done unless BadSNN's code appears.
 3. VerificationPolicy in `sbb.results.policy`, the single source of statuses (section 10). The site's lite rule moves into it, so `sbb site build` and `sbb plan --csv` call the policy and nothing else. Rules:
    - Lite: `reproduced` when the `github-actions` record matches, `disputed` when it mismatches. A rerun on a separate runner counts as independent.
@@ -1786,12 +1787,13 @@ Definition of done:
 
 Adapters read raw events and reproduce SpikingJelly's dataset conventions exactly, because every ported paper loads its data through SpikingJelly: the index order, the labels and, for CIFAR10-DVS, its coordinate convention. If a dataset needs a manual download, `prepare()` stops with clear instructions. Dataset licenses decide whether a mirror on the Hub is allowed **[FILL]**. DVS128 Gesture and CIFAR10-DVS are CC BY 4.0.
 
-v1 change: adapters decode the raw files themselves instead of wrapping SpikingJelly's classes, and unit tests check them against SpikingJelly. SpikingJelly 0.0.0.0.14 cannot read CIFAR10-DVS with NumPy 2.3 or later (it calls `np.fromstring`), its converters drop failed recordings silently, and its frame loader opens files with `allow_pickle=True`. Two consequences of following SpikingJelly: DVS128 Gesture labels follow its folder order: CSV classes 1 and 2 are labels 0 and 1, CSV class 11 (other gestures) is label 2, and CSV classes 3 to 10 are labels 3 to 10 (the adapter docstring has the table), and CIFAR10-DVS coordinates are jAER's transposed and flipped. Shared download, checksum and unpacking code lives in `sbb.data.datasets.common`.
+Adapters decode the raw files themselves, not through SpikingJelly's classes, and unit tests check them against SpikingJelly, because SpikingJelly 0.0.0.0.14 cannot read CIFAR10-DVS with NumPy 2.3 or later (it calls `np.fromstring`), its converters drop failed recordings silently, and its frame loader opens files with `allow_pickle=True`. Two consequences of following SpikingJelly: DVS128 Gesture labels follow its folder order: CSV classes 1 and 2 are labels 0 and 1, CSV class 11 (other gestures) is label 2, and CSV classes 3 to 10 are labels 3 to 10 (the adapter docstring has the table), and CIFAR10-DVS coordinates are jAER's transposed and flipped. Shared download, checksum and unpacking code lives in `sbb.data.datasets.common`.
 
 | Architecture | Use | Source |
 |---|---|---|
 | `tiny_lif_cnn` | lite track, tests | in-house: two conv blocks (16 and 32 channels) with LIF neurons and pooling, flatten size computed from the input, linear readout |
 | `dvsgesture_net` | full track, DVS128 Gesture | SpikingJelly's `parametric_lif_net.DVSGestureNet`: five conv blocks of 128 channels and a voting readout |
+| `nmnist_net` | replications on N-MNIST | SpikingJelly's NMNISTNet: two conv blocks, a 2048-unit layer, IF neurons |
 | `cifar10dvs_net` | full track, CIFAR10-DVS | SpikingJelly's `parametric_lif_net.CIFAR10DVSNet`: four conv blocks of 128 channels and a voting readout |
 | `sew_resnet18` (v4) | architecture track | SEW-ResNet, Fang et al., NeurIPS 2021, SpikingJelly's `sew_resnet` |
 | `spikformer` (v4) | architecture track | Spikformer, Zhou et al., ICLR 2023 |
@@ -1801,7 +1803,7 @@ v1 change: adapters decode the raw files themselves instead of wrapping SpikingJ
 
 Full-track defaults: T = 16 at 128x128, no downsampling, for both datasets. This is the setting of the ported papers (Sneaky Spikes, Flashy Backdoor, TMPBD), which train these two networks with LIF neurons, the ATan surrogate and `detach_reset=True`, and an MSE loss between the firing rate and the one-hot label.
 
-v1 change (user decision of 2026-10-16): the benchmark runs every attack and defense on a small fixed set of standard networks, `tiny_lif_cnn` for the lite track and the papers' two networks for the full track, so results compare with the literature. Replication records use the papers' networks exactly. `sbb.models.architectures.voting_cnn` rebuilds SpikingJelly's layout layer for layer, and only the first conv's input channels, the flatten layer and the output layer follow the input and the number of classes. A unit test checks it against SpikingJelly's classes at the papers' shapes: the output of every layer in eval mode, and the outputs, every gradient and the batch-norm buffers after one MSE training step. `spiking_vgg11` and `sew_resnet18` are dropped, and are added only if a replication target needs them. v1 addition (user request of 2026-10-21): `nmnist_net`, SpikingJelly's NMNISTNet (two conv blocks, a 2048-unit layer, IF neurons), replicates the papers' N-MNIST results. The same unit test checks it against SpikingJelly at 2x34x34. The dynamic attack's generator then follows the official AutoencoderMNIST.
+The benchmark runs every attack and defense on a small fixed set of standard networks, `tiny_lif_cnn` for the lite track and the papers' two networks for the full track, so results compare with the literature (user decision of 2026-10-16). Replication records use the papers' networks exactly. `sbb.models.architectures.voting_cnn` rebuilds SpikingJelly's layout layer for layer, and only the first conv's input channels, the flatten layer and the output layer follow the input and the number of classes. A unit test checks it against SpikingJelly's classes at the papers' shapes: the output of every layer in eval mode, and the outputs, every gradient and the batch-norm buffers after one MSE training step. `spiking_vgg11` is added only if a replication target needs it, and `sew_resnet18` waits for the architecture track of v4. `nmnist_net` replicates the papers' N-MNIST results (user request of 2026-10-21). The same unit test checks it against SpikingJelly at 2x34x34. On it, the dynamic attack's generator follows the official AutoencoderMNIST.
 
 ## 14. Tooling, CLI and CI/CD
 
@@ -1835,6 +1837,9 @@ v1 change (user decision of 2026-10-16): the benchmark runs every attack and def
 | `sbb bundle --plugin NAME` | Collect results and write the manifest | v1 |
 | `sbb validate PATH` | Validate cards, bundles and records (used by CI) | v1 |
 | `sbb reproduce RESULT_JSON [--site]` | Rerun a cell and write a Verification record | v1 |
+| `sbb unverified [RESULTS] --track --verifier` | List the results no record of the verifier covers | v2 |
+| `sbb spot-check MANIFEST [--k]` | List the full-track results of a manifest a verifier reruns | v2 |
+| `sbb carry-over SPEC --source VERSION` | Copy the unchanged results of an earlier benchmark version | v2 |
 | `sbb zoo pull` and `sbb zoo push` | Sync zoo artifacts with the Hub | v1 |
 | `sbb site build --out DIR` | Build the leaderboard | v1 |
 
@@ -1843,9 +1848,9 @@ v1 change (user decision of 2026-10-16): the benchmark runs every attack and def
 | Workflow | Trigger | What it does | Secrets |
 |---|---|---|---|
 | `ci.yml` | pull request, push | ruff, mypy, import-linter, pytest (unit, contracts, golden), `sbb validate` on changed cards and bundles, smoke run | none |
-| `verify-lite.yml` | push to main, manual | matrix over new or changed lite cells on GitHub-hosted runners, then an automated pull request with the Verification records | `GITHUB_TOKEN` only |
+| `verify-lite.yml` | push to main, manual | matrix over the lite results no verify-lite record covers (`sbb unverified`) on GitHub-hosted runners, then an automated pull request with the Verification records | `GITHUB_TOKEN` only |
 | `publish.yml` | push to main that changes `results/` or `verifications/` | builds the leaderboard and deploys GitHub Pages | main only |
-| `mirror.yml` | push to main that changes `results/` or `verifications/`, manual | v2: uploads both folders to the Hub dataset `sbb-zoo/sbb-results` with `hf upload --delete "*"`, an exact copy. Warns and does nothing without the secret | `HF_TOKEN`, main only |
+| `mirror.yml` | push to main that changes `results/` or `verifications/`, manual | uploads both folders to the Hub dataset `sbb-zoo/sbb-results` with `hf upload --delete "*"`, an exact copy. Warns and does nothing without the secret | `HF_TOKEN`, main only |
 | `image.yml` | tag `v*` | builds and pushes the container image to GHCR, writes the digest into the release notes | `GITHUB_TOKEN` |
 
 Limits to design for: a job on a GitHub-hosted runner runs at most 6 hours, the free plan runs 20 jobs at once, and a matrix holds at most 256 jobs per workflow run. Datasets for `verify-lite` come from `actions/cache` or from the Hub mirror.
