@@ -52,6 +52,8 @@ attack, defense and metric, then explore:
 - a sortable table with each cell's status, mean and standard deviation over seeds,
 - each ported attack against the numbers of its paper,
 - the defenses of each scenario as a Pareto front of clean accuracy against attack success,
+- flags on cells where the attack never worked, the defense cost more than 3 points of clean
+  accuracy, or the defense left the model unchanged,
 - the card of every method, with its paper, code and SNN adaptation, and for a defense the
   adaptive attacks that break it.
 
@@ -70,7 +72,7 @@ declares its threat model and hyperparameters.
 
 | Attack | Paper | Threat model | Trigger | Replication |
 |---|---|---|---|---|
-| TaCT, ported from ANNs (`tact`) | ANN attack, [Tang et al., USENIX Security 2021](https://arxiv.org/abs/1908.00686) | data poisoning, adaptive (STRIP) | patch that flips one source class | not applicable |
+| TaCT, ported from ANNs (`tact`) | ANN attack, [Tang et al., USENIX Security 2021](https://arxiv.org/abs/1908.00686) | data poisoning, adaptive (STRIP) | patch aimed at one source class, with cover samples | not applicable |
 | Adap-Blend, ported from ANNs (`adap_blend`) | ANN attack, [Qi et al., ICLR 2023](https://arxiv.org/abs/2205.13613) | data poisoning, adaptive (activation clustering) | blended pattern, partial when poisoning | not applicable |
 | Adap-Patch, ported from ANNs (`adap_patch`) | ANN attack, [Qi et al., ICLR 2023](https://arxiv.org/abs/2205.13613) | data poisoning, adaptive (activation clustering) | faint corner patches, opaque at test time | not applicable |
 | Sneaky Spikes, static (`sneaky_static`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | static patch in every frame | replicated |
@@ -83,7 +85,7 @@ declares its threat model and hyperparameters.
 | Fine-tuning injection (`finetune_injection`) | baseline | supply chain | static patch, fine-tuned into a clean model | not applicable |
 
 A port is **replicated** when its mean over three seeds is within 3 percentage points of every
-number its paper reports, and **explained** when a maintainer documented why it misses
+target its replication record takes from the paper, and **explained** when a maintainer documented why it misses
 ([records](replications/)). T-Backdoor is part of benchmark 1.0. TaCT, Adap-Blend and
 Adap-Patch are ANN image attacks ported to SNNs and event data, not attacks designed for SNNs.
 Their papers have no event setting to replicate.
@@ -114,7 +116,7 @@ defense describes its adaptation. BadSNN waits for its official code.
 
 | Dataset | Classes | Track | Network |
 |---|---|---|---|
-| [N-MNIST](https://www.garrickorchard.com/datasets/n-mnist) | 10 | lite, on a CPU | `tiny_lif_cnn`, two conv blocks with LIF neurons |
+| [N-MNIST](https://www.garrickorchard.com/datasets/n-mnist) | 10 | lite, small enough for a CPU | `tiny_lif_cnn`, two conv blocks with LIF neurons |
 | [DVS128 Gesture](https://research.ibm.com/interactive/dvsgesture/) | 11 | full, on a GPU | `dvsgesture_net`, the network of the ported papers |
 | [CIFAR10-DVS](https://figshare.com/articles/dataset/CIFAR10-DVS_New/4724671) | 10 | full, on a GPU | `cifar10dvs_net`, the network of the ported papers |
 
@@ -175,8 +177,9 @@ a security game ([threat model](docs/threat-model.md)):
    detectors, rejection rates and AUROC, with the spike rates and synaptic operations of the
    evaluated model.
 
-The benchmark has two tracks. The **lite** track runs on N-MNIST on a CPU, and GitHub Actions
-reruns every lite result after merge to verify it. The **full** track runs the papers' networks on
+The benchmark has two tracks. The **lite** track runs on N-MNIST with a network small enough
+for a CPU, and GitHub Actions reruns every lite result on a CPU after merge to verify it. The
+lite results of benchmark 1.0 ran on a GPU. The **full** track runs the papers' networks on
 DVS128 Gesture and CIFAR10-DVS on GPUs, and its results are self-reported until a group from
 another organization reproduces them ([docs/verifying.md](docs/verifying.md)). Models, poisoned sets and frames are cached by content, so cells that
 share a model train it once.
