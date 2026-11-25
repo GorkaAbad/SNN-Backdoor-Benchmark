@@ -9,7 +9,10 @@ from typing import Any
 import pytest
 import torch
 
+from sbb.core.cards import ScenarioKind, Stage
+from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult, Outcome, collect_provenance
+from sbb.data.sample import DATASETS
 from sbb.results.replication import ReplicationRecord
 from sbb.results.verification import LITE_VERIFIER, Verification
 from sbb.runner.planner import Planner
@@ -212,25 +215,39 @@ def test_page_opens_on_the_newest_version() -> None:
     assert json.loads(out.stdout) == ["0.10.0", "0.9.1", "0.9.0"]
 
 
+def test_the_page_gets_one_name_for_every_id_it_shows() -> None:
+    data = LeaderboardBuilder(RESULTS, []).data()
+    names = data["names"]
+    # Plugins name themselves in their cards, datasets in their classes.
+    assert names["static_patch"] == ATTACKS.get("static_patch").card.display_name
+    assert names["strip"] == DEFENSES.get("strip").card.display_name == "STRIP"
+    assert names["nmnist"] == DATASETS.get("nmnist").display_name == "N-MNIST"
+    # Every fixed term the page groups or filters by has a name.
+    assert {"lite", "full", "adaptive", *ScenarioKind, *Stage} <= names.keys()
+    shown = {*data["methods"], *DATASETS.names()}
+    assert shown <= names.keys()
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_page_shows_proper_names_and_the_device() -> None:
     app = Path(__file__).parents[2] / "src" / "sbb" / "site" / "templates" / "app.js"
     script = """
-const { display, runOn } = require(process.argv[1]);
-const cell = { sites: ["gh200-cluster"], devices: ["NVIDIA GH200 120GB"] };
+const { display, matrix, runOn } = require(process.argv[1]);
+const names = { nmnist: "N-MNIST", sneaky_smart: "Sneaky Smart", strip: "STRIP" };
+const cell = { attack: "sneaky_smart", defense: "strip", metrics: {}, status: "ok", seeds: [0],
+  sites: ["gh200-cluster"], devices: ["NVIDIA GH200 120GB"] };
 console.log(JSON.stringify([
-  display("cifar10dvs"), display("nmnist"), display("post_training"), display("new_kind"),
-  runOn(cell),
+  display("nmnist", names), display("new_kind", names),
+  matrix([cell], "asr", {}, names).hover[0][0], runOn(cell),
 ]));
 """
     out = subprocess.run(
         ["node", "-e", script, str(app)], capture_output=True, text=True, check=True
     )
     assert json.loads(out.stdout) == [
-        "CIFAR10-DVS",
         "N-MNIST",
-        "Post-training",
-        "New kind",  # an id without a name gets spaces and a capital
+        "new_kind",  # an id without a name stays the id, the page never invents one
+        "Sneaky Smart × STRIP<br>ok<br>seeds 0 · NVIDIA GH200 120GB",
         "NVIDIA GH200 120GB",  # the device only, the site stays in the CSVs
     ]
 

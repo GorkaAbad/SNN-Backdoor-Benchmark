@@ -1,4 +1,5 @@
 name: tact
+display_name: TaCT
 version: 1.0.0
 title: TaCT, an ANN attack ported to SNNs
 paper: "Tang, Wang, Tang, Zhang. Demon in the Variant: Statistical Analysis of DNNs for Robust Backdoor Contamination Detection. USENIX Security 2021"

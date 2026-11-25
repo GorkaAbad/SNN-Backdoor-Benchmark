@@ -115,6 +115,9 @@ class CardBase(BaseModel, frozen=True):
 
     model_config = ConfigDict(extra="forbid")
     name: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    # The name every page and table shows, for example "Sneaky Smart". name stays the id that
+    # specs, keys and the code use.
+    display_name: str = Field(min_length=1)
     version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
     title: str
     paper: str | None = None

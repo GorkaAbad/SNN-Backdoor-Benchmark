@@ -1,4 +1,5 @@
 name: no_attack
+display_name: No Attack
 version: 1.0.0
 title: No attack (clean reference and natural ASR)
 kind: data_poisoning

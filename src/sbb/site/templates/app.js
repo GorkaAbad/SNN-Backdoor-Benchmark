@@ -4,15 +4,6 @@
 
 const KIND_ORDER = ["data_poisoning", "training_control", "supply_chain", "federated", "adaptive"];
 const STAGE_ORDER = ["pre_training", "in_training", "post_training", "inference", "model_detection"];
-// Display names of the ids in data.json. Network names stay ids, as in the cards and the code.
-const NAMES = {
-  lite: "Lite", full: "Full",
-  nmnist: "N-MNIST", dvsgesture: "DVS128 Gesture", cifar10dvs: "CIFAR10-DVS", synthetic: "Synthetic",
-  data_poisoning: "Data poisoning", training_control: "Training control", supply_chain: "Supply chain",
-  federated: "Federated", adaptive: "Adaptive",
-  pre_training: "Pre-training", in_training: "In-training", post_training: "Post-training",
-  inference: "Inference", model_detection: "Model detection",
-};
 const TRACK_ORDER = ["lite", "full"];
 const METRIC_ORDER = ["ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict", "spike_rate", "spike_rate_triggered", "synops"];
 
@@ -99,18 +90,18 @@ function runOn(cell) {
   return (cell.devices || []).join(", ") || cell.sites.join(", ");
 }
 
-function display(id) {
-  // The display name of an id of data.json, or the id with spaces and a capital first letter.
-  if (NAMES[id]) return NAMES[id];
-  const text = String(id).replaceAll("_", " ");
-  return text.charAt(0).toUpperCase() + text.slice(1);
+function display(id, names = DATA?.names) {
+  // The display name of an id from data.json's names, which the builder takes from the cards,
+  // the dataset classes and its terms. Every text of the page names things through here. CSV
+  // downloads keep the ids. Networks and scenarios have no display name and stay ids.
+  return names?.[id] ?? String(id);
 }
 
 function excludedText(cell, separator) {
   return (cell.excluded ?? []).map((e) => `seed ${e.seed} left out: ${e.status}, ${e.reason}`).join(separator);
 }
 
-function matrix(cells, metric, methods) {
+function matrix(cells, metric, methods, names = DATA?.names) {
   const attacks = orderMethods(uniq(cells.map((c) => c.attack)), methods);
   const defenses = orderMethods(uniq(cells.map((c) => c.defense)), methods);
   const byPair = new Map(cells.map((c) => [`${c.attack}|${c.defense}`, c]));
@@ -127,9 +118,10 @@ function matrix(cells, metric, methods) {
       const scale = isPercent(metric) ? 100 : 1;
       zRow.push(stat ? stat.mean * scale : null);
       textRow.push(stat ? `${formatValue(metric, stat.mean)}<br>±${formatValue(metric, stat.std)} (${seedCount(cell)})` : cell ? cell.status : "");
+      const pair = `${display(attack, names)} × ${display(defense, names)}`;
       hoverRow.push(cell
-        ? `${attack} × ${defense}<br>${stat ? formatStat(metric, stat) : cell.status}${cell.reason ? `<br>${cell.reason}` : ""}${cell.excluded?.length ? `<br>${excludedText(cell, "<br>")}` : ""}<br>seeds ${cell.seeds.join(", ")} · ${runOn(cell)}`
-        : `${attack} × ${defense}<br>no result`);
+        ? `${pair}<br>${stat ? formatStat(metric, stat) : cell.status}${cell.reason ? `<br>${cell.reason}` : ""}${cell.excluded?.length ? `<br>${excludedText(cell, "<br>")}` : ""}<br>seeds ${cell.seeds.join(", ")} · ${runOn(cell)}`
+        : `${pair}<br>no result`);
     }
     z.push(zRow);
     text.push(textRow);
@@ -236,7 +228,7 @@ function syncChecks(id, role) {
       input.checked ? chosen.add(name) : chosen.delete(name);
       render();
     });
-    label.append(input, name);
+    label.append(input, display(name));
     box.append(label);
   }
   const shown = names.filter((n) => chosen.has(n)).length;
@@ -273,8 +265,8 @@ function renderMatrix() {
   const percent = isPercent(state.metric);
   Plotly.react(element, [{
     type: "heatmap",
-    x: m.defenses,
-    y: m.attacks,
+    x: m.defenses.map((d) => display(d)),
+    y: m.attacks.map((a) => display(a)),
     z: m.z,
     text: m.text,
     texttemplate: "%{text}",
@@ -301,7 +293,7 @@ function renderModelAuroc() {
   if (!rows.length) return;
   const heading = Object.assign(document.createElement("h2"), { textContent: "Model detection AUROC" });
   box.append(heading, table(["Defense", "AUROC", "Clean models", "Backdoored models"], rows.map((r) => [
-    r.defense, r.auroc === null ? "needs both" : r.auroc.toFixed(3), r.clean_models, r.backdoored_models,
+    display(r.defense), r.auroc === null ? "needs both" : r.auroc.toFixed(3), r.clean_models, r.backdoored_models,
   ])));
 }
 
@@ -310,7 +302,7 @@ function renderCompare() {
   const cells = visibleCells();
   const by = state.compareBy;
   const items = orderMethods(uniq(cells.map((c) => c[by])), DATA.methods);
-  state.compareItem = setOptions($("compare-item"), items, state.compareItem);
+  state.compareItem = setOptions($("compare-item"), items, state.compareItem, display);
   if (!cells.length || state.compareItem === null) return empty(element, "No results for this selection yet.");
   clearMessage(element);
   const other = by === "attack" ? "defense" : "attack";
@@ -320,7 +312,7 @@ function renderCompare() {
   const scale = isPercent(state.metric) ? 100 : 1;
   Plotly.react(element, [{
     type: "bar",
-    x: names,
+    x: names.map((n) => display(n)),
     y: names.map((n) => byName.get(n).metrics[state.metric].mean * scale),
     error_y: { type: "data", array: names.map((n) => byName.get(n).metrics[state.metric].std * scale), visible: true },
     marker: { color: css("--accent") },
@@ -403,7 +395,7 @@ function renderTable() {
   const headers = ["Attack", "Defense", "Seeds", "Status", "Run on", ...metrics.map(metricLabel)];
   // Sort keys: the text of the first five columns, the mean of a metric column.
   const keyOf = (cell, column) =>
-    [cell.attack, cell.defense, cell.seeds.length, cell.status, runOn(cell)][column] ?? cell.metrics[metrics[column - 5]]?.mean ?? -Infinity;
+    [display(cell.attack), display(cell.defense), cell.seeds.length, cell.status, runOn(cell)][column] ?? cell.metrics[metrics[column - 5]]?.mean ?? -Infinity;
   const column = state.sort.key < headers.length ? state.sort.key : -1;
   // The default order follows the matrix: attacks, then defenses, baselines and oldest papers first.
   const attacks = orderMethods(uniq(cells.map((c) => c.attack)), DATA.methods);
@@ -415,9 +407,9 @@ function renderTable() {
     const order = typeof ka === "number" ? ka - kb : String(ka).localeCompare(String(kb));
     return state.sort.dir * order;
   });
-  const rows = sorted.map((c) => [c.attack, c.defense, seedCount(c), badge(c.status), runOn(c), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
+  const rows = sorted.map((c) => [display(c.attack), display(c.defense), seedCount(c), badge(c.status), runOn(c), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
   $("table").replaceChildren(table(headers, rows, true));
-  const log = cells.flatMap((c) => c.verifications.map((v) => [c.attack, c.defense, v.seed, v.verifier, v.verifier_org, v.site, v.device, v.date, v.verdict]));
+  const log = cells.flatMap((c) => c.verifications.map((v) => [display(c.attack), display(c.defense), v.seed, v.verifier, v.verifier_org, v.site, v.device, v.date, v.verdict]));
   if (!log.length) return empty($("verification-log"), "No verification of these cells yet.");
   $("verification-log").replaceChildren(table(["Attack", "Defense", "Seed", "Verifier", "Organization", "Site", "Device", "Date", "Verdict"], log));
 }
@@ -448,7 +440,7 @@ function renderReplications() {
     empty(element, `No replication target reports ${metricLabel(metric)}. Choose clean accuracy or ASR.`);
   } else {
     clearMessage(element);
-    const x = plotted.map((r) => `${r.record.method}<br>${r.target.dataset}`);
+    const x = plotted.map((r) => `${display(r.record.method)}<br>${display(r.target.dataset)}`);
     Plotly.react(element, [
       { type: "bar", name: "Paper", x, y: plotted.map((r) => r.reported), marker: { color: css("--muted") } },
       {
@@ -470,10 +462,10 @@ function renderReplications() {
   }
   const headers = ["Attack", "Dataset", "Model", "Metric", "Paper %", "Ours %", "Tolerance", "Status", "Targets confirmed", "Source"];
   $("replication-table").replaceChildren(table(headers, rows.map((r) => [
-    r.record.method,
-    r.target.dataset,
+    display(r.record.method),
+    display(r.target.dataset),
     r.target.arch,
-    r.metric,
+    DATA.metrics[r.metric]?.label ?? r.metric,
     r.reported.toFixed(1),
     r.ours ? `${r.ours.mean.toFixed(1)} ± ${r.ours.std.toFixed(1)}` : "pending",
     `${r.record.tolerance_pp} pp`,
@@ -509,7 +501,7 @@ function renderPareto() {
       mode,
       x: pts.map((p) => 100 * p.ca),
       y: pts.map((p) => 100 * (1 - p.asr)),
-      text: pts.map((p) => p.defense),
+      text: pts.map((p) => display(p.defense)),
       customdata: pts.map((p) => p.attacks),
       textposition: "top center",
       marker: { color, size: 10 },
@@ -543,13 +535,15 @@ function renderMethods() {
       const m = DATA.methods[name];
       const card = document.createElement("article");
       card.className = "card";
-      const title = Object.assign(document.createElement("h3"), { textContent: m.title || name });
-      const meta = Object.assign(document.createElement("div"), { className: "meta", textContent: `${name} · ${role} · ${display(m.group)} · v${m.version}${m.published ? ` · ${m.published}` : ""}` });
+      const title = Object.assign(document.createElement("h3"), { textContent: display(name) });
+      // The id is what specs and the command line use, for example `sbb test --plugin <id>`.
+      const meta = Object.assign(document.createElement("div"), { className: "meta", textContent: `id ${name} · ${role} · ${display(m.group)} · v${m.version}${m.published ? ` · ${m.published}` : ""}` });
       card.append(title, meta);
       const lines = [
+        m.title,
         m.paper,
         m.trigger_domain ? `Trigger domain: ${m.trigger_domain.replace("_", " ")}` : null,
-        m.aware_of && m.aware_of.length ? `Built to beat: ${m.aware_of.join(", ")}` : null,
+        m.aware_of && m.aware_of.length ? `Built to beat: ${m.aware_of.map((d) => display(d)).join(", ")}` : null,
         m.resources ? `Defender sees: ${m.resources.join(", ") || "nothing"}` : null,
         m.adaptation_note ? `Adaptation: ${m.adaptation_note}` : null,
         m.license_note ? `License: ${m.license_note}` : null,
@@ -563,7 +557,7 @@ function renderMethods() {
       }
       const broken = brokenBy(name);
       if (broken.length) {
-        const text = broken.map((b) => `${b.attack} (${b.scenario}, ${b.track}, ASR ${formatValue("asr", b.asr)})`).join(", ");
+        const text = broken.map((b) => `${display(b.attack)} (${b.scenario}, ${display(b.track)}, ASR ${formatValue("asr", b.asr)})`).join(", ");
         card.append(Object.assign(document.createElement("p"), { className: "broken", textContent: `Broken by: ${text}` }));
       }
       if (status.has(name)) {

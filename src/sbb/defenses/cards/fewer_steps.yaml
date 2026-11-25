@@ -1,4 +1,5 @@
 name: fewer_steps
+display_name: Fewer Time Steps
 version: 1.0.0
 title: Fewer time steps, an sbb SNN-native baseline
 # No paper: a baseline that only an SNN has, as the number of time steps is a knob of the model.

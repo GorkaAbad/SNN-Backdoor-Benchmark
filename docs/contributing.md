@@ -62,6 +62,7 @@ class FineTuning(ModelDefense):
 
 ```yaml
 name: fine_tuning
+display_name: Fine-Tuning           # the name the leaderboard shows, unique
 version: 1.0.0
 title: Fine-tuning on clean data
 stage: post_training

@@ -1,4 +1,5 @@
 name: activation_clustering
+display_name: Activation Clustering
 version: 1.3.0
 title: Activation clustering
 paper: "Chen, Carvalho, Baracaldo, Ludwig, Edwards, Lee, Molloy, Srivastava. Detecting Backdoor Attacks on Deep Neural Networks by Activation Clustering. arXiv 1811.03728"

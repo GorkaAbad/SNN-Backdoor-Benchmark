@@ -1,4 +1,5 @@
 name: fine_tuning
+display_name: Fine-Tuning
 version: 1.0.0
 title: Fine-tuning on clean data
 stage: post_training

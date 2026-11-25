@@ -1,4 +1,5 @@
 name: flashy
+display_name: Flashy Backdoor
 version: 1.0.0
 title: Flashy Backdoor, digital version
 paper: "Riaño, Abad, Picek, Urbieta. Flashy Backdoor: Real-world Environment Backdoor Attack on SNNs with DVS Cameras. arXiv 2411.03022"

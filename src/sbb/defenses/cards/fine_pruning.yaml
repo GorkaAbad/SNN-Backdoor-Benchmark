@@ -1,4 +1,5 @@
 name: fine_pruning
+display_name: Fine-Pruning
 version: 1.0.0
 title: Fine-pruning, adapted to SNNs
 paper: "Liu, Dolan-Gavitt, Garg. Fine-Pruning: Defending Against Backdooring Attacks on Deep Neural Networks. RAID 2018"

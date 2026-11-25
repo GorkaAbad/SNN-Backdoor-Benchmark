@@ -1,4 +1,5 @@
 name: tmpbd
+display_name: TMPBD
 version: 1.0.0
 title: TMPBD, membrane-potential backdoor detection
 paper: "Li, Wu, Xia et al. Unsupervised Backdoor Detection and Mitigation for Spiking Neural Networks. arXiv 2510.06629"

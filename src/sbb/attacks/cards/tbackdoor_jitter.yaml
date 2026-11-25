@@ -1,4 +1,5 @@
 name: tbackdoor_jitter
+display_name: T-Backdoor Jitter
 version: 1.0.0
 title: T-Backdoor, jitter trigger
 paper: "Miah, Vu, Bi. T-Backdoor: Exploiting Temporal Redundancy in Neuromorphic Data for Spike-preserving Backdoor Attacks on SNNs. arXiv 2609.30119"

@@ -1,5 +1,7 @@
 """Contract tests over every registered plugin. A new plugin gets these for free."""
 
+from typing import Any
+
 import numpy as np
 import pytest
 import torch
@@ -21,7 +23,7 @@ from sbb.core.plugins import (
     Trigger,
 )
 from sbb.core.proxies import AttackerView, DefenderView, ScenarioInfo, TrainSetView
-from sbb.core.registry import ATTACKS, DEFENSES, METRICS
+from sbb.core.registry import ATTACKS, DEFENSES, METRICS, Registry
 from sbb.core.trainer import Trainer, TrainerHooks, TrainSpec
 from sbb.data.module import DataModule
 from sbb.data.poison import Budget
@@ -181,6 +183,14 @@ def test_dataset_declares_its_metadata(name: str) -> None:
     assert cls.name == name
     W, H, P = cls.sensor_size
     assert min(W, H) > 0 and P == 2 and cls.num_classes > 1
+    assert cls.display_name.strip()
+
+
+@pytest.mark.parametrize("registry", [ATTACKS, DEFENSES], ids=["attacks", "defenses"])
+def test_display_names_are_unique(registry: Registry[Any]) -> None:
+    # The site's matrix and plots use them as axis labels, so two plugins cannot share one.
+    names = [registry.get(n).card.display_name for n in registry.names()]
+    assert len(set(names)) == len(names)
 
 
 @pytest.mark.parametrize("name", ARCHITECTURES.names())

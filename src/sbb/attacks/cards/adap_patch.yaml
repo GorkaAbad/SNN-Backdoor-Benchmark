@@ -1,4 +1,5 @@
 name: adap_patch
+display_name: Adap-Patch
 version: 1.1.0
 title: Adap-Patch, an ANN attack ported to SNNs
 paper: "Qi, Xie, Li, Mahloujifar, Mittal. Revisiting the Assumption of Latent Separability for Backdoor Defenses. ICLR 2023"

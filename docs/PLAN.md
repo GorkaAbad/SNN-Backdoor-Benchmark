@@ -673,6 +673,7 @@ class Knowledge(BaseModel, frozen=True):
 
 class CardBase(BaseModel):
     name: str                              # registry name, snake_case, unique
+    display_name: str                      # v2: the name every page and table shows, unique per role
     version: str                           # semver of the implementation
     title: str
     paper: str | None = None
@@ -712,6 +713,7 @@ class EventSample:
 
 class EventDataset(ABC):
     name: ClassVar[str]
+    display_name: ClassVar[str]                   # v2: the name pages and tables show, for example "N-MNIST"
     sensor_size: ClassVar[tuple[int, int, int]]   # (W, H, P)
     num_classes: ClassVar[int]
     def __init__(self, root: Path) -> None: ...
@@ -1254,6 +1256,7 @@ v0 change: the generic `Registry` lives in `sbb.utils.registry`, because the dat
 
 ```yaml
 name: static_patch
+display_name: Static Patch
 version: 1.0.0
 title: Static patch trigger (Sneaky Spikes)
 paper: "Abad et al., Sneaky Spikes, NDSS 2024"
@@ -1276,6 +1279,7 @@ hparams:
 
 ```yaml
 name: fine_pruning
+display_name: Fine-Pruning
 version: 1.0.0
 title: Fine-pruning adapted to SNNs
 paper: "Liu et al., Fine-Pruning, RAID 2018"

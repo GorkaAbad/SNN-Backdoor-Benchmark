@@ -1,4 +1,5 @@
 name: strip_per_step
+display_name: STRIP per Time Step
 version: 1.0.0
 title: STRIP per time step, an sbb variant
 paper: "Gao, Xu, Wang, Chen, Ranasinghe, Nepal. STRIP: A Defence Against Trojan Attacks on Deep Neural Networks. ACSAC 2019"

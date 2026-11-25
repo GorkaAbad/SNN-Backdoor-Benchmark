@@ -60,6 +60,7 @@ class CIFAR10DVS(RecordingFolder):
     """
 
     name = "cifar10dvs"
+    display_name = "CIFAR10-DVS"
     sensor_size = (128, 128, 2)
     num_classes = 10
     _archives = {cls: ((f"{_FIGSHARE}/{file_id}",), md5) for cls, (file_id, md5) in _ZIPS.items()}

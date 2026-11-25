@@ -22,6 +22,7 @@ class SyntheticEvents(EventDataset):
     """
 
     name = "synthetic"
+    display_name = "Synthetic"
     sensor_size = (16, 16, 2)
     num_classes = 4
 

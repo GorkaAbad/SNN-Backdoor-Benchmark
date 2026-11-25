@@ -1,4 +1,5 @@
 name: threshold_recalibration
+display_name: Threshold Recalibration
 version: 1.0.0
 title: Threshold recalibration, an sbb SNN-native baseline
 # No paper: a baseline that only an SNN has, as the firing threshold is a knob of the neurons.

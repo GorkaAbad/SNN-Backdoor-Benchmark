@@ -29,6 +29,7 @@ class NMNIST(RecordingFolder):
     """
 
     name = "nmnist"
+    display_name = "N-MNIST"
     sensor_size = (34, 34, 2)
     num_classes = 10
     _archives = {

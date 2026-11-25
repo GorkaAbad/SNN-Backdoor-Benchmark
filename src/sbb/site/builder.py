@@ -15,6 +15,7 @@ from sbb import __version__
 from sbb.core.cards import AttackCard
 from sbb.core.registry import ATTACKS, DEFENSES
 from sbb.core.result import CellResult
+from sbb.data.sample import DATASETS
 from sbb.metrics.detection import auroc
 from sbb.results.policy import OUTCOME_STATUS, Tolerances, VerificationPolicy
 from sbb.results.replication import ReplicationRecord
@@ -26,6 +27,23 @@ from sbb.site.status import METRICS, percent, write_csv
 _TEMPLATES = ("index.html", "app.js", "style.css", "favicon.png")
 # An aware attack breaks a defense when its mean ASR against it reaches this (PLAN 13.4, task 7).
 BROKEN_ASR = 0.5
+# Display names of the fixed terms the page groups and filters by: tracks, attack groups (the
+# scenario kinds and adaptive) and defense stages. Plugins name themselves in their cards and
+# datasets in their classes (display_name). Networks and scenarios keep their ids.
+TERMS = {
+    "lite": "Lite",
+    "full": "Full",
+    "data_poisoning": "Data poisoning",
+    "training_control": "Training control",
+    "supply_chain": "Supply chain",
+    "federated": "Federated",
+    "adaptive": "Adaptive",
+    "pre_training": "Pre-training",
+    "in_training": "In-training",
+    "post_training": "Post-training",
+    "inference": "Inference",
+    "model_detection": "Model detection",
+}
 
 
 class LeaderboardBuilder:
@@ -79,6 +97,7 @@ class LeaderboardBuilder:
             "generated": datetime.now(UTC).isoformat(timespec="seconds"),
             "sbb_version": __version__,
             "metrics": {k: {"label": label, "better": d} for k, (label, d) in METRICS.items()},
+            "names": names(),
             "methods": methods,
             "cells": cells,
             "model_auroc": self._model_auroc(),
@@ -309,6 +328,20 @@ def _methods() -> dict[str, dict[str, Any]]:
             **_common(defense.model_dump(mode="json")),
         }
     return methods
+
+
+def names() -> dict[str, str]:
+    """The display name of every id the page shows, the single source of the page's wording."""
+    parts = [
+        TERMS,
+        {n: ATTACKS.get(n).card.display_name for n in ATTACKS.names()},
+        {n: DEFENSES.get(n).card.display_name for n in DEFENSES.names()},
+        {n: DATASETS.get(n).display_name for n in DATASETS.names()},
+    ]
+    merged = {k: v for part in parts for k, v in part.items()}
+    if len(merged) < sum(map(len, parts)):
+        raise ValueError("an id names two things (plugin, dataset or term), one name is lost")
+    return merged
 
 
 def attack_group(card: AttackCard) -> str:

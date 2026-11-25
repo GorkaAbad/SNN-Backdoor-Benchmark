@@ -40,6 +40,7 @@ class EventDataset(ABC):
     """A neuromorphic dataset that yields raw EventSamples by full-dataset index."""
 
     name: ClassVar[str]
+    display_name: ClassVar[str]  # the name pages and tables show, for example "N-MNIST"
     sensor_size: ClassVar[tuple[int, int, int]]  # (W, H, P)
     num_classes: ClassVar[int]
 
