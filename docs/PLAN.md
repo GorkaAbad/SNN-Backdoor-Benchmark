@@ -1471,7 +1471,7 @@ There are two separate guarantees.
 - **Per-sample randomness.** Randomized triggers use `rng_for(seed, sample.index)`, so a sample always gets the same trigger, whatever the batch order.
 - **Backend.** Verified runs use the SpikingJelly `torch` backend. Test in v0 whether the `cupy` backend is deterministic. If it is not, it is allowed only for self-reported runs and recorded in the provenance. v0 result: the `torch` backend is deterministic on GPU (NVIDIA GH200, CUDA 13). The `cupy` backend of SpikingJelly 0.0.0.0.14 does not run with NumPy 1.24 or later (it uses `np.int`), so `ArchSpec` accepts only `torch` (docs/measurements.md).
 - **Rerun from the record.** `sbb reproduce <result.json>` rebuilds the cell from its JSON, runs it on the current site and writes a Verification record.
-- **Golden tests.** Tiny CPU runs on synthetic data with frozen expected metrics (tolerance 0.5 percentage points). If a change moves them, it is either a bug or a new benchmark version.
+- **Golden tests.** Tiny CPU runs on synthetic data with frozen expected metrics (tolerance 0.5 percentage points, 0.5 percent of the value for a count such as `synops`, whose last digits move between CPUs). If a change moves them, it is either a bug or a new benchmark version.
 - **Tolerances.** The same image on the same hardware should reproduce exactly once determinism is on. Across different hardware, only agreement within tolerance is expected: `lite_pp` for the lite track, `max(full_pp, full_sigma x seed std)` for the full track.
 
 ## 10. Verification and trust
