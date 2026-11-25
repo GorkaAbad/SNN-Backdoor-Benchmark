@@ -101,6 +101,12 @@ function excludedText(cell, separator) {
   return (cell.excluded ?? []).map((e) => `seed ${e.seed} left out: ${e.status}, ${e.reason}`).join(separator);
 }
 
+// The builder's flags of a cell (an ineffective attack, a defense that costs clean accuracy or
+// left the model unchanged), by their display names.
+function flagText(cell, separator, names = DATA?.names) {
+  return (cell.flags ?? []).map((f) => display(f, names)).join(separator);
+}
+
 function matrix(cells, metric, methods, names = DATA?.names) {
   const attacks = orderMethods(uniq(cells.map((c) => c.attack)), methods);
   const defenses = orderMethods(uniq(cells.map((c) => c.defense)), methods);
@@ -117,10 +123,11 @@ function matrix(cells, metric, methods, names = DATA?.names) {
       const stat = cell ? cell.metrics[metric] : null;
       const scale = isPercent(metric) ? 100 : 1;
       zRow.push(stat ? stat.mean * scale : null);
-      textRow.push(stat ? `${formatValue(metric, stat.mean)}<br>±${formatValue(metric, stat.std)} (${seedCount(cell)})` : cell ? cell.status : "");
+      const flag = cell?.flags?.length ? " ⚑" : "";
+      textRow.push(stat ? `${formatValue(metric, stat.mean)}${flag}<br>±${formatValue(metric, stat.std)} (${seedCount(cell)})` : cell ? cell.status : "");
       const pair = `${display(attack, names)} × ${display(defense, names)}`;
       hoverRow.push(cell
-        ? `${pair}<br>${stat ? formatStat(metric, stat) : cell.status}${cell.reason ? `<br>${cell.reason}` : ""}${cell.excluded?.length ? `<br>${excludedText(cell, "<br>")}` : ""}<br>seeds ${cell.seeds.join(", ")} · ${runOn(cell)}`
+        ? `${pair}<br>${stat ? formatStat(metric, stat) : cell.status}${flag ? `<br>⚑ ${flagText(cell, ", ", names)}` : ""}${cell.reason ? `<br>${cell.reason}` : ""}${cell.excluded?.length ? `<br>${excludedText(cell, "<br>")}` : ""}<br>seeds ${cell.seeds.join(", ")} · ${runOn(cell)}`
         : `${pair}<br>no result`);
     }
     z.push(zRow);
@@ -380,11 +387,11 @@ function downloadTable() {
   const scale = (m, v) => (v == null ? "" : Number((v * (isPercent(m) ? 100 : 1)).toFixed(4)));
   const stats = ["mean", "std", "ci95"];
   const rows = [...cells].sort((a, b) => rank(a) - rank(b)).map((c) => [
-    c.attack, c.defense, c.seeds.join(" "), excludedText(c, "; "), c.status,
+    c.attack, c.defense, c.seeds.join(" "), excludedText(c, "; "), c.status, (c.flags ?? []).join(" "),
     ...metrics.flatMap((m) => stats.map((s) => scale(m, c.metrics[m]?.[s]))),
     c.sites.join("; "), (c.devices || []).join("; "),
   ]);
-  const headers = ["attack", "defense", "seeds", "excluded", "status", ...metrics.flatMap((m) => stats.map((s) => `${m}_${s}`)), "sites", "devices"];
+  const headers = ["attack", "defense", "seeds", "excluded", "status", "flags", ...metrics.flatMap((m) => stats.map((s) => `${m}_${s}`)), "sites", "devices"];
   download(selectionName("table"), toCsv([headers, ...rows]));
 }
 
@@ -392,10 +399,10 @@ function renderTable() {
   const cells = visibleCells();
   if (!cells.length) return empty($("table"), "No results for this selection yet.");
   const metrics = METRIC_ORDER.filter((m) => cells.some((c) => c.metrics[m]));
-  const headers = ["Attack", "Defense", "Seeds", "Status", "Run on", ...metrics.map(metricLabel)];
-  // Sort keys: the text of the first five columns, the mean of a metric column.
+  const headers = ["Attack", "Defense", "Seeds", "Status", "Flags", "Run on", ...metrics.map(metricLabel)];
+  // Sort keys: the text of the first six columns, the mean of a metric column.
   const keyOf = (cell, column) =>
-    [display(cell.attack), display(cell.defense), cell.seeds.length, cell.status, runOn(cell)][column] ?? cell.metrics[metrics[column - 5]]?.mean ?? -Infinity;
+    [display(cell.attack), display(cell.defense), cell.seeds.length, cell.status, flagText(cell, ", "), runOn(cell)][column] ?? cell.metrics[metrics[column - 6]]?.mean ?? -Infinity;
   const column = state.sort.key < headers.length ? state.sort.key : -1;
   // The default order follows the matrix: attacks, then defenses, baselines and oldest papers first.
   const attacks = orderMethods(uniq(cells.map((c) => c.attack)), DATA.methods);
@@ -407,7 +414,7 @@ function renderTable() {
     const order = typeof ka === "number" ? ka - kb : String(ka).localeCompare(String(kb));
     return state.sort.dir * order;
   });
-  const rows = sorted.map((c) => [display(c.attack), display(c.defense), seedCount(c), badge(c.status), runOn(c), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
+  const rows = sorted.map((c) => [display(c.attack), display(c.defense), seedCount(c), badge(c.status), flagText(c, ", "), runOn(c), ...metrics.map((m) => formatStat(m, c.metrics[m]))]);
   $("table").replaceChildren(table(headers, rows, true));
   const log = cells.flatMap((c) => c.verifications.map((v) => [display(c.attack), display(c.defense), v.seed, v.verifier, v.verifier_org, v.site, v.device, v.date, v.verdict]));
   if (!log.length) return empty($("verification-log"), "No verification of these cells yet.");
@@ -511,9 +518,14 @@ function renderPareto() {
     const front = ofGroup.filter((p) => p.front).sort((a, b) => a.ca - b.ca);
     const partial = trace(ofGroup.filter((p) => !p.complete), "Not against every attack", css("--muted"), "markers+text");
     partial.marker.symbol = "circle-open";
+    // A defense that costs more clean accuracy than the budget allows against some attack does
+    // not count as successful there, so it stays off the front (builder: costly).
+    const costly = trace(ofGroup.filter((p) => p.complete && p.costly), "Costs clean accuracy", css("--muted"), "markers+text");
+    costly.marker.symbol = "x";
     Plotly.react(plot, [
-      trace(ofGroup.filter((p) => p.complete && !p.front), "Dominated", css("--muted"), "markers+text"),
+      trace(ofGroup.filter((p) => p.complete && !p.costly && !p.front), "Dominated", css("--muted"), "markers+text"),
       partial,
+      costly,
       trace(front, "Pareto front", css("--accent"), "lines+markers+text"),
     ], plotLayout({
       plot_bgcolor: css("--panel"),

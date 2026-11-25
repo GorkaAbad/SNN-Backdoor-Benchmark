@@ -235,9 +235,13 @@ const { display, matrix, runOn } = require(process.argv[1]);
 const names = { nmnist: "N-MNIST", sneaky_smart: "Sneaky Smart", strip: "STRIP" };
 const cell = { attack: "sneaky_smart", defense: "strip", metrics: {}, status: "ok", seeds: [0],
   sites: ["gh200-cluster"], devices: ["NVIDIA GH200 120GB"] };
+const flagged = { ...cell, metrics: { asr: { mean: 0.1, std: 0 } },
+  flags: ["costly_defense", "unchanged"] };
+names.costly_defense = "Costs clean accuracy";
+const m = matrix([flagged], "asr", {}, names);
 console.log(JSON.stringify([
   display("nmnist", names), display("new_kind", names),
-  matrix([cell], "asr", {}, names).hover[0][0], runOn(cell),
+  matrix([cell], "asr", {}, names).hover[0][0], runOn(cell), m.text[0][0], m.hover[0][0],
 ]));
 """
     out = subprocess.run(
@@ -248,6 +252,9 @@ console.log(JSON.stringify([
         "new_kind",  # an id without a name stays the id, the page never invents one
         "Sneaky Smart × STRIP<br>ok<br>seeds 0 · NVIDIA GH200 120GB",
         "NVIDIA GH200 120GB",  # the device only, the site stays in the CSVs
+        "10.0 ⚑<br>±0.0 (1)",  # a flagged cell is marked, its hover names the flags
+        "Sneaky Smart × STRIP<br>10.0 ± 0.0 (std)<br>⚑ Costs clean accuracy, unchanged<br>seeds 0"
+        " · NVIDIA GH200 120GB",
     ]
 
 
@@ -350,10 +357,10 @@ def test_pareto_averages_each_defense_over_the_attacks_of_a_group() -> None:
     results = [
         _as("static_patch", "no_defense", ca=0.9, asr=1.0),
         _as("sneaky_static", "no_defense", ca=0.9, asr=0.8),
-        _as("static_patch", "fine_tuning", ca=0.8, asr=0.2),
-        _as("sneaky_static", "fine_tuning", ca=0.8, asr=0.4),
-        _as("static_patch", "fine_pruning", ca=0.7, asr=0.5),
-        _as("sneaky_static", "fine_pruning", ca=0.7, asr=0.5),
+        _as("static_patch", "fine_tuning", ca=0.88, asr=0.2),
+        _as("sneaky_static", "fine_tuning", ca=0.88, asr=0.4),
+        _as("static_patch", "fine_pruning", ca=0.87, asr=0.5),
+        _as("sneaky_static", "fine_pruning", ca=0.87, asr=0.5),
         _as("no_attack", "no_defense", ca=0.95, asr=0.05),  # no backdoor to remove
         _as("static_patch", "tmpbd", ca=0.9, asr=1.0),  # detection leaves the model as it is
         _as("static_patch", "anp", ca=0.95, asr=0.0),  # one attack only, so off the front
@@ -373,8 +380,70 @@ def test_pareto_averages_each_defense_over_the_attacks_of_a_group() -> None:
     }
     assert poisoning == {
         "no_defense": (0.9, 0.9, 2, True, True),
-        "fine_tuning": (0.8, 0.3, 2, True, True),
-        "fine_pruning": (0.7, 0.5, 2, False, True),  # fine_tuning keeps more CA, removes more ASR
+        "fine_tuning": (0.88, 0.3, 2, True, True),
+        "fine_pruning": (0.87, 0.5, 2, False, True),  # fine_tuning keeps more CA, removes more ASR
         "anp": (0.95, 0.0, 1, False, False),  # not dominated, but it misses an attack
     }
     assert [p["defense"] for p in points if p["group"] == "adaptive"] == ["fine_tuning"]
+
+
+def _flags(results: list[CellResult]) -> dict[tuple[str, str], list[str]]:
+    cells = LeaderboardBuilder(results, []).data()["cells"]
+    return {(c["attack"], c["defense"]): c["flags"] for c in cells}
+
+
+def test_cells_flag_ineffective_attacks_costly_defenses_and_unchanged_models() -> None:
+    flags = _flags(
+        [
+            _as("static_patch", "no_defense", 0, ca=0.9, asr=1.0, ra=0.0),
+            _as("static_patch", "no_defense", 1, ca=0.8, asr=0.9, ra=0.1),
+            _as("static_patch", "fine_tuning", 0, ca=0.85, asr=0.2, ra=0.7),  # CA -5 and 0,
+            _as("static_patch", "fine_tuning", 1, ca=0.8, asr=0.2, ra=0.7),  # mean -2.5
+            _as("static_patch", "nad", 0, ca=0.85, asr=0.2, ra=0.7),  # mean -5
+            _as("static_patch", "nad", 1, ca=0.75, asr=0.2, ra=0.7),
+            _as("static_patch", "fine_pruning", 0, ca=0.9, asr=1.0, ra=0.0),  # as undefended
+            _as("static_patch", "fine_pruning", 1, ca=0.8, asr=0.9, ra=0.1),
+            _as("static_patch", "anp", 0, ca=0.9, asr=1.0, ra=0.0),  # one seed changed
+            _as("static_patch", "anp", 1, ca=0.8, asr=0.8, ra=0.1),
+            _as("static_patch", "tmpbd", 0, ca=0.9, asr=1.0, ra=0.0),  # detection, by design
+            _as("sneaky_static", "no_defense", 0, ca=0.9, asr=0.3),  # no working backdoor
+            _as("sneaky_static", "fine_tuning", 0, ca=0.9, asr=0.1),
+            _as("no_attack", "no_defense", 0, ca=0.9, asr=0.01),  # no backdoor to work
+            _as("no_attack", "nad", 0, ca=0.8, asr=0.01),
+        ]
+    )
+    assert flags == {
+        ("static_patch", "no_defense"): [],
+        ("static_patch", "fine_tuning"): [],
+        ("static_patch", "nad"): ["costly_defense"],
+        ("static_patch", "fine_pruning"): ["unchanged"],
+        ("static_patch", "anp"): [],
+        ("static_patch", "tmpbd"): [],
+        ("sneaky_static", "no_defense"): ["ineffective_attack"],
+        ("sneaky_static", "fine_tuning"): ["ineffective_attack"],
+        ("no_attack", "no_defense"): [],
+        ("no_attack", "nad"): ["costly_defense"],
+    }
+
+
+def test_ineffective_attacks_and_costly_defenses_do_not_rank() -> None:
+    results = [
+        _as("static_patch", "no_defense", ca=0.9, asr=1.0, verdict=0.9),
+        _as("sneaky_static", "no_defense", ca=0.9, asr=0.1, verdict=0.1),  # ineffective
+        _as("no_attack", "no_defense", ca=0.9, asr=0.0, verdict=0.5),
+        _as("static_patch", "fine_tuning", ca=0.88, asr=0.4),
+        _as("sneaky_static", "fine_tuning", ca=0.9, asr=0.0),
+        _as("static_patch", "fine_pruning", ca=0.8, asr=0.0),  # costs 10 points
+        _as("tact", "no_defense", ca=0.9, asr=0.3),  # an aware attack that never worked
+        _as("tact", "fine_tuning", ca=0.9, asr=0.6),
+    ]
+    data = LeaderboardBuilder(results, []).data()
+    auroc = {a["defense"]: a for a in data["model_auroc"]}["no_defense"]
+    assert (auroc["auroc"], auroc["backdoored_models"]) == (1.0, 1)  # sneaky_static left out
+    assert data["broken_by"] == []
+    points = {p["defense"]: p for p in data["pareto"] if p["group"] == "data_poisoning"}
+    assert {d: (p["attacks"], p["costly"], p["front"]) for d, p in points.items()} == {
+        "no_defense": (1, 0, True),
+        "fine_tuning": (1, 0, True),
+        "fine_pruning": (1, 1, False),  # it would dominate both, but it does not count
+    }

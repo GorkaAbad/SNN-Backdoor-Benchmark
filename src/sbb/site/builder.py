@@ -25,8 +25,12 @@ from sbb.runner.spec import Tolerance
 from sbb.site.status import METRICS, percent, write_csv
 
 _TEMPLATES = ("index.html", "app.js", "style.css", "favicon.png")
-# An aware attack breaks a defense when its mean ASR against it reaches this (PLAN 13.4, task 7).
+# A backdoor works when its mean ASR reaches this. An aware attack breaks a defense when it keeps
+# this ASR against it (PLAN 13.4, task 7), and an attack below it without a defense is
+# ineffective (PLAN 3.5).
 BROKEN_ASR = 0.5
+# The metrics that show whether a defense changed what the model predicts.
+_SUCCESS = ("ca", "asr", "ra")
 # Display names of the fixed terms the page groups and filters by: tracks, attack groups (the
 # scenario kinds and adaptive) and defense stages. Plugins name themselves in their cards and
 # datasets in their classes (display_name). Networks and scenarios keep their ids.
@@ -43,6 +47,9 @@ TERMS = {
     "post_training": "Post-training",
     "inference": "Inference",
     "model_detection": "Model detection",
+    "ineffective_attack": "Ineffective attack",
+    "costly_defense": "Costs clean accuracy",
+    "unchanged": "Model unchanged",
 }
 
 
@@ -89,9 +96,11 @@ class LeaderboardBuilder:
     def data(self) -> dict[str, Any]:
         """Everything the page shows."""
         methods = _methods()
+        groups = self._groups()
         cells = [
-            _aggregate(group, self.checks, self.policies.get(version, self.default_policy))
-            for (version, *_), group in self._groups().items()
+            _aggregate(group, self.checks, self.policies.get(key[0], self.default_policy))
+            | {"flags": _flags(key, groups, methods)}
+            for key, group in groups.items()
         ]
         return {
             "generated": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -100,7 +109,7 @@ class LeaderboardBuilder:
             "names": names(),
             "methods": methods,
             "cells": cells,
-            "model_auroc": self._model_auroc(),
+            "model_auroc": self._model_auroc(cells),
             "broken_by": _broken_by(cells, methods),
             "pareto": _pareto(cells, methods),
             "replications": [_replication(r) for r in self.replications],
@@ -114,12 +123,16 @@ class LeaderboardBuilder:
             groups[(c.benchmark_version, c.track, c.scenario.name, c.attack, c.defense)].append(r)
         return groups
 
-    def _model_auroc(self) -> list[dict[str, Any]]:
+    def _model_auroc(self, cells: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Per detection defense and scenario, how well verdicts separate backdoored models.
 
-        Clean models are the no_attack cells, backdoored models the attack cells that ended ok.
-        A defense counts as a detector when its cells report a verdict.
+        Clean models are the no_attack cells, backdoored models the attack cells that ended ok,
+        except those of an ineffective attack, which left no backdoor to detect. A defense counts
+        as a detector when its cells report a verdict.
         """
+        ineffective = {
+            tuple(c[k] for k in _CELL[:4]) for c in cells if "ineffective_attack" in c["flags"]
+        }
         verdicts: dict[tuple[str, ...], dict[str, list[float]]] = defaultdict(
             lambda: {"clean": [], "backdoored": []}
         )
@@ -127,6 +140,8 @@ class LeaderboardBuilder:
             if r.outcome != "ok" or "verdict" not in r.metrics:
                 continue
             c = r.cell
+            if (c.benchmark_version, c.track, c.scenario.name, c.attack) in ineffective:
+                continue
             side = "clean" if c.attack == "no_attack" else "backdoored"
             key = (c.benchmark_version, c.track, c.scenario.name, c.defense)
             verdicts[key][side].append(r.metrics["verdict"])
@@ -209,10 +224,50 @@ def _detection(defense: str, methods: dict[str, Any]) -> bool:
     return bool(methods.get(defense, {}).get("group") == "model_detection")
 
 
+def _flags(
+    key: tuple[str, ...],
+    groups: Mapping[tuple[str, ...], list[CellResult]],
+    methods: dict[str, Any],
+) -> list[str]:
+    """What the page marks on a cell, judged against the same attack without a defense (PLAN 3.5).
+
+    ineffective_attack: the attack's mean ASR without a defense is below BROKEN_ASR, so there is
+    no backdoor for a defense to remove. costly_defense: the defense's mean CA is more than the
+    budget's delta_pp below the undefended one (defense validity). unchanged: every seed has the
+    CA, ASR and RA of the undefended model of its seed, so the defense left the model as it was.
+    Detection defenses leave it on purpose and are never marked unchanged.
+    """
+    *attack, defense = key
+    valid = [r for r in groups[key] if r.outcome == "ok"]
+    before = {
+        r.cell.seed: r.metrics for r in groups.get((*attack, "no_defense"), []) if r.outcome == "ok"
+    }
+    measured = [r.metrics for r in valid] + list(before.values())
+    if not valid or not before or not all({"ca", "asr"} <= m.keys() for m in measured):
+        return []
+    flags = []
+    if attack[-1] != "no_attack" and np.mean([m["asr"] for m in before.values()]) < BROKEN_ASR:
+        flags.append("ineffective_attack")
+    if defense == "no_defense" or _detection(defense, methods):
+        return flags
+    delta = valid[0].cell.scenario.budget.delta_pp / 100
+    ca_before = np.mean([m["ca"] for m in before.values()])
+    if np.mean([r.metrics["ca"] for r in valid]) < ca_before - delta:
+        flags.append("costly_defense")
+    if all(
+        r.cell.seed in before
+        and all(r.metrics.get(m) == before[r.cell.seed].get(m) for m in _SUCCESS)
+        for r in valid
+    ):
+        flags.append("unchanged")
+    return flags
+
+
 def _broken_by(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dict[str, Any]]:
     """The cells where an aware attack keeps a mean ASR of BROKEN_ASR or more against a defense.
 
-    Detection defenses are left out: their ASR is the victim's, whatever their verdict.
+    Detection defenses are left out: their ASR is the victim's, whatever their verdict. So are
+    ineffective attacks, which had no backdoor to keep.
     """
     return [
         {**{k: c[k] for k in _CELL}, "asr": c["metrics"]["asr"]["mean"]}
@@ -220,6 +275,7 @@ def _broken_by(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dic
         if methods.get(c["attack"], {}).get("aware_of")
         and c["defense"] != "no_defense"
         and not _detection(c["defense"], methods)
+        and "ineffective_attack" not in c["flags"]
         and "asr" in c["metrics"]
         and c["metrics"]["asr"]["mean"] >= BROKEN_ASR
     ]
@@ -228,38 +284,41 @@ def _broken_by(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dic
 def _pareto(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dict[str, Any]]:
     """Per version, track, scenario and attack group: each defense's mean CA and ASR, front marked.
 
-    The means run over the attacks of the group with both metrics, no_attack left out. Detection
-    defenses are left out too (_detection), and the model AUROC rates them. Only defenses with
-    results against every attack of the group compete for the front, so one that missed a hard
-    attack cannot win on easier averages. Such a defense is on the front when no other complete
-    one keeps at least its CA and at most its ASR, and one of the two strictly. complete marks
-    the defenses that compete, so the page shows the others apart instead of as dominated.
+    The means run over the attacks of the group with both metrics, no_attack and ineffective
+    attacks left out. Detection defenses are left out too (_detection), and the model AUROC rates
+    them. Only defenses with results against every attack of the group compete for the front, so
+    one that missed a hard attack cannot win on easier averages. Nor does a defense that costs
+    clean accuracy (costly_defense) against any attack, since it does not count as successful
+    there. A competing defense is on the front when no other one keeps at least its CA and at most
+    its ASR, and one of the two strictly. complete marks the defenses with every attack and costly
+    counts the attacks a defense costs CA against, so the page shows those apart.
     """
-    groups: dict[tuple[str, ...], dict[str, list[tuple[float, float]]]] = defaultdict(
+    groups: dict[tuple[str, ...], dict[str, list[tuple[float, float, bool]]]] = defaultdict(
         lambda: defaultdict(list)
     )
     for c in cells:
         m = c["metrics"]
         if c["attack"] == "no_attack" or _detection(c["defense"], methods):
             continue
-        if "ca" not in m or "asr" not in m:
+        if "ca" not in m or "asr" not in m or "ineffective_attack" in c["flags"]:
             continue
         group = methods.get(c["attack"], {}).get("group", "unknown")
         key = (c["version"], c["track"], c["scenario"], group)
-        groups[key][c["defense"]].append((m["ca"]["mean"], m["asr"]["mean"]))
+        flagged = "costly_defense" in c["flags"]
+        groups[key][c["defense"]].append((m["ca"]["mean"], m["asr"]["mean"], flagged))
     points = []
     for (version, track, scenario, group), defenses in sorted(groups.items()):
         means = {
-            d: (float(np.mean([ca for ca, _ in v])), float(np.mean([a for _, a in v])))
+            d: (float(np.mean([ca for ca, _, _ in v])), float(np.mean([a for _, a, _ in v])))
             for d, v in defenses.items()
         }
+        costly = {d: sum(c for _, _, c in v) for d, v in defenses.items()}
         most = max(len(v) for v in defenses.values())
-        complete = [means[d] for d, v in defenses.items() if len(v) == most]
+        rivals = [means[d] for d, v in defenses.items() if len(v) == most and not costly[d]]
         for defense, (ca, asr) in means.items():
             whole = len(defenses[defense]) == most
             dominated = any(
-                o_ca >= ca and o_asr <= asr and (o_ca, o_asr) != (ca, asr)
-                for o_ca, o_asr in complete
+                o_ca >= ca and o_asr <= asr and (o_ca, o_asr) != (ca, asr) for o_ca, o_asr in rivals
             )
             points.append(
                 {
@@ -272,7 +331,8 @@ def _pareto(cells: list[dict[str, Any]], methods: dict[str, Any]) -> list[dict[s
                     "asr": asr,
                     "attacks": len(defenses[defense]),
                     "complete": whole,
-                    "front": whole and not dominated,
+                    "costly": costly[defense],
+                    "front": whole and not costly[defense] and not dominated,
                 }
             )
     return points
@@ -290,6 +350,7 @@ def _csv(cells: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
     rows = []
     for cell in sorted(cells, key=lambda c: [str(c[k]) for k in keys]):
         row = {k: cell[k] for k in keys}
+        row["flags"] = " ".join(cell["flags"])
         row["seeds"] = " ".join(map(str, cell["seeds"]))
         for name, stat in cell["metrics"].items():
             row[f"{name}_mean"] = percent(name, stat["mean"])
@@ -302,7 +363,7 @@ def _csv(cells: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
         row["reason"] = cell["reason"] or ""
         rows.append(row)
     stats = [f"{name}_{s}" for name in names for s in ("mean", "std", "ci95")]
-    return rows, [*keys, "seeds", "excluded", *stats, "sites", "devices", "reason"]
+    return rows, [*keys, "flags", "seeds", "excluded", *stats, "sites", "devices", "reason"]
 
 
 def _methods() -> dict[str, dict[str, Any]]:
