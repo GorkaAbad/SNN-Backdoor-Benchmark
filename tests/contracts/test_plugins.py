@@ -1,5 +1,6 @@
 """Contract tests over every registered plugin. A new plugin gets these for free."""
 
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -184,6 +185,16 @@ def test_dataset_declares_its_metadata(name: str) -> None:
     W, H, P = cls.sensor_size
     assert min(W, H) > 0 and P == 2 and cls.num_classes > 1
     assert cls.display_name.strip()
+
+
+@pytest.mark.parametrize(
+    ("registry", "package"), [(ATTACKS, "attacks"), (DEFENSES, "defenses")], ids=["a", "d"]
+)
+def test_every_card_has_a_registered_plugin(registry: Registry[Any], package: str) -> None:
+    # A plugin module left out of its package __init__ registers nothing, so the contract tests
+    # above would not see it. Its card gives it away.
+    cards = Path(__file__).parents[2] / "src" / "sbb" / package / "cards"
+    assert sorted(p.stem for p in cards.glob("*.yaml")) == sorted(registry.names())
 
 
 @pytest.mark.parametrize("registry", [ATTACKS, DEFENSES], ids=["attacks", "defenses"])

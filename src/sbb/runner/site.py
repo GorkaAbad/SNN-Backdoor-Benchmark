@@ -5,29 +5,36 @@ from typing import Literal, Self
 
 import torch
 import yaml
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from sbb.core.game import Game
 from sbb.utils.storage import ArtifactCache, LocalStore
 
 
-class SiteProfile(BaseModel):
+class SiteProfile(BaseModel, extra="forbid"):
     """A compute environment (docs/PLAN.md section 7.4)."""
 
     name: str
-    runtime: Literal["none", "docker", "apptainer"] = "none"
-    scheduler: Literal["none", "slurm", "hfjobs"] = "none"
+    # A container runs only through Slurm tasks. To run sbb in Docker, start it with docker run
+    # (docs/sites.md).
+    runtime: Literal["none", "apptainer"] = "none"
+    scheduler: Literal["none", "slurm"] = "none"
     image: str | None = None
     device: Literal["cpu", "cuda"] = "cuda"
     cache_dir: Path
     max_parallel: int = 1
     slurm: dict[str, str] = {}
-    hfjobs: dict[str, str] = {}
 
     @field_validator("cache_dir")
     @classmethod
     def _expand(cls, path: Path) -> Path:
         return path.expanduser()
+
+    @model_validator(mode="after")
+    def _apptainer_runs_an_image_under_slurm(self) -> Self:
+        if self.runtime == "apptainer" and (self.scheduler != "slurm" or not self.image):
+            raise ValueError("runtime apptainer needs scheduler slurm and an image")
+        return self
 
     @classmethod
     def load(cls, path: Path) -> Self:

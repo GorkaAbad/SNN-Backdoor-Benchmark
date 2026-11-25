@@ -14,7 +14,7 @@ from sbb.utils.hashing import file_sha256
 _META = "checkpoint.json"
 
 
-class Checkpoint(BaseModel):
+class Checkpoint(BaseModel, extra="forbid"):
     """Metadata stored next to the weights."""
 
     arch: ArchSpec

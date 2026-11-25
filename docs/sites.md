@@ -6,9 +6,9 @@ outside the repository, because they name accounts, partitions and paths. The ex
 
 ```yaml
 name: my-workstation          # recorded in the provenance of every result
-runtime: none                 # none, docker or apptainer
+runtime: none                 # none, or apptainer with scheduler slurm
 scheduler: none               # none or slurm
-image: null                   # the container image, pinned by digest, when runtime is not none
+image: null                   # the apptainer image, pinned by digest
 device: cuda                  # cuda or cpu
 cache_dir: ~/.cache/sbb       # datasets under datasets/, models and frame caches under artifacts/
 max_parallel: 1               # cells at the same time

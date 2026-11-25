@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Literal, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
 
 from sbb.data.poison import Budget
 
@@ -38,7 +38,7 @@ class Resource(StrEnum):
     CLEAN_SUBSET = "clean_subset"
 
 
-class View(BaseModel, frozen=True):
+class View(BaseModel, frozen=True, extra="forbid"):
     """A set of defender resources and a clean-data fraction of the train split."""
 
     resources: frozenset[Resource]
@@ -76,20 +76,18 @@ _AVAIL: dict[ScenarioKind, frozenset[Resource]] = {
 }
 
 
-class Capabilities(BaseModel, frozen=True):
+class Capabilities(BaseModel, frozen=True, extra="forbid"):
     """What the attacker can modify."""
 
-    model_config = ConfigDict(extra="forbid")
     labels: Literal["clean", "dirty"] | None = None
     trigger_domain: Literal["raw_events", "frames"] = "raw_events"
 
 
-class Knowledge(BaseModel, frozen=True):
+class Knowledge(BaseModel, frozen=True, extra="forbid"):
     """What the attacker knows."""
 
-    model_config = ConfigDict(extra="forbid")
     architecture: Literal["known", "unknown"] = "unknown"
-    data: Literal["full", "partial"] = "full"
+    data: Literal["full"] = "full"  # partial data knowledge is not supported (PLAN 13)
     # oblivious, or aware:<defense>[,<defense>...] for an adaptive attack built to beat those
     # defenses. It still runs against every defense (PLAN 3.5). A contract test checks the names.
     defense: str = Field("oblivious", pattern=r"^(oblivious|aware:[a-z0-9_]+(,[a-z0-9_]+)*)$")
@@ -110,10 +108,9 @@ def _merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
-class CardBase(BaseModel, frozen=True):
+class CardBase(BaseModel, frozen=True, extra="forbid"):
     """Fields shared by attack and defense cards."""
 
-    model_config = ConfigDict(extra="forbid")
     name: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     # The name every page and table shows, for example "Sneaky Smart". name stays the id that
     # specs, keys and the code use.
@@ -162,6 +159,14 @@ class AttackCard(CardBase, frozen=True):
         if self.kind == ScenarioKind.DATA_POISONING and self.capabilities.labels is None:
             raise ValueError("a data_poisoning attack must declare capabilities.labels")
         return self
+
+    @field_validator("kind")
+    @classmethod
+    def _kind_is_supported(cls, kind: ScenarioKind) -> ScenarioKind:
+        # The threat model defines the kind, the Game cannot play it yet (PLAN 13).
+        if kind == ScenarioKind.FEDERATED:
+            raise ValueError("the federated scenario kind is not supported")
+        return kind
 
     def avail(self, budget: Budget) -> View:
         """Resources left to the defender against this attack (docs/PLAN.md section 3.4)."""

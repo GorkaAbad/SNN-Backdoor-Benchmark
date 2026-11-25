@@ -11,7 +11,7 @@ from sbb.data.sample import EventSample
 from sbb.utils.errors import SbbError
 
 
-class ReprSpec(BaseModel, frozen=True):
+class ReprSpec(BaseModel, frozen=True, extra="forbid"):
     """Configuration of a representation."""
 
     kind: Literal["frames"] = "frames"

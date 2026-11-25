@@ -17,7 +17,7 @@ def split_sha256(dataset: str, train: Sequence[int], test: Sequence[int]) -> str
     return sha256_hex({"dataset": dataset, "train": list(train), "test": list(test)})
 
 
-class Split(BaseModel, frozen=True):
+class Split(BaseModel, frozen=True, extra="forbid"):
     """Full-dataset indices of the train and test samples."""
 
     name: str
@@ -33,7 +33,7 @@ class Split(BaseModel, frozen=True):
         return self
 
 
-class DatasetSpec(BaseModel, frozen=True):
+class DatasetSpec(BaseModel, frozen=True, extra="forbid"):
     """Dataset of a scenario: registry name, split file name and optional Hub revision."""
 
     name: str

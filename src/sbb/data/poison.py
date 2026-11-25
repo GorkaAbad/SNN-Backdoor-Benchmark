@@ -16,7 +16,7 @@ from sbb.utils.errors import BudgetViolation
 FrameTriggerFn = Callable[[torch.Tensor, np.random.Generator], torch.Tensor]
 
 
-class Budget(BaseModel, frozen=True):
+class Budget(BaseModel, frozen=True, extra="forbid"):
     """Limits of a scenario.
 
     Attributes:

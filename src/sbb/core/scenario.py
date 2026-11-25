@@ -13,7 +13,7 @@ from sbb.models.spec import ArchSpec
 from sbb.utils.hashing import sha256_hex
 
 
-class Scenario(BaseModel, frozen=True):
+class Scenario(BaseModel, frozen=True, extra="forbid"):
     """Fixed dataset, split, representation, architecture, recipe and budget."""
 
     name: str
@@ -30,7 +30,7 @@ class Scenario(BaseModel, frozen=True):
         return self
 
 
-class Cell(BaseModel, frozen=True):
+class Cell(BaseModel, frozen=True, extra="forbid"):
     """One evaluation of (scenario, attack, defense, seed).
 
     attack_hparams are merged over the attack card's hyperparameters. Benchmark cells leave them

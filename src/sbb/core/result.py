@@ -18,7 +18,7 @@ from sbb.utils.hashing import file_sha256
 Outcome = Literal["ok", "not_applicable", "invalid_attack", "failed"]
 
 
-class Provenance(BaseModel):
+class Provenance(BaseModel, extra="forbid"):
     """Where, how and by whom a result was produced."""
 
     sbb_version: str
@@ -42,7 +42,7 @@ class Provenance(BaseModel):
     carried_from: str | None = None
 
 
-class CellResult(BaseModel):
+class CellResult(BaseModel, extra="forbid"):
     """The result of one cell. Only the Game writes metrics."""
 
     key: str

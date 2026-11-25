@@ -117,8 +117,6 @@ class Game:
         if not ok:
             return _Report("not_applicable", "; ".join(reasons))
         kind = attack_cls.card.kind
-        if kind == ScenarioKind.FEDERATED:
-            raise NotImplementedError("the federated scenario kind lands in v3")
         poisoning = kind == ScenarioKind.DATA_POISONING
         base = PoisoningAttack if poisoning else ModelAttack
         if not issubclass(attack_cls, base):

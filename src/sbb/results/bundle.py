@@ -12,7 +12,7 @@ from sbb.utils.hashing import file_sha256, sha256_hex
 _MODEL_ARTIFACTS = ("clean_model", "model", "defended_model")
 
 
-class Manifest(BaseModel, frozen=True):
+class Manifest(BaseModel, frozen=True, extra="forbid"):
     """A submission: results of one benchmark version, by path and sha256.
 
     Attributes:

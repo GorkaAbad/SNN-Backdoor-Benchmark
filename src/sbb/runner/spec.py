@@ -11,7 +11,7 @@ from sbb.core.scenario import Scenario
 Track = Literal["lite", "full"]
 
 
-class Battery(BaseModel):
+class Battery(BaseModel, extra="forbid"):
     """Attacks and defenses evaluated against each other."""
 
     attacks: list[str]
@@ -19,7 +19,7 @@ class Battery(BaseModel):
     dev: list[str] = []
 
 
-class Tolerance(BaseModel):
+class Tolerance(BaseModel, extra="forbid"):
     """Reproduction tolerances in percentage points."""
 
     lite_pp: float = 3.0
@@ -27,7 +27,7 @@ class Tolerance(BaseModel):
     full_sigma: float = 2.0
 
 
-class TrackSpec(BaseModel):
+class TrackSpec(BaseModel, extra="forbid"):
     """Scenarios and seeds of one track.
 
     Attributes:
@@ -40,7 +40,7 @@ class TrackSpec(BaseModel):
     exclude: list[str] = []
 
 
-class BenchmarkSpec(BaseModel):
+class BenchmarkSpec(BaseModel, extra="forbid"):
     """A versioned benchmark."""
 
     benchmark: str = "sbb"

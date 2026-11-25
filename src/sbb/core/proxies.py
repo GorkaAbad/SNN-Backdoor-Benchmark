@@ -19,7 +19,7 @@ from sbb.utils.errors import ThreatModelViolation
 T = TypeVar("T")
 
 
-class ScenarioInfo(BaseModel, frozen=True):
+class ScenarioInfo(BaseModel, frozen=True, extra="forbid"):
     """Public description of a scenario, always available to every plugin.
 
     input_shape is the (P, H, W) of one frame after the representation, the input of the model.
@@ -121,8 +121,6 @@ class AttackerView:
         trainer: Trainer,
         clean_model: SNNModel,
     ) -> None:
-        if card.knowledge.data == "partial":
-            raise NotImplementedError("partial data knowledge is not supported yet")
         self.scenario = scenario
         self.seed = seed
         self.rng = np.random.default_rng(seed)

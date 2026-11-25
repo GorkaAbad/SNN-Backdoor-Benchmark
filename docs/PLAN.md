@@ -608,7 +608,7 @@ sbb/                                  # repository root, name [DECIDE]
 ├── replications/     <method>.yaml
 ├── results/          <bench_version>/<cell_key>.json  manifests/<bundle_id>.json
 ├── verifications/    <bench_version>/<cell_key>/<verifier>-<date>.json
-├── sites/examples/   local-cpu.yaml local-gpu.yaml slurm.yaml hfjobs.yaml
+├── sites/examples/   local-cpu.yaml local-gpu.yaml slurm.yaml
 ├── tests/            conftest.py unit/ contracts/ golden/ integration/
 ├── docs/             PLAN.md contributing.md threat-model.md sites.md porting.md
 └── .github/          workflows/ CODEOWNERS pull_request_template.md
@@ -669,7 +669,7 @@ class Capabilities(BaseModel, frozen=True):
 
 class Knowledge(BaseModel, frozen=True):
     architecture: Literal["known", "unknown"] = "unknown"
-    data: Literal["full", "partial"] = "full"
+    data: Literal["full"] = "full"                          # v2: partial removed until supported
     defense: str = "oblivious"                                # or "aware:<defense_id>[,<defense_id>...]"
 
 class CardBase(BaseModel):
@@ -1024,7 +1024,7 @@ class TrainSpec(BaseModel, frozen=True):
     weight_decay: float = 0.0
     schedule: Literal["none", "cosine"] = "cosine"
     augment: Literal["none"] = "none"     # augmentation can remove triggers, so none until decided
-    amp: bool = False
+    amp: Literal[False] = False         # v2: mixed precision is not supported, kept for the cell keys
 
 @dataclass
 class TrainState:
@@ -1155,14 +1155,13 @@ class Planner:
 
 class SiteProfile(BaseModel):
     name: str
-    runtime: Literal["none", "docker", "apptainer"] = "none"
-    scheduler: Literal["none", "slurm", "hfjobs"] = "none"
+    runtime: Literal["none", "apptainer"] = "none"   # v2: docker removed, it never ran
+    scheduler: Literal["none", "slurm"] = "none"      # v2: hfjobs removed. apptainer needs slurm and an image
     image: str | None = None            # pinned by digest
     device: Literal["cpu", "cuda"] = "cuda"
     cache_dir: Path
     max_parallel: int = 1
     slurm: dict[str, str] = {}          # partition, account, time, gres, extra sbatch lines
-    hfjobs: dict[str, str] = {}         # flavor, namespace, timeout
 
 class Executor(ABC):
     """Every executor ends up running: sbb run-cell <cell.json> --out <dir>."""
@@ -1229,7 +1228,7 @@ class Manifest(BaseModel):
 
 v1 notes (task 8). `verify(original, rerun, verifier, verifier_org, tolerance_pp)` gives `match` when the outcomes agree, the rerun has every metric of the original, and each differs by at most `tolerance_pp` percentage points. `sbb reproduce RESULT_JSON --site ...` reruns the cell through the Game of the site (its cache included, so a verifier who pulled the zoo checks the defense step on the published models) and writes `verifications/<version>/<key>/<verifier>-<UTC time>.json`, with the track's tolerance by default (`lite_pp`, otherwise `full_pp`, the seed-based full tolerance is v2). Since 1.0.1 it reads them from the spec in `benchmarks/` whose version is the result's, and replications use the replication tolerance of 3 pp. `sbb bundle --plugin NAME` writes `results/manifests/<bundle_id>.json` for the plugin's results of one version and one submitter. `bundle_id` is the first 16 hex digits of the hash of the version and the result hashes, so a manifest names its content. `sbb validate PATH...` checks cards, replication records, results (key equal to the cell hash and to the file name), manifests (files present, sha256, versions, plugins, bundle id) and verification records. `VerificationPolicy` and the computed statuses are v2 (13.4).
 
-v2 change (task 3, 2026-10-26). `VerificationPolicy` lives in `sbb.results.policy` and is the only place that computes statuses. `status(r, checks, seeds=())` also takes the cell's results over its seeds, since the full tolerance needs their std. `cell_status(results, checks)` gives the status of a cell over its seeds. `Status` gains `invalid-attack`, the site's status of a cell whose seeds all failed the validity check. The policy judges every record from its deltas at its own tolerance with `matches(original, delta, tolerance_pp, notes)`, whose tolerance may be one value per metric, and never trusts the stored verdict. A record counts only while the result still has the numbers it checked. Independent means a verify-lite rerun on the lite track, and a verifier of another organization on the other tracks. `sbb.results` and `sbb.runner` are sibling layers, so the policy takes any object with `lite_pp`, `full_pp` and `full_sigma`, and the site and the CLI pass the spec's `Tolerance`. `sbb spot-check MANIFEST [--k 3]` prints the full-track results of a manifest that ended ok and were picked with the bundle id as the seed. `sbb reproduce` judges its record with the policy's `tolerance_pp(r, seeds)`, the seeds being the cell's results next to RESULT_JSON, so the stored verdict and the site agree (code review of 2026-11-06). v2 change (design review of 2026-11-07): a record holds facts only, the result's metrics it checked (`checked`), the rerun's `outcome` and `metrics`, and free `notes`. It stores no delta and no verdict, so nothing stored can contradict the site: `delta` is computed, `matches(original, check, tolerance_pp)` and `VerificationPolicy.verdict` judge it when read, and `sbb reproduce` prints its verdict. A record covers a result while the result still has the numbers it checked, a failed rerun included, and the site's verification log shows `outdated` otherwise. `sbb unverified` lists the results of a track that no record of a verifier covers, and the verify-lite workflow reruns those instead of every result without a record file. The 420 records of 0.9.0 and 1.0.0 were rewritten in this form, each covering its result, and no status changed.
+v2 change (task 3, 2026-10-26). `VerificationPolicy` lives in `sbb.results.policy` and is the only place that computes statuses. `status(r, checks, seeds=())` also takes the cell's results over its seeds, since the full tolerance needs their std. `cell_status(results, checks)` gives the status of a cell over its seeds. `Status` gains `invalid-attack`, the site's status of a cell whose seeds all failed the validity check. The policy judges every record from its deltas at its own tolerance with `matches(original, delta, tolerance_pp, notes)`, whose tolerance may be one value per metric, and never trusts the stored verdict. A record counts only while the result still has the numbers it checked. Independent means a verify-lite rerun on the lite track, and a verifier of another organization on the other tracks. `sbb.results` and `sbb.runner` are sibling layers, so the policy takes any object with `lite_pp`, `full_pp` and `full_sigma`, and the site and the CLI pass the spec's `Tolerance`. `sbb spot-check MANIFEST [--k 3]` prints the full-track results of a manifest that ended ok and were picked with the bundle id as the seed. `sbb reproduce` judges its record with the policy's `tolerance_pp(r, seeds)`, the seeds being the cell's results next to RESULT_JSON, so the stored verdict and the site agree (code review of 2026-11-06). v2 change (design review of 2026-11-07): a record holds facts only, the result's metrics it checked (`checked`), the rerun's `outcome` and `metrics`, and free `notes`. It stores no delta and no verdict, so nothing stored can contradict the site: `delta` is computed, `matches(original, check, tolerance_pp)` and `VerificationPolicy.verdict` judge it when read, and `sbb reproduce` prints its verdict. A record covers a result while the result still has the numbers it checked, a failed rerun included, and the site's verification log shows `outdated` otherwise. `sbb unverified` lists the results of a track that no record of a verifier covers, and the verify-lite workflow reruns those instead of every result without a record file. The 420 records of 0.9.0 and 1.0.0 were rewritten in this form, each covering its result, and no status changed. v2 change (same review): every file sbb reads fails when it loads, not mid-run. Every pydantic model forbids unknown keys, so a misspelled key in a spec, a site profile or a card section is an error instead of a silent default (a test keeps new models strict). What sbb cannot run is not valid: `SiteProfile` drops runtime `docker` and scheduler `hfjobs` and needs Slurm and an image for `apptainer` (the local executor ran no image and ignored the runtime), `Knowledge.data` is only `full`, `TrainSpec.amp` only `false` (the field stays, since cell keys hash it), and an attack card of kind `federated` is refused. The `NotImplementedError` checks in the Game, the attacker view, the Trainer and the executors went away with it. A contract test checks that every card file has a registered plugin, so a module left out of its package `__init__` cannot escape the contract suite.
 
 ### 6.11 Registry and errors (`sbb.core.registry`, `sbb.utils.errors`)
 
@@ -1349,17 +1348,6 @@ device: cuda
 cache_dir: /scratch/<user>/sbb-cache
 max_parallel: 16
 slurm: {partition: "[FILL]", account: "[FILL]", time: "06:00:00", gres: "gpu:1"}
-```
-
-```yaml
-# hfjobs.yaml (optional, paid)
-name: hf-jobs
-runtime: docker
-scheduler: hfjobs
-image: ghcr.io/<org>/sbb@sha256:<digest>
-device: cuda
-cache_dir: /tmp/sbb-cache
-hfjobs: {flavor: l4x1, namespace: "<hf-org>", timeout: 6h}
 ```
 
 ### 7.5 Cell result

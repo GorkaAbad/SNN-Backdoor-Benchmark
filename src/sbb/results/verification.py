@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 import sbb.metrics  # noqa: F401  registers the metrics, whose unit decides how a delta is judged
 from sbb.core.registry import METRICS
@@ -15,7 +15,7 @@ from sbb.core.result import CellResult, Outcome, Provenance
 LITE_VERIFIER = "github-actions"
 
 
-class Verification(BaseModel, frozen=True):
+class Verification(BaseModel, frozen=True, extra="forbid"):
     """One independent rerun of a cell. It holds facts only: what it checked and what it got.
 
     Whether the rerun matches is judged when it is read, at the tolerance of the time
@@ -33,7 +33,6 @@ class Verification(BaseModel, frozen=True):
         notes: Free text for people. No code reads it.
     """
 
-    model_config = ConfigDict(extra="forbid")
     result_key: str
     verifier: str
     verifier_org: str

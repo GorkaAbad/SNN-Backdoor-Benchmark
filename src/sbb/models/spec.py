@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, field_validator
 
 
-class NeuronSpec(BaseModel, frozen=True):
+class NeuronSpec(BaseModel, frozen=True, extra="forbid"):
     """Spiking neuron configuration. v_reset None means soft reset."""
 
     model: Literal["lif", "plif", "if"] = "lif"
@@ -16,7 +16,7 @@ class NeuronSpec(BaseModel, frozen=True):
     detach_reset: bool = True
 
 
-class ArchSpec(BaseModel, frozen=True):
+class ArchSpec(BaseModel, frozen=True, extra="forbid"):
     """Architecture configuration. name is the key in ARCHITECTURES.
 
     Only the torch backend is supported: the cupy backend of SpikingJelly 0.0.0.0.14 uses np.int,
