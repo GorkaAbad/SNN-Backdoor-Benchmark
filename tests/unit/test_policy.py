@@ -21,18 +21,25 @@ def _result(seed: int = 0, track: str = "full", outcome: Outcome = "ok", **m: fl
 
 
 def _check(result: CellResult, org: str = "elsewhere", moved_pp: float = 0.0) -> Verification:
-    """A rerun whose every metric moved by moved_pp. The stored verdict is left wrong on purpose:
-    the policy judges the deltas itself."""
-    delta = {m: moved_pp / 100 for m in result.metrics}
+    """A rerun of result whose every metric moved by moved_pp."""
     return Verification(
         result_key=result.key,
         verifier=LITE_VERIFIER if org == LITE_VERIFIER else "alice",
         verifier_org=org,
         provenance=PROVENANCE,
-        metrics={m: v + delta[m] for m, v in result.metrics.items()},
-        delta=delta,
-        verdict="mismatch" if moved_pp == 0 else "match",
+        checked=result.metrics,
+        outcome=result.outcome,
+        metrics={m: v + moved_pp / 100 for m, v in result.metrics.items()},
     )
+
+
+def test_the_verdict_is_judged_now_and_outdated_for_other_numbers() -> None:
+    r = _result(track="lite", ca=0.9, asr=1.0)
+    assert POLICY.verdict(r, _check(r, moved_pp=2.0)) == "match"  # lite allows 3 pp
+    assert POLICY.verdict(r, _check(r, moved_pp=5.0)) == "mismatch"
+    rerun = r.model_copy(update={"metrics": {"ca": 0.5, "asr": 1.0}})  # same key, new numbers
+    assert POLICY.verdict(rerun, _check(r)) == "outdated"
+    assert POLICY.status(rerun, [_check(r, moved_pp=5.0)]) == Status.SELF_REPORTED
 
 
 def test_a_seeded_mismatch_is_disputed() -> None:
@@ -62,7 +69,7 @@ def test_a_count_metric_is_judged_relative_to_its_value() -> None:
     r = seeds[0]  # the seeds spread by 7.4 percent of their mean
 
     def moved(by: float) -> Verification:
-        update = {"delta": {"synops": by}, "metrics": {"synops": 1.0e6 + by}}
+        update = {"metrics": {"synops": 1.0e6 + by}}
         return _check(r).model_copy(update=update)
 
     assert POLICY.status(r, [moved(1.0e5)]) == Status.DISPUTED  # 10 percent, more than 2
@@ -78,7 +85,7 @@ def test_lite_results_count_the_lite_verifier() -> None:
 
 def test_a_record_counts_only_for_the_numbers_it_checked() -> None:
     r = _result(ca=0.9)
-    stale = _check(r).model_copy(update={"metrics": {"ca": 0.8}})  # the result changed since
+    stale = _check(r).model_copy(update={"checked": {"ca": 0.8}})  # the result changed since
     assert POLICY.status(r, [stale]) == Status.SELF_REPORTED
 
 

@@ -1,32 +1,36 @@
 """Verification records: a cell rerun elsewhere, compared with its result (docs/PLAN.md 7.8)."""
 
-from collections.abc import Mapping
+from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from datetime import UTC
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 import sbb.metrics  # noqa: F401  registers the metrics, whose unit decides how a delta is judged
 from sbb.core.registry import METRICS
-from sbb.core.result import CellResult, Provenance
+from sbb.core.result import CellResult, Outcome, Provenance
 
 # The verifier name of the verify-lite workflow. Its records set the status of lite cells.
 LITE_VERIFIER = "github-actions"
 
 
 class Verification(BaseModel, frozen=True):
-    """One independent rerun of a cell.
+    """One independent rerun of a cell. It holds facts only: what it checked and what it got.
+
+    Whether the rerun matches is judged when it is read, at the tolerance of the time
+    (matches, VerificationPolicy), so no stored verdict can contradict the leaderboard.
 
     Attributes:
         result_key: Key of the checked result.
         verifier: GitHub handle of the verifier.
         verifier_org: Organization of the verifier.
         provenance: Provenance of the rerun.
+        checked: The metrics of the result when it was checked. A result rerun later under the
+            same key with other numbers is not covered by this record.
+        outcome: Outcome of the rerun.
         metrics: Metrics of the rerun.
-        delta: Rerun minus original, per metric of the original.
-        verdict: match when the outcomes agree and every metric is within the tolerance.
-        notes: Free text.
+        notes: Free text for people. No code reads it.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -34,30 +38,19 @@ class Verification(BaseModel, frozen=True):
     verifier: str
     verifier_org: str
     provenance: Provenance
+    checked: dict[str, float]
+    outcome: Outcome
     metrics: dict[str, float]
-    delta: dict[str, float]
-    verdict: Literal["match", "mismatch"]
     notes: str | None = None
 
-    def judged(self, original: CellResult, tolerance_pp: float) -> "Verification":
-        """The record with the verdict its deltas give under tolerance_pp.
-
-        A rerun that ended with another outcome, noted as "outcome <outcome>", stays a mismatch.
-        """
-        verdict = "match" if matches(original, self.delta, tolerance_pp, self.notes) else "mismatch"
-        return self.model_copy(update={"verdict": verdict})
+    @property
+    def delta(self) -> dict[str, float]:
+        """Rerun minus checked, for each checked metric the rerun reports."""
+        return {m: self.metrics[m] - v for m, v in self.checked.items() if m in self.metrics}
 
     def covers(self, result: CellResult) -> bool:
-        """Whether this record checked result's numbers: rerun minus delta gives each metric back.
-
-        A record stays tied to the numbers it checked, so a result changed after its verification
-        (a rerun keeps its key) is not covered by the old record.
-        """
-        return all(
-            abs(self.metrics[m] - self.delta.get(m, 0.0) - value) <= 1e-9
-            for m, value in result.metrics.items()
-            if m in self.metrics
-        )
+        """Whether this record checked result's numbers, the ones result has now."""
+        return self.result_key == result.key and self.checked == result.metrics
 
     def path(self, root: Path, original: CellResult) -> Path:
         """<root>/<benchmark version>/<cell key>/<verifier>-<UTC time of the rerun>.json."""
@@ -67,59 +60,49 @@ class Verification(BaseModel, frozen=True):
 
 
 def verify(
-    original: CellResult,
-    rerun: CellResult,
-    verifier: str,
-    verifier_org: str,
-    tolerance_pp: float | Mapping[str, float],
+    original: CellResult, rerun: CellResult, verifier: str, verifier_org: str
 ) -> Verification:
-    """Compare a rerun with the original result.
-
-    A match needs the same outcome, every metric of the original in the rerun, and every
-    difference within tolerance_pp, as matches judges it.
-    """
-    delta = {
-        name: rerun.metrics[name] - value
-        for name, value in original.metrics.items()
-        if name in rerun.metrics
-    }
-    notes = None if rerun.outcome == original.outcome else f"outcome {rerun.outcome}"
-    match = matches(original, delta, tolerance_pp, notes)
+    """The record of rerun, a rerun of original's cell."""
     return Verification(
         result_key=original.key,
         verifier=verifier,
         verifier_org=verifier_org,
         provenance=rerun.provenance,
+        checked=original.metrics,
+        outcome=rerun.outcome,
         metrics=rerun.metrics,
-        delta=delta,
-        verdict="match" if match else "mismatch",
-        notes=notes,
     )
 
 
 def matches(
-    original: CellResult,
-    delta: Mapping[str, float],
-    tolerance_pp: float | Mapping[str, float],
-    notes: str | None = None,
+    original: CellResult, check: Verification, tolerance_pp: float | Mapping[str, float]
 ) -> bool:
-    """Same outcome, a delta for every metric of the original, each within its tolerance.
+    """Same outcome, every metric of original rerun, each within its tolerance.
 
-    tolerance_pp is one value for every metric, or one per metric. A rerun that ended with
-    another outcome is noted as "outcome <outcome>".
+    tolerance_pp is one value for every metric, or one per metric.
     """
-    prefix = "outcome "
-    outcome = notes[len(prefix) :] if notes and notes.startswith(prefix) else original.outcome
+    delta = check.delta
     if not isinstance(tolerance_pp, Mapping):
         tolerance_pp = dict.fromkeys(delta, tolerance_pp)
     return (
-        outcome == original.outcome
+        check.outcome == original.outcome
         and delta.keys() == original.metrics.keys()
         and all(
             abs(d) <= tolerance_pp[m] / 100 * (abs(original.metrics[m]) if is_count(m) else 1)
             for m, d in delta.items()
         )
     )
+
+
+def unverified(
+    results: Sequence[CellResult], checks: Sequence[Verification], verifier: str
+) -> list[CellResult]:
+    """The results that no record of verifier covers, in their order."""
+    mine: dict[str, list[Verification]] = defaultdict(list)
+    for c in checks:
+        if c.verifier == verifier:
+            mine[c.result_key].append(c)
+    return [r for r in results if not any(c.covers(r) for c in mine[r.key])]
 
 
 def is_count(metric: str) -> bool:

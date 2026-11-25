@@ -154,8 +154,14 @@ def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     reproduced = CliRunner().invoke(app, [*args, "--verifier", "bob", "--verifier-org", "lab"])
     assert reproduced.exit_code == 0, reproduced.output
     (record,) = verifications.rglob("*.json")
-    assert json.loads(record.read_text())["verdict"] == "match"  # same seed, same CPU: exact
+    assert unstyle(reproduced.output).startswith("match")  # same seed, same CPU: exact
     assert CliRunner().invoke(app, ["validate", str(record)]).exit_code == 0
+    # verify-lite reruns the lite results that no record of its verifier covers.
+    pending = ["unverified", str(out), "--verifications", str(verifications)]
+    listed = CliRunner().invoke(app, [*pending, "--verifier", "bob"])
+    assert listed.exit_code == 0 and str(original) not in listed.output
+    others = sorted(p for p in (out / "smoke-0.1.0").glob("*.json") if p != original)
+    assert unstyle(listed.output).split() == [str(p) for p in others]
 
     # An explicit tolerance of 0 is exact: a result half a point off no longer matches.
     shifted = json.loads(original.read_text())
@@ -164,18 +170,16 @@ def test_bundle_validate_and_reproduce_a_plugin(tmp_path: Path) -> None:
     copy.parent.mkdir()
     copy.write_text(json.dumps(shifted))
     strict = [*args[:1], str(copy), *args[2:], "--tolerance-pp", "0"]
-    assert CliRunner().invoke(app, strict).exit_code == 0
-    verdicts = {json.loads(r.read_text())["verdict"] for r in verifications.rglob("*.json")}
-    assert verdicts == {"match", "mismatch"}
+    exact = CliRunner().invoke(app, strict)
+    assert exact.exit_code == 0 and unstyle(exact.output).startswith("mismatch")
 
     # By default the spec's tolerance applies: smoke allows 1 pp on lite, the default 3 pp.
     shifted["metrics"]["ca"] -= 0.015
     copy.write_text(json.dumps(shifted))
     by_spec = tmp_path / "by_spec"
     loose = ["reproduce", str(copy), "--site", str(site), "--verifications", str(by_spec)]
-    assert CliRunner().invoke(app, [*loose, "--benchmarks", str(SMOKE.parent)]).exit_code == 0
-    (record,) = by_spec.rglob("*.json")
-    assert json.loads(record.read_text())["verdict"] == "mismatch"
+    judged = CliRunner().invoke(app, [*loose, "--benchmarks", str(SMOKE.parent)])
+    assert judged.exit_code == 0 and unstyle(judged.output).startswith("mismatch")
 
     # A card with broken YAML is reported, not a crash.
     broken = tmp_path / "cards" / "broken.yaml"

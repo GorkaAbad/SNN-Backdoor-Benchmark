@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 from enum import StrEnum
-from typing import Protocol
+from typing import Literal, Protocol
 
 import numpy as np
 
@@ -43,9 +43,9 @@ class VerificationPolicy:
 
     A record counts for a result only while the result still has the numbers it checked, and
     only if it is independent: on the lite track a verify-lite rerun, otherwise a verifier of
-    another organization than the submitter's. The policy judges every record from its deltas
-    at its own tolerance: lite_pp on the lite track, otherwise max(full_pp, full_sigma x seed
-    std) per metric.
+    another organization than the submitter's. The policy judges every record from its numbers
+    at the tolerance of the result: lite_pp on the lite track, otherwise max(full_pp, full_sigma
+    x seed std) per metric.
 
     Args:
         tolerance: The tolerances.
@@ -83,16 +83,23 @@ class VerificationPolicy:
         """
         if r.outcome != "ok":
             return OUTCOME_STATUS[r.outcome]
-        tolerance = self.tolerance_pp(r, seeds)
         verdicts = [
-            matches(r, v.delta, tolerance, v.notes)
+            self.verdict(r, v, seeds)
             for v in checks
-            if v.result_key == r.key and self.is_independent(v, r) and v.covers(r)
+            if v.result_key == r.key and self.is_independent(v, r)
         ]
-        hits = sum(verdicts)
-        if len(verdicts) - hits >= max(hits, 1):
+        hits = verdicts.count("match")
+        if verdicts.count("mismatch") >= max(hits, 1):
             return Status.DISPUTED
         return Status.REPRODUCED if hits else Status.SELF_REPORTED
+
+    def verdict(
+        self, r: CellResult, check: Verification, seeds: Sequence[CellResult] = ()
+    ) -> Literal["match", "mismatch", "outdated"]:
+        """What check says about r at r's tolerance, outdated when it checked other numbers."""
+        if not check.covers(r):
+            return "outdated"
+        return "match" if matches(r, check, self.tolerance_pp(r, seeds)) else "mismatch"
 
     def cell_status(self, results: Sequence[CellResult], checks: Sequence[Verification]) -> Status:
         """Status of a cell over its seeds, judged on the seeds that ended ok.

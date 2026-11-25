@@ -190,7 +190,7 @@ def _aggregate(
                 "seed": r.cell.seed,
                 "verifier": v.verifier,
                 "verifier_org": v.verifier_org,
-                "verdict": v.verdict,
+                "verdict": policy.verdict(r, v, valid),
                 "site": v.provenance.site,
                 "device": v.provenance.device,
                 "date": v.provenance.started_at.date().isoformat(),

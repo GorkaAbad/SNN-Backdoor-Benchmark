@@ -18,10 +18,11 @@
     "submitter": "github-actions",
     "submitter_org": "github-actions",
     "started_at": "2026-10-25T11:14:03.066277Z",
-    "duration_s": 0.000040766000012126824
+    "duration_s": 0.000040766000012126824,
+    "carried_from": null
   },
+  "checked": {},
+  "outcome": "not_applicable",
   "metrics": {},
-  "delta": {},
-  "verdict": "match",
   "notes": null
 }

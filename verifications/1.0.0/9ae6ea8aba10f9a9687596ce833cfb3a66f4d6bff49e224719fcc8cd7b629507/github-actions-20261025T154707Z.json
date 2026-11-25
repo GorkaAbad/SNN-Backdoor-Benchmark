@@ -21,18 +21,18 @@
     "duration_s": 11073.415178375999,
     "carried_from": null
   },
+  "checked": {
+    "asr": 1.0,
+    "asr_all": 1.0,
+    "ca": 0.9773,
+    "ra": 0.0
+  },
+  "outcome": "ok",
   "metrics": {
     "asr": 1.0,
     "asr_all": 1.0,
     "ca": 0.8219,
     "ra": 0.0
   },
-  "delta": {
-    "asr": 0.0,
-    "asr_all": 0.0,
-    "ca": -0.15539999999999998,
-    "ra": 0.0
-  },
-  "verdict": "mismatch",
   "notes": null
 }

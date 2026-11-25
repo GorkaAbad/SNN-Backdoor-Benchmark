@@ -21,8 +21,8 @@
     "duration_s": 0.0000325999999972737,
     "carried_from": null
   },
+  "checked": {},
+  "outcome": "not_applicable",
   "metrics": {},
-  "delta": {},
-  "verdict": "match",
   "notes": null
 }

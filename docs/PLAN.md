@@ -509,8 +509,9 @@ class Verification {
   +result_key
   +verifier
   +verifier_org
-  +delta
-  +verdict
+  +checked
+  +outcome
+  +metrics
 }
 class ResultStore {
   <<abstract>>
@@ -1189,15 +1190,18 @@ class ResultStore(ABC):
 
 class LocalResultStore(ResultStore): ...          # results/<bench_version>/<key>.json
 
-class Verification(BaseModel):
+class Verification(BaseModel):       # v2: facts only, judged when read (VerificationPolicy)
     result_key: str
     verifier: str                     # GitHub handle
     verifier_org: str
-    provenance: Provenance
-    metrics: dict[str, float]
-    delta: dict[str, float]           # verifier minus original, per metric
-    verdict: Literal["match", "mismatch"]
-    notes: str | None = None
+    provenance: Provenance            # of the rerun
+    checked: dict[str, float]         # v2: the result's metrics when checked
+    outcome: Outcome                  # v2: the rerun's outcome
+    metrics: dict[str, float]         # the rerun's metrics
+    notes: str | None = None          # free text, read by no code
+    @property
+    def delta(self) -> dict[str, float]: ...                # rerun minus checked
+    def covers(self, result: CellResult) -> bool: ...        # checked == result.metrics
 
 class Status(StrEnum):
     SELF_REPORTED = "self-reported"
@@ -1211,6 +1215,7 @@ class VerificationPolicy:
     def sample(self, cells: Sequence[Cell], seed: int) -> list[Cell]: ...   # seed = hash of the manifest
     def is_independent(self, v: Verification, r: CellResult) -> bool: ...
     def status(self, r: CellResult, checks: Sequence[Verification]) -> Status: ...
+    def verdict(self, r: CellResult, check: Verification) -> Literal["match", "mismatch", "outdated"]: ...  # v2
 
 class Manifest(BaseModel):
     bundle_id: str
@@ -1224,7 +1229,7 @@ class Manifest(BaseModel):
 
 v1 notes (task 8). `verify(original, rerun, verifier, verifier_org, tolerance_pp)` gives `match` when the outcomes agree, the rerun has every metric of the original, and each differs by at most `tolerance_pp` percentage points. `sbb reproduce RESULT_JSON --site ...` reruns the cell through the Game of the site (its cache included, so a verifier who pulled the zoo checks the defense step on the published models) and writes `verifications/<version>/<key>/<verifier>-<UTC time>.json`, with the track's tolerance by default (`lite_pp`, otherwise `full_pp`, the seed-based full tolerance is v2). Since 1.0.1 it reads them from the spec in `benchmarks/` whose version is the result's, and replications use the replication tolerance of 3 pp. `sbb bundle --plugin NAME` writes `results/manifests/<bundle_id>.json` for the plugin's results of one version and one submitter. `bundle_id` is the first 16 hex digits of the hash of the version and the result hashes, so a manifest names its content. `sbb validate PATH...` checks cards, replication records, results (key equal to the cell hash and to the file name), manifests (files present, sha256, versions, plugins, bundle id) and verification records. `VerificationPolicy` and the computed statuses are v2 (13.4).
 
-v2 change (task 3, 2026-10-26). `VerificationPolicy` lives in `sbb.results.policy` and is the only place that computes statuses. `status(r, checks, seeds=())` also takes the cell's results over its seeds, since the full tolerance needs their std. `cell_status(results, checks)` gives the status of a cell over its seeds. `Status` gains `invalid-attack`, the site's status of a cell whose seeds all failed the validity check. The policy judges every record from its deltas at its own tolerance with `matches(original, delta, tolerance_pp, notes)`, whose tolerance may be one value per metric, and never trusts the stored verdict. A record counts only while the result still has the numbers it checked. Independent means a verify-lite rerun on the lite track, and a verifier of another organization on the other tracks. `sbb.results` and `sbb.runner` are sibling layers, so the policy takes any object with `lite_pp`, `full_pp` and `full_sigma`, and the site and the CLI pass the spec's `Tolerance`. `sbb spot-check MANIFEST [--k 3]` prints the full-track results of a manifest that ended ok and were picked with the bundle id as the seed. `sbb reproduce` judges its record with the policy's `tolerance_pp(r, seeds)`, the seeds being the cell's results next to RESULT_JSON, so the stored verdict and the site agree (code review of 2026-11-06).
+v2 change (task 3, 2026-10-26). `VerificationPolicy` lives in `sbb.results.policy` and is the only place that computes statuses. `status(r, checks, seeds=())` also takes the cell's results over its seeds, since the full tolerance needs their std. `cell_status(results, checks)` gives the status of a cell over its seeds. `Status` gains `invalid-attack`, the site's status of a cell whose seeds all failed the validity check. The policy judges every record from its deltas at its own tolerance with `matches(original, delta, tolerance_pp, notes)`, whose tolerance may be one value per metric, and never trusts the stored verdict. A record counts only while the result still has the numbers it checked. Independent means a verify-lite rerun on the lite track, and a verifier of another organization on the other tracks. `sbb.results` and `sbb.runner` are sibling layers, so the policy takes any object with `lite_pp`, `full_pp` and `full_sigma`, and the site and the CLI pass the spec's `Tolerance`. `sbb spot-check MANIFEST [--k 3]` prints the full-track results of a manifest that ended ok and were picked with the bundle id as the seed. `sbb reproduce` judges its record with the policy's `tolerance_pp(r, seeds)`, the seeds being the cell's results next to RESULT_JSON, so the stored verdict and the site agree (code review of 2026-11-06). v2 change (design review of 2026-11-07): a record holds facts only, the result's metrics it checked (`checked`), the rerun's `outcome` and `metrics`, and free `notes`. It stores no delta and no verdict, so nothing stored can contradict the site: `delta` is computed, `matches(original, check, tolerance_pp)` and `VerificationPolicy.verdict` judge it when read, and `sbb reproduce` prints its verdict. A record covers a result while the result still has the numbers it checked, a failed rerun included, and the site's verification log shows `outdated` otherwise. `sbb unverified` lists the results of a track that no record of a verifier covers, and the verify-lite workflow reruns those instead of every result without a record file. The 420 records of 0.9.0 and 1.0.0 were rewritten in this form, each covering its result, and no status changed.
 
 ### 6.11 Registry and errors (`sbb.core.registry`, `sbb.utils.errors`)
 
@@ -1401,8 +1406,8 @@ CIFAR10-DVS has no official split: use SpikingJelly's ordered class-stratified 9
 
 ```json
 {"result_key": "3f2a...", "verifier": "<handle>", "verifier_org": "<org>",
- "provenance": {"...": "..."}, "metrics": {"ca": 0.979, "asr": 0.047, "ra": 0.911},
- "delta": {"ca": -0.002, "asr": 0.005, "ra": -0.004}, "verdict": "match", "notes": null}
+ "provenance": {"...": "..."}, "checked": {"ca": 0.981, "asr": 0.042, "ra": 0.915},
+ "outcome": "ok", "metrics": {"ca": 0.979, "asr": 0.047, "ra": 0.911}, "notes": null}
 ```
 
 ### 7.9 Replication record

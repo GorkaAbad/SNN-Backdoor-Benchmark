@@ -68,14 +68,15 @@ def test_cells_aggregate_the_seeds() -> None:
 
 
 def _check(result: CellResult, verdict: str, verifier: str = LITE_VERIFIER) -> Verification:
+    """A rerun of result that matches, or misses every metric by 50 points."""
     return Verification(
         result_key=result.key,
         verifier=verifier,
         verifier_org=verifier,
         provenance=PROVENANCE,
+        checked=result.metrics,
+        outcome=result.outcome,
         metrics={m: v + (0.0 if verdict == "match" else 0.5) for m, v in result.metrics.items()},
-        delta={m: 0.0 if verdict == "match" else 0.5 for m in result.metrics},
-        verdict=verdict,  # type: ignore[arg-type]
     )
 
 
@@ -107,17 +108,15 @@ def test_the_lite_verifier_sets_the_status_of_lite_cells() -> None:
     assert cell(_check(full, "match"), attack="no_attack")["status"] == "reproduced"
 
     # A record checked the numbers of the result it reran. Once the result changes, it is stale.
-    stale = _check(seed1, "match").model_copy(update={"delta": {"ca": 0.05}})
+    earlier = {**seed1.metrics, "ca": seed1.metrics["ca"] - 0.05}
+    stale = _check(seed1, "match").model_copy(update={"checked": earlier})
     assert cell(_check(seed0, "match"), stale)["status"] == "self-reported"
 
 
 def test_statuses_use_the_tolerance_of_each_benchmark_version() -> None:
     def moved(r: CellResult) -> Verification:  # verify-lite got every metric 2 pp higher
         return _check(r, "match").model_copy(
-            update={
-                "delta": dict.fromkeys(r.metrics, 0.02),
-                "metrics": {m: v + 0.02 for m, v in r.metrics.items()},
-            }
+            update={"metrics": {m: v + 0.02 for m, v in r.metrics.items()}}
         )
 
     def status(**tolerances: Any) -> str:

@@ -1,7 +1,8 @@
 name: verify-lite
 
-# Reruns every lite result on main that has no record of this workflow yet, one GitHub-hosted
-# runner per cell, then opens a pull request with the Verification records (docs/PLAN.md 10).
+# Reruns every lite result on main that no record of this workflow covers (sbb unverified: none
+# yet, or only records of other numbers), one GitHub-hosted runner per cell, then opens a pull
+# request with the Verification records (docs/PLAN.md 10).
 # Run by hand with collect_run_id to open the pull request of an earlier run's records instead.
 on:
   push:
@@ -33,21 +34,21 @@ jobs:
       cells: ${{ steps.pending.outputs.cells }}
     steps:
       - uses: actions/checkout@v7
-      - name: Lite results without a record, on main or in an open records branch
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --frozen --no-dev
+      - name: Lite results no record covers, on main or in an open records branch
         id: pending
         run: |
-          shopt -s nullglob
           git fetch -q origin '+refs/heads/verify-lite/*:refs/remotes/origin/verify-lite/*'
           proposed=$(git for-each-ref --format='%(refname)' refs/remotes/origin/verify-lite \
             | xargs -r -n1 git ls-tree -r --name-only)
-          for f in results/*/*.json; do
+          uv run sbb unverified results --track lite --verifier "$SBB_SUBMITTER" \
+            > "$RUNNER_TEMP/unverified.txt"
+          while read -r f; do
             version=$(basename "$(dirname "$f")") key=$(basename "$f" .json)
-            [ "$version" != manifests ] && [ "$(jq -r .cell.track "$f")" = lite ] || continue
-            records=(verifications/"$version"/"$key"/"$SBB_SUBMITTER"-*.json)
-            [ ${#records[@]} -eq 0 ] || continue
             grep -q "^verifications/$version/$key/$SBB_SUBMITTER-" <<<"$proposed" && continue
             jq -c --arg result "$f" '{result: $result, dataset: .cell.scenario.data.name}' "$f"
-          done > "$RUNNER_TEMP/cells.jsonl"
+          done < "$RUNNER_TEMP/unverified.txt" > "$RUNNER_TEMP/cells.jsonl"
           total=$(wc -l < "$RUNNER_TEMP/cells.jsonl")
           echo "$total lite results to verify"
           if [ "$total" -gt 256 ]; then
@@ -124,9 +125,10 @@ jobs:
           {
             echo "Reruns of lite cells on GitHub-hosted runners, run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN."
             echo
-            xargs jq -r .verdict < "$RUNNER_TEMP/records.txt" | sort | uniq -c | sed 's/^ */- /'
+            echo "$(wc -l < "$RUNNER_TEMP/records.txt") records. A record holds the numbers it checked and the rerun's."
+            echo "The leaderboard judges them at the tolerance of the benchmark version (sbb site build)."
             echo
-            while read -r f; do echo "- $(jq -r .verdict "$f") \`$f\`"; done < "$RUNNER_TEMP/records.txt"
+            while read -r f; do echo "- \`$f\`"; done < "$RUNNER_TEMP/records.txt"
             echo
             echo "A pull request opened with GITHUB_TOKEN does not start CI. Close and reopen it to run CI."
           } > "$RUNNER_TEMP/body.md"

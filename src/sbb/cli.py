@@ -28,7 +28,8 @@ from sbb.results.replication import REPLICATION_TOLERANCE_PP, ReplicationRecord
 from sbb.results.store import LocalResultStore, ResultStore
 from sbb.results.table import markdown_table
 from sbb.results.validate import validate as validate_files
-from sbb.results.verification import Verification, verify
+from sbb.results.verification import LITE_VERIFIER, Verification, matches, verify
+from sbb.results.verification import unverified as _unverified
 from sbb.runner.executors import executor_for
 from sbb.runner.planner import Planner
 from sbb.runner.site import SiteProfile
@@ -295,13 +296,39 @@ def reproduce(
         else tolerance_pp
     )
     rerun = _site(site).game("reproduce").run(original.cell)
-    check = verify(original, rerun, verifier, verifier_org, tolerance)
+    check = verify(original, rerun, verifier, verifier_org)
     path = check.path(verifications, original)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(check.model_dump_json(indent=2) + "\n")
+    verdict = "match" if matches(original, check, tolerance) else "mismatch"
     deltas = " ".join(f"{k}={v:+.4f}" for k, v in check.delta.items())
-    console.print(f"{check.verdict} {deltas} {check.notes or ''}")
+    outcome = "" if check.outcome == original.outcome else f"outcome {check.outcome}"
+    console.print(f"{verdict} {deltas} {outcome}".rstrip())
     console.print(f"record written to {path}")
+
+
+@app.command()
+def unverified(
+    results: Annotated[Path, typer.Argument(help="Results directory.")] = Path("results"),
+    verifications: Checks = Path("verifications"),
+    verifier: Annotated[str, typer.Option(help="Whose records count.")] = LITE_VERIFIER,
+    track: Annotated[str, typer.Option(help="Only results of this track.")] = "lite",
+) -> None:
+    """Print the result files of TRACK that no record of VERIFIER covers, one per line.
+
+    The verify-lite workflow reruns them. A result rerun under the same key with other numbers
+    needs a new record.
+    """
+    paths = {
+        p: CellResult.model_validate_json(p.read_text())
+        for p in sorted(results.glob("*/*.json"))
+        if p.parent.name != "manifests"
+    }
+    chosen = [r for r in paths.values() if r.cell.track == track]
+    pending = {r.key for r in _unverified(chosen, _verifications(verifications), verifier)}
+    for path, r in paths.items():
+        if r.key in pending:
+            console.print(str(path), soft_wrap=True, highlight=False)  # one path per line
 
 
 @app.command("carry-over")

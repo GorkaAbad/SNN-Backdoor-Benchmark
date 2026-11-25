@@ -18,20 +18,21 @@
     "submitter": "github-actions",
     "submitter_org": "github-actions",
     "started_at": "2026-10-25T13:44:22.520236Z",
-    "duration_s": 6324.012282447
+    "duration_s": 6324.012282447,
+    "carried_from": null
   },
+  "checked": {
+    "asr": 0.00188470066518847,
+    "asr_all": 0.099,
+    "ca": 0.9813,
+    "ra": 0.9800443458980045
+  },
+  "outcome": "ok",
   "metrics": {
     "asr": 0.0028824833702882483,
     "asr_all": 0.0995,
     "ca": 0.9619,
     "ra": 0.958980044345898
   },
-  "delta": {
-    "asr": 0.0009977827050997783,
-    "asr_all": 0.0005000000000000004,
-    "ca": -0.019399999999999973,
-    "ra": -0.02106430155210648
-  },
-  "verdict": "match",
   "notes": null
 }

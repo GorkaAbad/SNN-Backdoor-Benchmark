@@ -197,7 +197,8 @@ SBB_SUBMITTER=<handle> SBB_SUBMITTER_ORG=<org> \
   uv run sbb reproduce results/<version>/<key>.json --site <profile>
 ```
 
-It writes `verifications/<version>/<key>/<handle>-<time>.json` with the verdict. Open a pull
+It prints `match` or `mismatch` and writes `verifications/<version>/<key>/<handle>-<time>.json`
+with the numbers it checked and the rerun's. Open a pull
 request that adds the record. [verifying.md](verifying.md) covers spot checks of a submission,
 the model zoo and the tolerance.
 
