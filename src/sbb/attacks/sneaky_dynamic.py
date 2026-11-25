@@ -89,9 +89,10 @@ class SneakyDynamic(ModelAttack):
     classifier sees is refreshed at the end, as in the official code. Then, as the official
     test(), a copy of the classifier trains one more epoch with that frozen generator, and the
     epoch is scored on the copy. The attacker controls the training, so like the official code it
-    keeps the epoch whose clean and backdoor accuracy both beat every earlier epoch, and returns
-    that epoch's trained copy and generator. It scores the epochs on a fixed sample of its own
-    training split, since it never sees the test set, where the official code scores them.
+    keeps an epoch when its clean and backdoor accuracy both beat those of the epoch kept so far,
+    and returns the last kept epoch's trained copy and generator. It scores the epochs on a fixed
+    sample of its own training split, since it never sees the test set, where the official code
+    scores them.
 
     Attributes:
         best_epoch: The kept epoch, set by make_model.

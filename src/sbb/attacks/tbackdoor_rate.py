@@ -10,7 +10,7 @@ from sbb.core.registry import ATTACKS
 
 @ATTACKS.register("tbackdoor_rate")
 class TBackdoorRate(DirtyLabelPoisoning):
-    """T-Backdoor, rate trigger: a purely temporal trigger that only reorders the frames."""
+    """T-Backdoor, rate trigger: a purely temporal trigger that remaps the frames in time."""
 
     card = AttackCard.load(Path(__file__).parent / "cards" / "tbackdoor_rate.yaml")
     trigger_cls = RateTrigger

@@ -28,7 +28,7 @@ you may declare.
 |---|---|---|---|
 | `pre_training` | `DataDefense` | `sanitize(view)` returns the positions of `train_set` to keep | `train_set` |
 | `in_training` | `TrainingDefense` | `hooks(view)` returns `TrainerHooks` for the victim's training | `train_set`, `training_loop` |
-| `post_training` | `ModelDefense` | `repair(view)` returns the repaired `SNNModel` | `model`, optional `clean_subset` |
+| `post_training` | `ModelDefense` | `repair(view)` returns the repaired `SNNModel`, state outside its weights goes through `extra` and `attach` | `model`, optional `clean_subset` |
 | `inference` | `InputDefense` | `fit(view)` sets `self.threshold`, `score(x)` returns one score per input, higher is more suspicious | `model`, optional `clean_subset` |
 | `model_detection` | `DetectionDefense` | `verdict(view)` returns a score, higher is more likely backdoored | `model`, optional `clean_subset` |
 

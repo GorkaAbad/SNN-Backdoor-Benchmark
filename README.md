@@ -79,7 +79,7 @@ declares its threat model and hyperparameters.
 | Sneaky Spikes, dynamic (`sneaky_dynamic`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | training control | learned, input-specific | explained |
 | Static patch on raw events (`static_patch`) | variant of Sneaky Spikes | data poisoning | patch added to the event stream | not applicable |
 | Flashy Backdoor (`flashy`) | [Riaño et al., 2024](https://arxiv.org/abs/2411.03022) | data poisoning | full-frame flash | explained |
-| T-Backdoor, rate, latency and jitter (`tbackdoor_*`) | [Miah et al., 2026](https://arxiv.org/abs/2609.30119) | data poisoning | reordered frames only | replicated |
+| T-Backdoor, rate, latency and jitter (`tbackdoor_*`) | [Miah et al., 2026](https://arxiv.org/abs/2609.30119) | data poisoning | frames remapped in time only | replicated |
 | Fine-tuning injection (`finetune_injection`) | baseline | supply chain | static patch, fine-tuned into a clean model | not applicable |
 
 A port is **replicated** when its mean over three seeds is within 3 percentage points of every

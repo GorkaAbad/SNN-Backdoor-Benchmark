@@ -196,7 +196,12 @@ class ModelDefense(Defense):
 
     @abstractmethod
     def repair(self, view: DefenderView) -> SNNModel:
-        """Return the repaired model."""
+        """Return the model whose weights the Game stores.
+
+        A repair that keeps state outside the weights returns the model without that state, the
+        original weights for a method that changes none (fewer_steps, threshold_recalibration,
+        NDSBM), and leaves the state in extra. The Game evaluates the model loaded back with it.
+        """
 
     def extra(self, model: SNNModel) -> nn.Module | None:
         """State of the repair outside the weights, sized for model, or None.

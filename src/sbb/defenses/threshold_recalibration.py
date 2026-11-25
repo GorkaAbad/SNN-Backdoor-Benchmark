@@ -15,12 +15,13 @@ from sbb.models.snn import SNNModel
 
 @DEFENSES.register("threshold_recalibration")
 class ThresholdRecalibration(ModelDefense):
-    """Scales every neuron's threshold by the largest factor that holds the clean accuracy.
+    """Scales every neuron's threshold by the largest factor before the clean accuracy drops.
 
     Higher thresholds let fewer and stronger inputs through, which can silence the extra spikes a
-    trigger adds. The factors of scales are tried in increasing order on the clean subset, and the
-    last one whose clean accuracy stays within max_drop of the original is kept. The weights stay
-    as they are.
+    trigger adds. The factors of scales are tried in increasing order on the clean subset. The
+    search stops at the first factor that costs more than max_drop of the original clean accuracy
+    and keeps the factor before it, 1 when the smallest already does. A larger factor after that
+    point is not tried. The weights stay as they are.
     """
 
     card = DefenseCard.load(Path(__file__).parent / "cards" / "threshold_recalibration.yaml")
