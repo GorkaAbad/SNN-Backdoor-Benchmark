@@ -783,3 +783,57 @@ def test_attack_initialization_does_not_depend_on_the_cache(
     game.run(make_cell("draws_at_init", "no_defense"))
     game.run(make_cell("draws_at_init", "fine_tuning"))
     assert len(_DrawsAtInit.draws) == 2 and _DrawsAtInit.draws[0] == _DrawsAtInit.draws[1]
+
+
+@pytest.mark.parametrize("field", ["attack_version", "defense_version"])
+def test_a_cell_planned_for_another_plugin_version_fails(game: Game, field: str) -> None:
+    result = game.run(make_cell("static_patch", "fine_tuning").model_copy(update={field: "0.0.1"}))
+    assert result.outcome == "failed" and "registered at version" in str(result.reason)
+
+
+class _ModelAttackCardedAsPoisoning(ModelAttack):
+    card = attack_card(name="carded_as_poisoning")
+
+
+class _ModelDefenseCardedAsPreTraining(ModelDefense):
+    card = defense_card(
+        name="carded_as_pre_training", stage="pre_training", view={"resources": ["train_set"]}
+    )
+
+
+@pytest.mark.parametrize(
+    ("registry", "name", "cls", "base"),
+    [
+        (ATTACKS, "carded_as_poisoning", _ModelAttackCardedAsPoisoning, "PoisoningAttack"),
+        (DEFENSES, "carded_as_pre_training", _ModelDefenseCardedAsPreTraining, "DataDefense"),
+    ],
+)
+def test_a_plugin_must_subclass_the_base_its_card_names(
+    game: Game, monkeypatch: pytest.MonkeyPatch, registry: Any, name: str, cls: type, base: str
+) -> None:
+    monkeypatch.setitem(registry._items, name, cls)
+    attack, defense = (name, "no_defense") if registry is ATTACKS else ("no_attack", name)
+    result = game.run(make_cell(attack, defense))
+    assert result.outcome == "failed" and f"must subclass {base}" in str(result.reason)
+
+
+def test_a_split_of_another_dataset_fails_the_cell(game: Game) -> None:
+    data = SCENARIO.data.model_copy(update={"split": "nmnist_official_v1"})
+    scenario = SCENARIO.model_copy(update={"data": data})
+    result = game.run(make_cell("no_attack", "no_defense", scenario=scenario))
+    assert result.outcome == "failed" and "belongs to nmnist" in str(result.reason)
+
+
+class _SourceIsTarget(StaticPatch):
+    """Flips only the target class 0, so no triggered test sample measures the backdoor."""
+
+    card = StaticPatch.card.model_copy(update={"name": "source_is_target"})
+    source_classes = (0,)
+
+
+def test_a_cell_without_a_triggered_sample_to_count_fails(
+    game: Game, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(ATTACKS._items, "source_is_target", _SourceIsTarget)
+    result = game.run(make_cell("source_is_target", "no_defense"))
+    assert result.outcome == "failed" and "no triggered test sample counts" in str(result.reason)

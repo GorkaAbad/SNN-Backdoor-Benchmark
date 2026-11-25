@@ -25,9 +25,11 @@ ARCH = ArchSpec(name="tiny_lif_cnn", T=4)
 CPU = torch.device("cpu")
 
 
-def _defender_view(datamodule: DataModule, resources: list[str]) -> DefenderView:
+def _defender_view(
+    datamodule: DataModule, resources: list[str], model: SNNModel | None = None
+) -> DefenderView:
     card = defense_card(view={"resources": resources, "clean_fraction": 0.05})
-    model = build_model(ARCH, (2, 16, 16), 4)
+    model = model or build_model(ARCH, (2, 16, 16), 4)
     trainer = Trainer(TrainSpec(epochs=1, batch_size=8), CPU)
     train_set = TrainSetView(datamodule, None)
     return DefenderView(card, INFO, 0, trainer, model, train_set, datamodule, ARCH)
@@ -44,8 +46,12 @@ def test_defense_reading_an_undeclared_resource_raises(datamodule: DataModule) -
 
 
 def test_defender_gets_a_copy_of_the_model(datamodule: DataModule) -> None:
-    view = _defender_view(datamodule, ["model", "clean_subset"])
-    assert view.model is view.model and len(view.clean_loader(8).dataset) == 24  # type: ignore[arg-type]
+    victim = build_model(ARCH, (2, 16, 16), 4)
+    view = _defender_view(datamodule, ["model", "clean_subset"], victim)
+    with torch.no_grad():  # a defense that edits its model in place
+        next(view.model.parameters()).add_(1.0)
+    assert not torch.equal(next(view.model.parameters()), next(victim.parameters()))
+    assert len(view.clean_loader(8).dataset) == 24  # type: ignore[arg-type]
 
 
 def _attacker_view(datamodule: DataModule, clean: SNNModel, **card: object) -> AttackerView:
