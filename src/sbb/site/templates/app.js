@@ -350,7 +350,7 @@ function renderCompare() {
     plot_bgcolor: css("--panel"),
     height: 440,
     xaxis: { title: other === "attack" ? "Attack" : "Defense", tickangle: -30, automargin: true },
-    yaxis: { title: metricLabel(state.metric), range: isPercent(state.metric) ? [0, 100] : undefined, gridcolor: css("--line") },
+    yaxis: { title: metricLabel(state.metric), gridcolor: css("--line") },  // autoscale by default
   }), { responsive: true, displaylogo: false });
 }
 
