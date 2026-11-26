@@ -6,6 +6,7 @@ from sbb.attacks import (  # noqa: F401
     finetune_injection,
     flashy,
     no_attack,
+    sig,
     sneaky_dynamic,
     sneaky_moving,
     sneaky_smart,

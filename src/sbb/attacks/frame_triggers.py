@@ -11,7 +11,8 @@ counts. A polarity mode sets both channels of every pixel the trigger covers:
 
 The blend and patches triggers carry the triggers of Qi et al. (ICLR 2023) over to frames, after
 their image recipe x + alpha * mask * (trigger - x). The code of the paper has no license, so they
-are re-implemented from the paper.
+are re-implemented from the paper. The SIG trigger carries the sinusoid of Barni et al. (ICIP
+2019) from the image columns over to the frames, re-implemented from the paper.
 
 A trigger is a square whose side is a fraction of the frame width, at least one pixel. The
 official code swaps the width and the height in places. That changes nothing for square frames,
@@ -19,6 +20,7 @@ and every ported setting uses square frames.
 """
 
 import functools
+import math
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -391,3 +393,34 @@ class PatchesTrigger(FrameTrigger):
             y, x = _corner(patch["position"], height, width, side)
             _blend(out, *_square(y, x, side, frames), patch["polarity"], patch["alpha"], level)
         return out
+
+
+@dataclass(frozen=True)
+class SigTrigger(FrameTrigger):
+    """A sinusoid over the frames, added to every pixel and clipped at zero events (SIG).
+
+    SIG (Barni et al., ICIP 2019) adds delta * sin(2 pi j f / m) to column j of an image with m
+    columns. Here the sinusoid runs over the T frames instead, the same at every pixel and
+    polarity channel. Its amplitude is delta times the sample's peak count, as the image signal
+    is a fraction of the pixel range.
+
+    Attributes:
+        delta: Amplitude, a fraction of the sample's peak count.
+        frequency: Periods over the T frames. Frames sample it only while 2 * frequency < T.
+    """
+
+    delta: float
+    frequency: int
+
+    def __post_init__(self) -> None:
+        if self.delta <= 0 or self.frequency < 1:
+            raise SbbError("a SIG trigger needs delta > 0 and at least one period")
+
+    def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:
+        """Add the sinusoid to every frame and clip at zero."""
+        T = len(frames)
+        if 2 * self.frequency >= T:
+            raise SbbError(f"{T} frames cannot carry a SIG frequency of {self.frequency}")
+        t = torch.arange(T, dtype=frames.dtype)
+        signal = self.delta * frames.max() * torch.sin(2 * math.pi * self.frequency * t / T)
+        return (frames + signal.view(-1, 1, 1, 1)).clamp(min=0)

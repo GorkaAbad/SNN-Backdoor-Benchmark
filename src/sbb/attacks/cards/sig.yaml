@@ -1,0 +1,33 @@
+name: sig
+display_name: SIG
+version: 1.0.0
+title: SIG, an ANN attack ported to SNNs
+paper: "Barni, Kallas, Tondi. A New Backdoor Attack in CNNs by Training Set Corruption Without Label Poisoning. ICIP 2019"
+published: "2019-02"
+code_reference: "No official code. BackdoorBench (https://github.com/SCLBD/BackdoorBench, utils/bd_img_transform/sig.py and config/attack/sig/default.yaml, read at f02e353) sets delta 40 and f 6."
+license_note: "BackdoorBench declares no standard license. Re-implemented from the paper."
+# An ANN image attack ported to event frames, an sbb variant without a replication record
+# (PLAN section 12). The first clean-label attack (group D, v3).
+kind: data_poisoning
+capabilities:
+  labels: clean
+  trigger_domain: frames
+knowledge:
+  architecture: unknown
+  data: full
+  defense: oblivious
+adaptation_note: >
+  An ANN image attack ported to SNNs and event data, not an attack designed for SNNs.
+  SIG adds a horizontal sinusoid to the image. Here the sinusoid runs over the T frames instead
+  of the image columns, the same at every pixel and polarity channel, added to the frame counts
+  and clipped at zero events (SigTrigger). Its amplitude delta is a fraction of the sample's peak
+  count, 0.16 for the 40 of 255 that BackdoorBench uses. It makes 3 periods over the frames,
+  half of SIG's 6 over the columns, so the 10 frames of N-MNIST still carry it. Poisoned samples
+  come only from the target class and keep their label. Poisoned samples and test inputs get the
+  same trigger.
+hparams:
+  default:
+    trigger: {delta: 0.16, frequency: 3}
+  # The synthetic data of the tests has 4 frames.
+  synthetic/tiny_lif_cnn:
+    trigger: {frequency: 1}
