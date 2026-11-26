@@ -160,7 +160,9 @@ python -m http.server -d _site 8000
 Each cell is written to `results/<version>/<key>.json`, and cells that already have a result are
 skipped. The trained models of the published results are on the Hugging Face Hub
 ([sbb-zoo/checkpoints](https://huggingface.co/sbb-zoo/checkpoints)): `uv run sbb zoo pull 1.0.0`
-copies them into your cache, so defenses rerun on exactly those models. The full track needs a GPU. [docs/sites.md](docs/sites.md) covers workstations, Slurm
+copies them into your cache, so defenses rerun on exactly those models. For benchmark 1.0 the zoo
+holds 777 of the 1667 models, since the others were lost before the upload. A rerun trains any
+model that is missing. The full track needs a GPU. [docs/sites.md](docs/sites.md) covers workstations, Slurm
 clusters and the container image.
 
 ## How it works
