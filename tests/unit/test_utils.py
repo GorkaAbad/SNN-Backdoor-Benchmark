@@ -87,6 +87,14 @@ def test_failed_build_leaves_nothing(tmp_path: Path) -> None:
     assert [p.name for p in tmp_path.iterdir()] == [".locks"]  # no artifact, no staging
 
 
+def test_cache_rebuilds_an_artifact_a_cleanup_emptied(tmp_path: Path) -> None:
+    (tmp_path / "k").mkdir()  # a cleanup that deletes old files but not their folders
+    path = ArtifactCache(LocalStore(tmp_path)).get_or_build(
+        "k", lambda d: (d / "x.txt").write_text("hi")
+    )
+    assert (path / "x.txt").read_text() == "hi"
+
+
 def test_put_keeps_the_first_writer(tmp_path: Path) -> None:
     store = LocalStore(tmp_path / "store")
     for content in ("first", "second"):

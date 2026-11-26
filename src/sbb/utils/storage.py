@@ -34,9 +34,13 @@ class LocalStore(ArtifactStore):
         self.root = root.expanduser()
 
     def get(self, key: str) -> Path | None:
-        """Return <root>/<key> if it exists."""
+        """Return <root>/<key> if it holds the artifact.
+
+        put moves a complete directory into place, so an empty one is what a cleanup that deletes
+        old files but not folders leaves. It counts as missing, and put replaces it.
+        """
         path = self.root / key
-        return path if path.is_dir() else None
+        return path if path.is_dir() and any(path.iterdir()) else None
 
     def put(self, key: str, path: Path) -> None:
         """Move the directory at path into the store. The first writer of a key wins."""
