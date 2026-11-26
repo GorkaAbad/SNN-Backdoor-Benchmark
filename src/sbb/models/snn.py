@@ -78,6 +78,17 @@ class SNNModel(nn.Module):
         """Reset all neuron states."""
         functional.reset_net(self.net)
 
+    def surrogate_eval(self) -> "SNNModel":
+        """Evaluate with gradients reaching the input, for methods that optimize inputs.
+
+        Normalization runs in eval mode, but the neurons stay in train mode, because eval-mode
+        SpikingJelly neurons have no surrogate gradient. The parameters are frozen.
+        """
+        self.eval()
+        for _, node in self.named_neurons():
+            node.train()
+        return self.requires_grad_(False)
+
     def named_neurons(self) -> Iterator[tuple[str, neuron.BaseNode]]:
         """Yield (name, module) for every spiking neuron layer."""
         for name, module in self.named_modules():

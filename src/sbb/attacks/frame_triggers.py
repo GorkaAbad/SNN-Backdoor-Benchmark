@@ -395,14 +395,23 @@ class PatchesTrigger(FrameTrigger):
         return out
 
 
+def add_peak_scaled(frames: torch.Tensor, noise: torch.Tensor) -> torch.Tensor:
+    """Add noise times each sample's peak count and clip at zero events.
+
+    frames is one sample [T, P, H, W] or a batch of them. The noise is a fraction of the peak, as
+    an image perturbation is a fraction of the pixel range.
+    """
+    peak = frames.amax(dim=(-4, -3, -2, -1), keepdim=True)
+    return (frames + peak * noise).clamp(min=0)
+
+
 @dataclass(frozen=True)
 class SigTrigger(FrameTrigger):
     """A sinusoid over the frames, added to every pixel and clipped at zero events (SIG).
 
     SIG (Barni et al., ICIP 2019) adds delta * sin(2 pi j f / m) to column j of an image with m
     columns. Here the sinusoid runs over the T frames instead, the same at every pixel and
-    polarity channel. Its amplitude is delta times the sample's peak count, as the image signal
-    is a fraction of the pixel range.
+    polarity channel. Its amplitude is delta times the sample's peak count (add_peak_scaled).
 
     Attributes:
         delta: Amplitude, a fraction of the sample's peak count.
@@ -422,5 +431,58 @@ class SigTrigger(FrameTrigger):
         if 2 * self.frequency >= T:
             raise SbbError(f"{T} frames cannot carry a SIG frequency of {self.frequency}")
         t = torch.arange(T, dtype=frames.dtype)
-        signal = self.delta * frames.max() * torch.sin(2 * math.pi * self.frequency * t / T)
-        return (frames + signal.view(-1, 1, 1, 1)).clamp(min=0)
+        signal = self.delta * torch.sin(2 * math.pi * self.frequency * t / T)
+        return add_peak_scaled(frames, signal.view(-1, 1, 1, 1))
+
+
+@dataclass
+class NarcissusTrigger(FrameTrigger):
+    """Noise over the frames optimized on a surrogate towards the target class (Narcissus).
+
+    Zeng et al. (CCS 2023) optimize one additive noise inside an L-inf ball with RAdam, to lower
+    the surrogate's cross-entropy for the target class on target-class samples. Here the noise
+    covers the frames [T, P, H, W] and is scaled by the sample's peak count (add_peak_scaled).
+    The surrogate is the scenario's clean model, which needs no poison warm-up.
+
+    Attributes:
+        target: Target class.
+        epsilon: Radius of the L-inf ball, a fraction of the sample's peak count.
+        rounds: Passes over the target-class samples.
+        lr: RAdam learning rate.
+        batch_size: Samples per step.
+        magnify: Factor on the noise when applied, 3 on the official test inputs.
+        noise: The fitted noise, None before fit.
+    """
+
+    target: int
+    epsilon: float
+    rounds: int
+    lr: float
+    batch_size: int
+    magnify: float = 1.0
+    noise: torch.Tensor | None = None
+
+    def fit(self, view: AttackerView) -> None:
+        """Optimize the noise on the target-class samples of the clean train split."""
+        surrogate = view.clean_model.surrogate_eval()
+        device = next(surrogate.parameters()).device
+        noise = torch.zeros(view.scenario.T, *view.scenario.input_shape, device=device)
+        noise.requires_grad_(True)
+        optimizer = torch.optim.RAdam([noise], lr=self.lr)
+        targets = np.flatnonzero(view.train_set.labels() == self.target)
+        loader = view.train_set.loader(self.batch_size, targets)
+        for _ in range(self.rounds):
+            for x, y, _ in loader:
+                bounded = noise.clamp(-self.epsilon, self.epsilon)
+                logits = surrogate(add_peak_scaled(x.to(device), bounded))
+                loss = torch.nn.functional.cross_entropy(logits, y.to(device))
+                optimizer.zero_grad()
+                loss.backward()  # type: ignore[no-untyped-call]
+                optimizer.step()
+        self.noise = noise.detach().clamp(-self.epsilon, self.epsilon).cpu()
+
+    def apply(self, frames: torch.Tensor, rng: np.random.Generator) -> torch.Tensor:
+        """Add the magnified noise."""
+        if self.noise is None:
+            raise SbbError("fit the Narcissus trigger before applying it")
+        return add_peak_scaled(frames, self.magnify * self.noise.to(frames.dtype))

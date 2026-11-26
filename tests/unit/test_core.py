@@ -68,6 +68,16 @@ def test_attacker_without_architecture_knowledge_cannot_read_it(datamodule: Data
     assert _attacker_view(datamodule, clean, knowledge={"architecture": "known"}).arch == ARCH
 
 
+def test_poisoning_attacker_that_knows_the_architecture_gets_a_surrogate(
+    datamodule: DataModule,
+) -> None:
+    clean = build_model(ARCH, (2, 16, 16), 4)
+    view = _attacker_view(datamodule, clean, knowledge={"architecture": "known"})
+    assert view.clean_model is not clean  # a copy, as Narcissus's surrogate
+    with pytest.raises(ThreatModelViolation, match="trainer"):
+        view.trainer  # noqa: B018
+
+
 @pytest.mark.parametrize(
     ("kind", "readable", "hidden"),
     [

@@ -1,0 +1,35 @@
+name: narcissus
+display_name: Narcissus
+version: 1.0.0
+title: Narcissus, an ANN attack ported to SNNs
+paper: "Zeng, Pan, Just, Lyu, Qiu, Jia. Narcissus: A Practical Clean-Label Backdoor Attack with Limited Information. CCS 2023"
+published: "2022-04"
+code_reference: "https://github.com/reds-lab/Narcissus (narcissus_function.py and Narcissus.ipynb, read at de128d8)"
+license_note: "MIT"
+# An ANN image attack ported to event frames, an sbb variant without a replication record
+# (PLAN section 12). Its surrogate is the scenario's clean model, hence architecture: known.
+kind: data_poisoning
+capabilities:
+  labels: clean
+  trigger_domain: frames
+knowledge:
+  architecture: known
+  data: full
+  defense: oblivious
+adaptation_note: >
+  An ANN image attack ported to SNNs and event data, not an attack designed for SNNs.
+  The trigger is one additive noise over the frames [T, P, H, W], scaled by the sample's peak
+  count and clipped at zero events, inside the official L-inf ball of 16/255. As in the official
+  code, RAdam (learning rate 0.01) lowers the surrogate's cross-entropy for the target class on
+  target-class samples. The surrogate is the scenario's clean model, stronger than the paper's,
+  which trains on public out-of-distribution data: it shares the victim's split, recipe and seed,
+  so it needs no poison warm-up. The noise gets 20 passes over the target class instead of up to
+  1000, because every cell fits it again. Poisoned samples come only from the target class, as
+  many as the budget allows, far more than the paper's 0.05% of the train set, and keep their
+  label. Test inputs get the noise magnified 3 times, as in the official test.
+hparams:
+  default:
+    trigger: {epsilon: 0.0627, rounds: 20, lr: 0.01, batch_size: 32, magnify: 3.0}
+  # The tests run on synthetic data with a CPU.
+  synthetic/tiny_lif_cnn:
+    trigger: {rounds: 2}

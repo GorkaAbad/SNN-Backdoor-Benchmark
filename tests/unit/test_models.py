@@ -103,6 +103,14 @@ def test_membrane_probe_can_keep_the_graph() -> None:
     assert not probe.membrane().requires_grad, "records are detached by default"
 
 
+def test_surrogate_eval_passes_gradients_to_the_input_only() -> None:
+    model = _model().surrogate_eval()  # eval-mode neurons would cut the surrogate gradient
+    assert not model.net[1].training and not any(p.requires_grad for p in model.parameters())
+    x = (torch.rand(2, 4, 2, 16, 16) * 3).requires_grad_()
+    model(x).sum().backward()
+    assert x.grad is not None and x.grad.abs().sum() > 0
+
+
 def test_checkpoint_round_trip(tmp_path: Path) -> None:
     model = _model().eval()
     save_checkpoint(model, tmp_path, "k")

@@ -74,6 +74,7 @@ declares its threat model and hyperparameters.
 |---|---|---|---|---|
 | SIG, ported from ANNs (`sig`) | ANN attack, [Barni et al., ICIP 2019](https://arxiv.org/abs/1902.11237) | data poisoning, clean-label | sinusoid over the frames on every pixel | not applicable |
 | TaCT, ported from ANNs (`tact`) | ANN attack, [Tang et al., USENIX Security 2021](https://arxiv.org/abs/1908.00686) | data poisoning, adaptive (STRIP) | patch aimed at one source class, with cover samples | not applicable |
+| Narcissus, ported from ANNs (`narcissus`) | ANN attack, [Zeng et al., CCS 2023](https://arxiv.org/abs/2204.05255) | data poisoning, clean-label | noise optimized on the clean model, magnified at test time | not applicable |
 | Adap-Blend, ported from ANNs (`adap_blend`) | ANN attack, [Qi et al., ICLR 2023](https://arxiv.org/abs/2205.13613) | data poisoning, adaptive (activation clustering) | blended pattern, partial when poisoning | not applicable |
 | Adap-Patch, ported from ANNs (`adap_patch`) | ANN attack, [Qi et al., ICLR 2023](https://arxiv.org/abs/2205.13613) | data poisoning, adaptive (activation clustering) | faint corner patches, opaque at test time | not applicable |
 | Sneaky Spikes, static (`sneaky_static`) | [Abad et al., NDSS 2024](https://arxiv.org/abs/2302.06279) | data poisoning | static patch in every frame | replicated |
@@ -87,8 +88,9 @@ declares its threat model and hyperparameters.
 
 A port is **replicated** when its mean over three seeds is within 3 percentage points of every
 target its replication record takes from the paper, and **explained** when a maintainer documented why it misses
-([records](replications/)). T-Backdoor is part of benchmark 1.0. SIG is new in v3 and not yet part of a benchmark. SIG, TaCT,
-Adap-Blend and Adap-Patch are ANN image attacks ported to SNNs and event data, not attacks designed for SNNs.
+([records](replications/)). T-Backdoor is part of benchmark 1.0. SIG and Narcissus are new in
+v3 and not yet part of a benchmark. SIG, Narcissus, TaCT, Adap-Blend and Adap-Patch are ANN image
+attacks ported to SNNs and event data, not attacks designed for SNNs.
 Their papers have no event setting to replicate.
 
 ### Defenses

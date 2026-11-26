@@ -61,10 +61,7 @@ class TMPBD(DetectionDefense):
         """1 - p, higher for a likely backdoor."""
         if self.hparams["steps"] < 1:
             raise SbbError("TMPBD optimizes its inputs for at least one step")
-        model = view.model.to(view.trainer.device).eval()
-        for _, node in model.named_neurons():
-            node.train()  # eval-mode SpikingJelly neurons have no surrogate gradient
-        model.requires_grad_(False)
+        model = view.model.to(view.trainer.device).surrogate_eval()
         classes = view.scenario.num_classes
         shape = (self.hparams["inputs"], view.scenario.T, *view.scenario.input_shape)
         device = view.trainer.device
