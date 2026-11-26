@@ -153,3 +153,7 @@ footer.wrap { color: var(--muted); font-size: 0.8rem; padding: 24px 16px 40px; }
 .csv:hover { background: var(--accent-soft); }
 .csv:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card .broken { color: var(--bad); }
+.card .scroll { margin: 6px 0; }
+.card th, .card td { padding: 3px 6px; white-space: normal; cursor: default; }
+.card th + th { text-align: right; }
+.card td.broken { font-weight: 600; }

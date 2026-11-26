@@ -353,6 +353,42 @@ def test_aware_attacks_with_half_the_asr_break_a_defense() -> None:
     assert broken[0]["asr"] == pytest.approx(0.7)
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_defense_card_tables_the_asr_of_each_adaptive_attack() -> None:
+    app = Path(__file__).parents[2] / "src" / "sbb" / "site" / "templates" / "app.js"
+    script = """
+const { brokenGrid } = require(process.argv[1]);
+const methods = { tact: { aware_of: ["strip"] }, adap_blend: { aware_of: ["ac"] },
+  static_patch: { aware_of: [] } };
+const names = { tact: "TaCT", adap_blend: "Adap-Blend", lite: "Lite", full: "Full",
+  nmnist: "N-MNIST", gesture: "DVS128 Gesture" };
+const cell = (version, track, scenario, dataset, attack, defense, asr) =>
+  ({ version, track, scenario, dataset, attack, defense, metrics: { asr: { mean: asr } } });
+const cells = [
+  cell("1.0.0", "full", "g", "gesture", "tact", "strip", 0.9),
+  cell("1.0.0", "lite", "n", "nmnist", "tact", "strip", 0.2),
+  cell("1.0.0", "lite", "n", "nmnist", "adap_blend", "strip", 0.7),
+  cell("1.0.0", "lite", "n", "nmnist", "static_patch", "strip", 1.0),  // not adaptive
+  cell("1.0.0", "full", "g", "gesture", "tact", "fine_tuning", 0.9),  // another defense
+  cell("0.9.0", "lite", "n", "nmnist", "tact", "strip", 0.9),  // an older version
+];
+const broken = [
+  { version: "1.0.0", track: "full", scenario: "g", attack: "tact", defense: "strip" },
+  { version: "1.0.0", track: "lite", scenario: "n", attack: "adap_blend", defense: "strip" },
+];
+console.log(JSON.stringify(brokenGrid("strip", "1.0.0", cells, broken, methods, names)));
+"""
+    out = subprocess.run(
+        ["node", "-e", script, str(app)], capture_output=True, text=True, check=True
+    )
+    # Built-for-it attacks come first and carry a star. Lite before full. A blank is no result.
+    assert json.loads(out.stdout) == {
+        "headers": ["", "TaCT ★", "Adap-Blend"],
+        "rows": [["Lite · N-MNIST", "20.0", "70.0"], ["Full · DVS128 Gesture", "90.0", ""]],
+        "broken": [[False, False, True], [False, True, False]],
+    }
+
+
 def test_pareto_averages_each_defense_over_the_attacks_of_a_group() -> None:
     results = [
         _as("static_patch", "no_defense", ca=0.9, asr=1.0),

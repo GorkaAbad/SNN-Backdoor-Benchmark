@@ -151,8 +151,30 @@ function matrixCsv(m) {
   return toCsv([["attack", ...m.defenses], ...m.attacks.map((a, i) => [a, ...m.z[i].map(value)])]);
 }
 
+// The ASR of every adaptive attack against one defense in one version: a row per track and
+// scenario, a column per attack, the attacks built to beat this defense first with a star. broken
+// marks the builder's broken_by entries, so the threshold stays in the builder.
+function brokenGrid(defense, version, cells, brokenBy, methods, names = DATA?.names) {
+  const ofDefense = cells.filter((c) => c.version === version && c.defense === defense && methods[c.attack]?.aware_of?.length);
+  const built = (a) => methods[a].aware_of.includes(defense);
+  const attacks = uniq(ofDefense.map((c) => c.attack))
+    .sort((a, b) => built(b) - built(a) || display(a, names).localeCompare(display(b, names)));
+  const places = uniq(ofDefense.map((c) => `${c.track}|${c.scenario}`))
+    .sort((a, b) => TRACK_ORDER.indexOf(a.split("|")[0]) - TRACK_ORDER.indexOf(b.split("|")[0]) || a.localeCompare(b));
+  const find = (place, attack) => ofDefense.find((c) => `${c.track}|${c.scenario}` === place && c.attack === attack);
+  const isBroken = (place, attack) => brokenBy.some((b) => b.version === version && b.defense === defense && b.attack === attack && `${b.track}|${b.scenario}` === place);
+  return {
+    headers: ["", ...attacks.map((a) => display(a, names) + (built(a) ? " ★" : ""))],
+    rows: places.map((p) => {
+      const c = ofDefense.find((x) => `${x.track}|${x.scenario}` === p);
+      return [`${display(c.track, names)} · ${display(c.dataset, names)}`, ...attacks.map((a) => formatValue("asr", find(p, a)?.metrics.asr?.mean))];
+    }),
+    broken: places.map((p) => [false, ...attacks.map((a) => isBroken(p, a))]),
+  };
+}
+
 if (typeof module !== "undefined") {
-  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, runOn, display, toCsv, matrixCsv };
+  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, runOn, display, toCsv, matrixCsv, brokenGrid };
 }
 
 // ---- Page ----
@@ -328,7 +350,7 @@ function renderCompare() {
     plot_bgcolor: css("--panel"),
     height: 440,
     xaxis: { title: other === "attack" ? "Attack" : "Defense", tickangle: -30, automargin: true },
-    yaxis: { title: metricLabel(state.metric), range: isPercent(state.metric) ? [0, 100] : undefined, gridcolor: css("--line") },
+    yaxis: { title: metricLabel(state.metric), gridcolor: css("--line") },  // autoscale by default
   }), { responsive: true, displaylogo: false });
 }
 
@@ -569,8 +591,16 @@ function renderMethods() {
       }
       const broken = brokenBy(name);
       if (broken.length) {
-        const text = broken.map((b) => `${display(b.attack)} (${b.scenario}, ${display(b.track)}, ASR ${formatValue("asr", b.asr)})`).join(", ");
-        card.append(Object.assign(document.createElement("p"), { className: "broken", textContent: `Broken by: ${text}` }));
+        const version = broken[0].version;
+        const grid = brokenGrid(name, version, DATA.cells, DATA.broken_by, DATA.methods);
+        const attacks = grid.headers.filter((_, j) => grid.broken.some((row) => row[j])).join(", ");
+        card.append(Object.assign(document.createElement("p"), { className: "broken", textContent: `Broken by ${attacks}` }));
+        const element = table(grid.headers, grid.rows);
+        grid.broken.forEach((row, i) => row.forEach((hit, j) => hit && element.tBodies[0].rows[i].cells[j].classList.add("broken")));
+        const scroll = Object.assign(document.createElement("div"), { className: "scroll" });
+        scroll.append(element);
+        const note = `ASR (%) of the adaptive attacks against it in benchmark ${version}. Red: 50% or more, the attack breaks it. ★ built to beat it.`;
+        card.append(scroll, Object.assign(document.createElement("p"), { className: "meta", textContent: note }));
       }
       if (status.has(name)) {
         const p = Object.assign(document.createElement("p"), { textContent: "Replication " });

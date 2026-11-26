@@ -39,7 +39,9 @@ uv run sbb zoo pull 0.9.0 --revision <commit>   # copies the models into the loc
 uv run sbb reproduce results/0.9.0/<key>.json   # reruns a cell on the published models
 ```
 
-Pin a commit with `--revision` to reproduce a result exactly.
+Pin a commit with `--revision` to reproduce a result exactly. The `1.0.0/` folder holds 777 of
+the 1667 models of benchmark 1.0, since the others were lost before the upload. A rerun trains
+any model that is missing.
 
 ## License
 

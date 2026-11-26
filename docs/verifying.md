@@ -88,6 +88,10 @@ fails, the error says which files to fetch by hand and where to put them.
     sbb zoo pull <benchmark version> --site site.yaml
     ```
 
+    The zoo of benchmark 1.0 is partial: it holds 777 of the 1667 models, and few of the
+    methods new in 1.0. Its manifests pin no models, and a rerun trains any model that is
+    missing, so more spot checks need a GPU for longer.
+
 2. Let the tool pick the cells. The choice is seeded by the bundle id, so anyone gets the same
    picks:
 
