@@ -46,6 +46,14 @@ def test_a_track_can_leave_out_methods_of_the_battery() -> None:
         BenchmarkSpec.model_validate(data)
 
 
+def test_a_scenario_belongs_to_one_track() -> None:
+    # The site picks cells by version and scenario, without the track.
+    data = SMOKE.model_dump()
+    data["tracks"]["full"] = data["tracks"]["lite"]
+    with pytest.raises(ValueError, match="synthetic_tiny"):
+        BenchmarkSpec.model_validate(data)
+
+
 @pytest.mark.parametrize("path", sorted(BENCHMARKS.glob("*.yaml")), ids=lambda p: p.stem)
 def test_every_benchmark_names_registered_parts(path: Path) -> None:
     spec = BenchmarkSpec.load(path)

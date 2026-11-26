@@ -61,6 +61,10 @@ class BenchmarkSpec(BaseModel, extra="forbid"):
             battery = {*self.battery.attacks, *self.battery.defenses}
             if unknown := set(spec.exclude) - battery:
                 raise ValueError(f"track {track} excludes {sorted(unknown)}, not in the battery")
+        # The site picks cells by version and scenario, without the track.
+        listed = [s for spec in self.tracks.values() for s in spec.scenarios]
+        if twice := sorted({s for s in listed if listed.count(s) > 1}):
+            raise ValueError(f"scenarios {twice} are in more than one track")
         return self
 
     @classmethod
