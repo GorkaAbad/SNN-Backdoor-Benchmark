@@ -854,7 +854,7 @@ class ArtifactStore(ABC):
     @abstractmethod
     def put(self, key: str, path: Path) -> None: ...
 
-class LocalStore(ArtifactStore): ...                  # <cache_dir>/<key>/
+class LocalStore(ArtifactStore): ...                  # <cache_dir>/<key>/, an empty folder counts as missing
 class HubStore(ArtifactStore): ...                    # repo_id, repo_type, revision. Read-only unless a token is configured
 
 class ArtifactCache:
