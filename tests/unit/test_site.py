@@ -162,6 +162,25 @@ def test_build_writes_a_site_with_the_data(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_picking_a_dataset_moves_to_a_track_that_has_it() -> None:
+    app = Path(__file__).parents[2] / "src" / "sbb" / "site" / "templates" / "app.js"
+    script = """
+const { trackFor } = require(process.argv[1]);
+const cells = [["1.0.0", "lite", "nmnist"], ["1.0.0", "full", "dvsgesture"], ["0.9.0", "full", "nmnist"]]
+  .map(([version, track, dataset]) => ({ version, track, dataset }));
+console.log(JSON.stringify([
+  trackFor(cells, "1.0.0", "nmnist", "full"),
+  trackFor(cells, "1.0.0", "dvsgesture", "full"),
+  trackFor(cells, "1.0.0", "dvsgesture", "lite"),
+]));
+"""
+    out = subprocess.run(
+        ["node", "-e", script, str(app)], capture_output=True, text=True, check=True
+    )
+    assert json.loads(out.stdout) == ["lite", "full", "full"]  # N-MNIST of 0.9.0 does not count
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_page_lists_baselines_then_the_oldest_papers_first() -> None:
     app = Path(__file__).parents[2] / "src" / "sbb" / "site" / "templates" / "app.js"
     script = """
