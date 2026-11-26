@@ -59,6 +59,13 @@ function newestFirst(versions) {
   return [...versions].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
 }
 
+// The Dataset menu lists the datasets of every track, since N-MNIST runs in the lite track only.
+// Picking one keeps the track if it has the dataset, or moves to the first track that does.
+function trackFor(cells, version, dataset, track) {
+  const tracks = uniq(cells.filter((c) => c.version === version && c.dataset === dataset).map((c) => c.track));
+  return tracks.includes(track) ? track : tracks[0] ?? track;
+}
+
 function isBaseline(name) {
   return name === "no_attack" || name === "no_defense";
 }
@@ -174,7 +181,7 @@ function brokenGrid(defense, version, cells, brokenBy, methods, names = DATA?.na
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, runOn, display, toCsv, matrixCsv, brokenGrid };
+  module.exports = { uniq, formatValue, formatStat, newestFirst, trackFor, orderMethods, matrix, seedCount, runOn, display, toCsv, matrixCsv, brokenGrid };
 }
 
 // ---- Page ----
@@ -217,7 +224,9 @@ function syncControls() {
   const trackOrder = TRACK_ORDER.filter((t) => tracks.includes(t)).concat(tracks.filter((t) => !TRACK_ORDER.includes(t)));
   state.track = setOptions($("track"), trackOrder, state.track, display);
   const cells = versionCells();
-  state.dataset = setOptions($("dataset"), uniq(cells.map((c) => c.dataset)).sort(), state.dataset, display);
+  const inTrack = uniq(cells.map((c) => c.dataset)).sort();
+  const datasets = uniq(DATA.cells.filter((c) => c.version === state.version).map((c) => c.dataset)).sort();
+  state.dataset = setOptions($("dataset"), datasets, inTrack.includes(state.dataset) ? state.dataset : inTrack[0], display);
   const ofDataset = cells.filter((c) => c.dataset === state.dataset);
   state.model = setOptions($("model"), uniq(ofDataset.map((c) => c.arch)).sort(), state.model);
   const scenarios = uniq(ofDataset.filter((c) => c.arch === state.model).map((c) => c.scenario)).sort();
@@ -642,6 +651,7 @@ async function main() {
   for (const id of ["version", "track", "dataset", "model", "scenario", "metric"]) {
     $(id).addEventListener("change", (event) => {
       state[id] = event.target.value;
+      if (id === "dataset") state.track = trackFor(DATA.cells, state.version, state.dataset, state.track);
       render();
     });
   }
