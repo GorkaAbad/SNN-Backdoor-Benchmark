@@ -166,8 +166,11 @@ def test_picking_a_dataset_moves_to_a_track_that_has_it() -> None:
     app = Path(__file__).parents[2] / "src" / "sbb" / "site" / "templates" / "app.js"
     script = """
 const { trackFor } = require(process.argv[1]);
-const cells = [["1.0.0", "lite", "nmnist"], ["1.0.0", "full", "dvsgesture"], ["0.9.0", "full", "nmnist"]]
-  .map(([version, track, dataset]) => ({ version, track, dataset }));
+const cells = [
+  { version: "1.0.0", track: "lite", dataset: "nmnist" },
+  { version: "1.0.0", track: "full", dataset: "dvsgesture" },
+  { version: "0.9.0", track: "full", dataset: "nmnist" },
+];
 console.log(JSON.stringify([
   trackFor(cells, "1.0.0", "nmnist", "full"),
   trackFor(cells, "1.0.0", "dvsgesture", "full"),
