@@ -104,10 +104,15 @@ class RecordingFolder(EventDataset):
     _manual: ClassVar[str]  # manual-download instructions, formatted with root
 
     def prepare(self) -> None:
-        """Download, check and unpack the zip of every missing folder. Concurrent runs are safe."""
+        """Download, check and unpack the zip of every folder without recordings.
+
+        A folder can exist without recordings when a cache cleanup deletes files but not folders.
+        Concurrent runs are safe, unless they start together on such a folder.
+        """
         for folder, (urls, md5) in self._archives.items():
-            if (self.root / folder).is_dir():
+            if any((self.root / folder).glob(self._pattern)):
                 continue
+            shutil.rmtree(self.root / folder, ignore_errors=True)
             archive = self.root / f"{folder}.zip"
             fetch(archive, md5, urls, self._manual.format(root=self.root))
             with unpacked(archive, self.root) as tmp:

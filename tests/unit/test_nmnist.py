@@ -51,3 +51,14 @@ def test_prepare_checks_md5_and_extracts(tmp_path: Path, monkeypatch: pytest.Mon
     dataset = NMNIST(tmp_path)
     dataset.prepare()
     assert len(dataset) == 2 and dataset[0].label == 4 and not list(tmp_path.glob("tmp*"))
+
+
+def test_prepare_fetches_again_a_folder_without_recordings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    md5s = {part: _zip(tmp_path, part) for part in ("Train", "Test")}
+    monkeypatch.setattr(NMNIST, "_archives", {p: ((), m) for p, m in md5s.items()})
+    (tmp_path / "Train" / "4").mkdir(parents=True)  # what a cleanup that deletes files leaves
+    dataset = NMNIST(tmp_path)
+    dataset.prepare()
+    assert len(dataset) == 2
