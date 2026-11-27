@@ -88,8 +88,9 @@ declares its threat model and hyperparameters.
 
 A port is **replicated** when its mean over three seeds is within 3 percentage points of every
 target its replication record takes from the paper, and **explained** when a maintainer documented why it misses
-([records](replications/)). T-Backdoor is part of benchmark 1.0. SIG and Narcissus are new in
-v3 and not yet part of a benchmark. SIG, Narcissus, TaCT, Adap-Blend and Adap-Patch are ANN image
+([records](replications/)). T-Backdoor is part of benchmark 1.0. SIG is new in v3 and part of
+the clean-label track of benchmark 1.1. Narcissus is in no benchmark: on SNNs its port is not the
+published clean-label attack, and its N-MNIST runs are reported in `docs/PLAN.md` 13.5. SIG, Narcissus, TaCT, Adap-Blend and Adap-Patch are ANN image
 attacks ported to SNNs and event data, not attacks designed for SNNs.
 Their papers have no event setting to replicate.
 

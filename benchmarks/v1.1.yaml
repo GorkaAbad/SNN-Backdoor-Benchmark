@@ -1,7 +1,7 @@
 # Benchmark 1.1: benchmark 1.0 and a clean_label track (docs/PLAN.md 13.5, v3 task 4). The lite
 # and full tracks are those of 1.0, so their cells carry over (sbb carry-over). The clean_label
-# track runs the clean-label attacks against every defense on the three datasets, verified like
-# the full track.
+# track runs SIG, the clean-label attack, against every defense on the three datasets, verified
+# like the full track. Narcissus is left out (docs/PLAN.md 13.5, v3 task 2).
 benchmark: sbb
 version: 1.1.0
 scenarios:
@@ -66,17 +66,17 @@ scenarios:
 tracks:
   # sneaky_dynamic trains for hours even on a GPU, far beyond the 6 hours of a CPU runner, so it
   # runs in the full track only and every lite cell can be verified on GitHub.
-  # The clean-label attacks run only in the clean_label track, at its budget.
-  lite: {scenarios: [nmnist_tiny], seeds: [0, 1, 2], exclude: [sneaky_dynamic, sig, narcissus]}
-  full: {scenarios: [dvsgesture_full, cifar10dvs_full], seeds: [0, 1, 2], exclude: [sig, narcissus]}
+  # SIG runs only in the clean_label track, at its budget.
+  lite: {scenarios: [nmnist_tiny], seeds: [0, 1, 2], exclude: [sneaky_dynamic, sig]}
+  full: {scenarios: [dvsgesture_full, cifar10dvs_full], seeds: [0, 1, 2], exclude: [sig]}
   # The Planner keeps here only the attacks whose card declares clean labels, no_attack included.
   clean_label:
     scenarios: [nmnist_tiny_cl, dvsgesture_full_cl, cifar10dvs_full_cl]
     seeds: [0, 1, 2]
 battery:
   # Group A, group B (T-Backdoor replicated), the adaptive attacks of the adaptive track, which
-  # are ANN attacks ported to SNNs (PLAN 12), the SNN-native baselines of group C, and the
-  # clean-label attacks of group D, also ANN attacks ported to SNNs.
+  # are ANN attacks ported to SNNs (PLAN 12), the SNN-native baselines of group C, and SIG of
+  # group D, also an ANN attack ported to SNNs.
   attacks:
     - no_attack
     - static_patch
@@ -93,7 +93,6 @@ battery:
     - adap_blend
     - adap_patch
     - sig
-    - narcissus
   defenses:
     - no_defense
     - fine_tuning
