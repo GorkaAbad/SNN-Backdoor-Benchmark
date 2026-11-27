@@ -4,13 +4,11 @@
 
 const KIND_ORDER = ["data_poisoning", "training_control", "supply_chain", "federated", "adaptive"];
 const STAGE_ORDER = ["pre_training", "in_training", "post_training", "inference", "model_detection"];
-const TRACK_ORDER = ["lite", "full"];
 const METRIC_ORDER = ["ca", "asr", "asr_all", "ra", "frr", "tpr", "auroc", "verdict", "spike_rate", "spike_rate_triggered", "synops"];
 
 const state = {
   tab: "matrix",
   version: null,
-  track: null,
   dataset: null,
   model: null,
   scenario: null,
@@ -57,13 +55,6 @@ function groupIndex(method, methods) {
 function newestFirst(versions) {
   // Numeric collation compares each run of digits as a number, so 0.10.0 is newer than 0.9.0.
   return [...versions].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
-}
-
-// The Dataset menu lists the datasets of every track, since N-MNIST runs in the lite track only.
-// Picking one keeps the track if it has the dataset, or moves to the first track that does.
-function trackFor(cells, version, dataset, track) {
-  const tracks = uniq(cells.filter((c) => c.version === version && c.dataset === dataset).map((c) => c.track));
-  return tracks.includes(track) ? track : tracks[0] ?? track;
 }
 
 function isBaseline(name) {
@@ -158,30 +149,28 @@ function matrixCsv(m) {
   return toCsv([["attack", ...m.defenses], ...m.attacks.map((a, i) => [a, ...m.z[i].map(value)])]);
 }
 
-// The ASR of every adaptive attack against one defense in one version: a row per track and
-// scenario, a column per attack, the attacks built to beat this defense first with a star. broken
-// marks the builder's broken_by entries, so the threshold stays in the builder.
+// The ASR of every adaptive attack against one defense in one version: a row per scenario, in the
+// order of the Dataset menu, a column per attack, the attacks built to beat this defense first
+// with a star. broken marks the builder's broken_by entries, so the threshold stays in the builder.
 function brokenGrid(defense, version, cells, brokenBy, methods, names = DATA?.names) {
   const ofDefense = cells.filter((c) => c.version === version && c.defense === defense && methods[c.attack]?.aware_of?.length);
   const built = (a) => methods[a].aware_of.includes(defense);
   const attacks = uniq(ofDefense.map((c) => c.attack))
     .sort((a, b) => built(b) - built(a) || display(a, names).localeCompare(display(b, names)));
-  const places = uniq(ofDefense.map((c) => `${c.track}|${c.scenario}`))
-    .sort((a, b) => TRACK_ORDER.indexOf(a.split("|")[0]) - TRACK_ORDER.indexOf(b.split("|")[0]) || a.localeCompare(b));
-  const find = (place, attack) => ofDefense.find((c) => `${c.track}|${c.scenario}` === place && c.attack === attack);
-  const isBroken = (place, attack) => brokenBy.some((b) => b.version === version && b.defense === defense && b.attack === attack && `${b.track}|${b.scenario}` === place);
+  const first = (scenario) => ofDefense.find((c) => c.scenario === scenario);
+  const places = uniq(ofDefense.map((c) => c.scenario))
+    .sort((a, b) => first(a).dataset.localeCompare(first(b).dataset) || a.localeCompare(b));
+  const find = (place, attack) => ofDefense.find((c) => c.scenario === place && c.attack === attack);
+  const isBroken = (place, attack) => brokenBy.some((b) => b.version === version && b.defense === defense && b.attack === attack && b.scenario === place);
   return {
     headers: ["", ...attacks.map((a) => display(a, names) + (built(a) ? " ★" : ""))],
-    rows: places.map((p) => {
-      const c = ofDefense.find((x) => `${x.track}|${x.scenario}` === p);
-      return [`${display(c.track, names)} · ${display(c.dataset, names)}`, ...attacks.map((a) => formatValue("asr", find(p, a)?.metrics.asr?.mean))];
-    }),
+    rows: places.map((p) => [display(first(p).dataset, names), ...attacks.map((a) => formatValue("asr", find(p, a)?.metrics.asr?.mean))]),
     broken: places.map((p) => [false, ...attacks.map((a) => isBroken(p, a))]),
   };
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { uniq, formatValue, formatStat, newestFirst, trackFor, orderMethods, matrix, seedCount, runOn, display, toCsv, matrixCsv, brokenGrid };
+  module.exports = { uniq, formatValue, formatStat, newestFirst, orderMethods, matrix, seedCount, runOn, display, toCsv, matrixCsv, brokenGrid };
 }
 
 // ---- Page ----
@@ -207,7 +196,7 @@ function metricLabel(metric) {
 }
 
 function versionCells() {
-  return DATA.cells.filter((c) => c.version === state.version && c.track === state.track);
+  return DATA.cells.filter((c) => c.version === state.version);
 }
 
 function scenarioCells() {
@@ -220,13 +209,8 @@ function visibleCells() {
 
 function syncControls() {
   state.version = setOptions($("version"), newestFirst(uniq(DATA.cells.map((c) => c.version))), state.version);
-  const tracks = uniq(DATA.cells.filter((c) => c.version === state.version).map((c) => c.track));
-  const trackOrder = TRACK_ORDER.filter((t) => tracks.includes(t)).concat(tracks.filter((t) => !TRACK_ORDER.includes(t)));
-  state.track = setOptions($("track"), trackOrder, state.track, display);
   const cells = versionCells();
-  const inTrack = uniq(cells.map((c) => c.dataset)).sort();
-  const datasets = uniq(DATA.cells.filter((c) => c.version === state.version).map((c) => c.dataset)).sort();
-  state.dataset = setOptions($("dataset"), datasets, inTrack.includes(state.dataset) ? state.dataset : inTrack[0], display);
+  state.dataset = setOptions($("dataset"), uniq(cells.map((c) => c.dataset)).sort(), state.dataset, display);
   const ofDataset = cells.filter((c) => c.dataset === state.dataset);
   state.model = setOptions($("model"), uniq(ofDataset.map((c) => c.arch)).sort(), state.model);
   const scenarios = uniq(ofDataset.filter((c) => c.arch === state.model).map((c) => c.scenario)).sort();
@@ -325,7 +309,7 @@ function renderMatrix() {
 }
 
 function renderModelAuroc() {
-  const rows = DATA.model_auroc.filter((r) => r.version === state.version && r.track === state.track && r.scenario === state.scenario && state.defenses.has(r.defense));
+  const rows = DATA.model_auroc.filter((r) => r.version === state.version && r.scenario === state.scenario && state.defenses.has(r.defense));
   const box = $("model-auroc");
   box.replaceChildren();
   if (!rows.length) return;
@@ -401,7 +385,7 @@ function download(name, csv) {
 }
 
 function selectionName(kind) {
-  return `sbb-${state.version}-${state.track}-${state.scenario}-${kind}.csv`;
+  return `sbb-${state.version}-${state.scenario}-${kind}.csv`;
 }
 
 function downloadMatrix() {
@@ -523,7 +507,7 @@ function renderPareto() {
   // One plot per attack group: each defense's CA after it against 100 minus the ASR, both
   // averaged over every attack of the group by the builder, with its Pareto front.
   const box = $("pareto");
-  const points = DATA.pareto.filter((p) => p.version === state.version && p.track === state.track && p.scenario === state.scenario && state.defenses.has(p.defense));
+  const points = DATA.pareto.filter((p) => p.version === state.version && p.scenario === state.scenario && state.defenses.has(p.defense));
   if (!points.length) return empty(box, "No attack cells with both CA and ASR for this selection yet.");
   if (window.Plotly) for (const plot of box.querySelectorAll(".plot")) Plotly.purge(plot);
   box.replaceChildren();
@@ -648,10 +632,9 @@ async function main() {
     document.querySelector("main").replaceChildren(Object.assign(document.createElement("p"), { className: "empty", textContent: `Could not load data.json: ${error}` }));
     return;
   }
-  for (const id of ["version", "track", "dataset", "model", "scenario", "metric"]) {
+  for (const id of ["version", "dataset", "model", "scenario", "metric"]) {
     $(id).addEventListener("change", (event) => {
       state[id] = event.target.value;
-      if (id === "dataset") state.track = trackFor(DATA.cells, state.version, state.dataset, state.track);
       render();
     });
   }
@@ -680,7 +663,7 @@ async function main() {
       render();
     });
   }
-  $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. Lite cells are verified on GitHub runners after merge. Full-track cells are self-reported until an independent group reproduces a spot check of their submission. `;
+  $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. N-MNIST cells are verified on GitHub runners after merge. DVS128 Gesture and CIFAR10-DVS cells are self-reported until an independent group reproduces a spot check of their submission. `;
   const link = (href, textContent) => Object.assign(document.createElement("a"), { href, textContent });
   $("footer").append("Download ", link("results.csv", "all results"), " (mean, std and 95% t-interval over seeds) or ", link("status.csv", "the run status of every cell"), ", as CSV.");
   render();

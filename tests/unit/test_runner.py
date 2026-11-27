@@ -49,10 +49,18 @@ def test_a_track_can_leave_out_methods_of_the_battery() -> None:
 def test_the_clean_label_track_runs_only_clean_label_attacks() -> None:
     data = SMOKE.model_dump()
     data["battery"]["attacks"].append("sig")
-    data["tracks"]["clean_label"] = data["tracks"]["lite"]
+    data["tracks"] = {"clean_label": data["tracks"]["lite"]}
     cells = Planner(BenchmarkSpec.model_validate(data)).cells(track="clean_label")
     assert {c.attack for c in cells} == {"no_attack", "sig"}
     assert {c.track for c in cells} == {"clean_label"}
+
+
+def test_a_scenario_belongs_to_one_track() -> None:
+    # The site picks cells by version and scenario, without the track.
+    data = SMOKE.model_dump()
+    data["tracks"]["full"] = data["tracks"]["lite"]
+    with pytest.raises(ValueError, match="synthetic_tiny"):
+        BenchmarkSpec.model_validate(data)
 
 
 @pytest.mark.parametrize("path", sorted(BENCHMARKS.glob("*.yaml")), ids=lambda p: p.stem)

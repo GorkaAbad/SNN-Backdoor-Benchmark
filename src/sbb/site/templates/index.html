@@ -29,7 +29,6 @@
   <main class="wrap">
     <section class="controls" aria-label="Filters">
       <label data-scope="cells">Version <select id="version"></select></label>
-      <label data-scope="cells">Track <select id="track"></select></label>
       <label data-scope="cells">Dataset <select id="dataset"></select></label>
       <label data-scope="cells">Model <select id="model"></select></label>
       <label data-scope="cells" id="scenario-label" hidden>Scenario <select id="scenario"></select></label>
@@ -68,12 +67,12 @@
       <div id="table" class="scroll"></div>
       <button type="button" class="csv" id="table-csv">Download this table (CSV)</button>
       <h2>Verification log</h2>
-      <p class="note">Every rerun of a shown cell. The verify-lite workflow reruns each lite cell on a GitHub runner after merge: a match within the lite tolerance makes the cell reproduced, a mismatch disputed.</p>
+      <p class="note">Every rerun of a shown cell. The verify-lite workflow reruns each N-MNIST cell on a GitHub runner after merge: a match within the tolerance makes the cell reproduced, a mismatch disputed.</p>
       <div id="verification-log" class="scroll"></div>
     </section>
 
     <section data-view="replications" hidden>
-      <p class="note">Each ported attack reruns the setting of its paper with three seeds: the paper's dataset, network and training recipe, separate from the benchmark tracks. That is why N-MNIST appears here with the papers' <code>nmnist_net</code>, while the benchmark runs N-MNIST in the lite track only. The papers report ASR over every test sample, the target class included, so replications compare ASR (target class included).</p>
+      <p class="note">Each ported attack reruns the setting of its paper with three seeds: the paper's dataset, network and training recipe, separate from the benchmark scenarios. That is why N-MNIST appears here with the papers' <code>nmnist_net</code>, while the benchmark runs N-MNIST on <code>tiny_lif_cnn</code>. The papers report ASR over every test sample, the target class included, so replications compare ASR (target class included).</p>
       <label>Dataset <select id="replication-dataset"></select></label>
       <div id="replication-plot" class="plot"></div>
       <div id="replication-table" class="scroll"></div>
