@@ -104,7 +104,8 @@ class AttackerView:
     Every attacker sees the clean train split and can build loaders over its own poison set. Model
     attacks (training_control, supply_chain) also get the scenario architecture and a Trainer,
     and supply_chain attacks a copy of the clean model, which stands for the zoo model. A
-    data_poisoning attack that knows the architecture gets the copy as a surrogate (Narcissus).
+    data_poisoning attack that knows the architecture gets a Trainer too, to train its own
+    surrogate (Narcissus).
 
     Attributes:
         scenario: Public scenario description.
@@ -130,10 +131,9 @@ class AttackerView:
         model_attack = card.kind in (ScenarioKind.TRAINING_CONTROL, ScenarioKind.SUPPLY_CHAIN)
         knows_arch = card.knowledge.architecture == "known"
         self._arch = arch if knows_arch or model_attack else None
-        self._trainer = trainer if model_attack else None
-        surrogate = card.kind == ScenarioKind.DATA_POISONING and knows_arch
+        self._trainer = trainer if knows_arch or model_attack else None
         supply_chain = card.kind == ScenarioKind.SUPPLY_CHAIN
-        self._clean_model = copy.deepcopy(clean_model) if supply_chain or surrogate else None
+        self._clean_model = copy.deepcopy(clean_model) if supply_chain else None
 
     @property
     def train_set(self) -> TrainSetView:

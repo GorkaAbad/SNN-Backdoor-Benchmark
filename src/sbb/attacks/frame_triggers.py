@@ -29,6 +29,7 @@ import torch
 
 from sbb.core.plugins import FrameTrigger
 from sbb.core.proxies import AttackerView
+from sbb.models.snn import SNNModel, build_model
 from sbb.utils.errors import SbbError
 
 Position = Literal["top-left", "top-right", "bottom-left", "bottom-right", "middle"]
@@ -435,6 +436,21 @@ class SigTrigger(FrameTrigger):
         return add_peak_scaled(frames, signal.view(-1, 1, 1, 1))
 
 
+def train_surrogate(view: AttackerView) -> SNNModel:
+    """Train the attacker's own model of the scenario architecture on the clean train split.
+
+    The Game seeds the global torch stream before the clean model and again before the attack, so
+    a model drawn from it would start from the clean model's weights and train into the victim's
+    twin. The surrogate draws from a forked stream seeded from view.rng instead, which also leaves
+    the global stream, and so the victim's training, as for any other attack.
+    """
+    trainer = view.trainer
+    with torch.random.fork_rng(devices=[trainer.device] if trainer.device.type == "cuda" else []):
+        torch.manual_seed(int(view.rng.integers(2**62)))
+        model = build_model(view.arch, view.scenario.input_shape, view.scenario.num_classes)
+        return trainer.fit(model, view.train_set.loader(trainer.spec.batch_size, shuffle=True))
+
+
 @dataclass
 class NarcissusTrigger(FrameTrigger):
     """Noise over the frames optimized on a surrogate towards the target class (Narcissus).
@@ -442,7 +458,8 @@ class NarcissusTrigger(FrameTrigger):
     Zeng et al. (CCS 2023) optimize one additive noise inside an L-inf ball with RAdam, to lower
     the surrogate's cross-entropy for the target class on target-class samples. Here the noise
     covers the frames [T, P, H, W] and is scaled by the sample's peak count (add_peak_scaled).
-    The surrogate is the scenario's clean model, which needs no poison warm-up.
+    The surrogate is the attacker's own model, trained on the clean split (train_surrogate). The
+    paper pre-trains it on out-of-distribution data and fine-tunes it on the target class.
 
     Attributes:
         target: Target class.
@@ -464,7 +481,7 @@ class NarcissusTrigger(FrameTrigger):
 
     def fit(self, view: AttackerView) -> None:
         """Optimize the noise on the target-class samples of the clean train split."""
-        surrogate = view.clean_model.surrogate_eval()
+        surrogate = train_surrogate(view).surrogate_eval()
         device = next(surrogate.parameters()).device
         noise = torch.zeros(view.scenario.T, *view.scenario.input_shape, device=device)
         noise.requires_grad_(True)

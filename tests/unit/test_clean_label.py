@@ -8,7 +8,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from sbb.attacks.frame_triggers import SigTrigger, add_peak_scaled
+from sbb.attacks.frame_triggers import SigTrigger, add_peak_scaled, train_surrogate
 from sbb.core.proxies import AttackerView
 from sbb.core.registry import ATTACKS
 from sbb.core.trainer import Trainer, TrainSpec
@@ -54,27 +54,37 @@ def test_sig_poisons_only_the_target_class(datamodule: DataModule) -> None:
     assert (datamodule.labels[poison.indices] == 1).all() and (poison.labels == 1).all()
 
 
-def _narcissus(datamodule: DataModule, trained: bool = False) -> tuple[Any, AttackerView]:
+def _narcissus(datamodule: DataModule) -> tuple[Any, AttackerView]:
     cls = ATTACKS.get("narcissus")
     attack = cls(cls.card.hparams_for("synthetic", "tiny_lif_cnn"), target=1)
+    # Enough training to spike: an untrained network's output ignores the input.
     trainer = Trainer(TrainSpec(epochs=3, batch_size=32, lr=0.01), torch.device("cpu"))
-    torch.manual_seed(0)
     clean = build_model(ARCH, (2, 16, 16), 4)
-    if trained:  # an untrained network does not spike, so its output ignores the input
-        clean = trainer.fit(clean, datamodule.train_loader(None, 32))
-        clean.reset()  # the Game reloads it from its checkpoint, without neuron states
     return attack, AttackerView(cls.card, INFO, 0, datamodule, ARCH, trainer, clean)
+
+
+def test_narcissus_surrogate_is_not_the_model_the_game_trains(datamodule: DataModule) -> None:
+    _, view = _narcissus(datamodule)
+    torch.manual_seed(0)  # as the Game seeds before the clean model and again before the attack
+    state = torch.get_rng_state()
+    loader = view.train_set.loader(32, shuffle=True)
+    clean = view.trainer.fit(build_model(ARCH, (2, 16, 16), 4), loader)
+    torch.set_rng_state(state)
+    surrogate = train_surrogate(view)
+    assert torch.equal(torch.get_rng_state(), state)  # the Game's stream is left as it was
+    pairs = zip(clean.parameters(), surrogate.parameters(), strict=True)
+    assert not all(torch.equal(a, b) for a, b in pairs)
 
 
 def test_narcissus_noise_lowers_the_surrogate_loss_on_the_target_class(
     datamodule: DataModule,
 ) -> None:
-    attack, view = _narcissus(datamodule, trained=True)
+    attack, view = _narcissus(datamodule)
     trigger = attack.trigger
     trigger.fit(view)
     assert trigger.noise.abs().max() <= trigger.epsilon + 1e-6
     x, y, _ = next(iter(view.train_set.loader(64, np.flatnonzero(view.train_set.labels() == 1))))
-    surrogate = view.clean_model.eval()
+    surrogate = train_surrogate(_narcissus(datamodule)[1]).eval()  # same seed, same surrogate
     with torch.no_grad():
         before = F.cross_entropy(surrogate(x), y)
         after = F.cross_entropy(surrogate(add_peak_scaled(x, trigger.noise)), y)
