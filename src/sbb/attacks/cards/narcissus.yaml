@@ -1,6 +1,6 @@
 name: narcissus
 display_name: Narcissus
-version: 1.2.0
+version: 1.3.0
 title: Narcissus, an ANN attack ported to SNNs
 paper: "Zeng, Pan, Just, Lyu, Qiu, Jia. Narcissus: A Practical Clean-Label Backdoor Attack with Limited Information. CCS 2023"
 published: "2022-04"
@@ -29,12 +29,14 @@ adaptation_note: >
   ASR on N-MNIST, an adversarial perturbation rather than a backdoor. The noise gets 20 passes over
   the target class instead of up to 1000, because every cell fits it again. Poisoned samples come only from the target class, as
   many as the budget allows, far more than the paper's 0.05% of the train set, and keep their
-  label. Test inputs get the noise at the strength of the poisoned samples, where the official
-  test magnifies it 3 times: at 3 times, the noise of version 1.1.0 alone still reached 40.5% ASR
-  on one N-MNIST seed with no poisoned sample.
+  label. Test inputs get the noise magnified 3 times, as in the official test. With no poisoned
+  sample, that noise alone reached 0.0, 40.5 and 0.0% ASR on the three N-MNIST seeds, against
+  100% for the poisoned victims. Version 1.2.0 tested at the strength of the poisoned samples:
+  the noise alone still reached 1.0, 23.3 and 3.7%, and the victims only 55.5, 76.3 and 43.2%,
+  so the gap shrank on every seed and 1.3.0 returns to 3 times.
 hparams:
   default:
-    trigger: {epsilon: 0.0627, rounds: 20, lr: 0.01, batch_size: 32, magnify: 1.0}
+    trigger: {epsilon: 0.0627, rounds: 20, lr: 0.01, batch_size: 32, magnify: 3.0}
   # The tests run on synthetic data with a CPU.
   synthetic/tiny_lif_cnn:
     trigger: {rounds: 2}

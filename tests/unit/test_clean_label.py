@@ -92,11 +92,7 @@ def test_narcissus_noise_lowers_the_surrogate_loss_on_the_target_class(
 
 
 def test_narcissus_magnifies_the_noise_on_test_inputs_only(datamodule: DataModule) -> None:
-    _, view = _narcissus(datamodule)
-    cls = ATTACKS.get("narcissus")  # x3, the official test, as a replication would set it
-    attack = cls(
-        cls.card.hparams_for("synthetic", "tiny_lif_cnn", {"trigger": {"magnify": 3.0}}), 1
-    )
+    attack, view = _narcissus(datamodule)
     poison = attack.poison(view, Budget(), datamodule.defender_pool)
     frames = torch.rand(4, 2, 16, 16) * 4
     noise = attack.trigger.noise
