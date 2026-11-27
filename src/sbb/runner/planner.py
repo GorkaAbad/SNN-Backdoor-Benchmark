@@ -26,7 +26,10 @@ class Planner:
     def cells(
         self, track: str | None = None, attack: str | None = None, defense: str | None = None
     ) -> list[Cell]:
-        """Return every (track, scenario, attack, defense, seed) cell, N/A cells included."""
+        """Return every (track, scenario, attack, defense, seed) cell, N/A cells included.
+
+        The clean_label track keeps the attacks whose card declares clean labels, no_attack too.
+        """
         battery = self.spec.battery
         cells = []
         for track_name, track_spec in self.spec.tracks.items():
@@ -38,6 +41,9 @@ class Planner:
                 if attack not in (None, a) or defense not in (None, d):
                     continue
                 if a in track_spec.exclude or d in track_spec.exclude:
+                    continue
+                labels = ATTACKS.get(a).card.capabilities.labels
+                if track_name == "clean_label" and labels != "clean":
                     continue
                 cells.append(
                     Cell(

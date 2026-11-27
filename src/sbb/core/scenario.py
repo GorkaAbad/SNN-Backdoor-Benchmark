@@ -38,7 +38,7 @@ class Cell(BaseModel, frozen=True, extra="forbid"):
     """
 
     benchmark_version: str
-    track: Literal["lite", "full", "replication"]
+    track: Literal["lite", "full", "clean_label", "replication"]
     scenario: Scenario
     attack: str
     attack_version: str

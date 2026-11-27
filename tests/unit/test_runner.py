@@ -46,6 +46,15 @@ def test_a_track_can_leave_out_methods_of_the_battery() -> None:
         BenchmarkSpec.model_validate(data)
 
 
+def test_the_clean_label_track_runs_only_clean_label_attacks() -> None:
+    data = SMOKE.model_dump()
+    data["battery"]["attacks"].append("sig")
+    data["tracks"]["clean_label"] = data["tracks"]["lite"]
+    cells = Planner(BenchmarkSpec.model_validate(data)).cells(track="clean_label")
+    assert {c.attack for c in cells} == {"no_attack", "sig"}
+    assert {c.track for c in cells} == {"clean_label"}
+
+
 @pytest.mark.parametrize("path", sorted(BENCHMARKS.glob("*.yaml")), ids=lambda p: p.stem)
 def test_every_benchmark_names_registered_parts(path: Path) -> None:
     spec = BenchmarkSpec.load(path)

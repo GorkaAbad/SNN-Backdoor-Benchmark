@@ -44,7 +44,7 @@ Out of scope until v5: federated learning, ANN-to-SNN conversion, static-image d
 | Defender pool | Clean training samples reserved before the attack. The attacker cannot modify them. |
 | Zoo | Cached clean and backdoored models, published on Hugging Face. |
 | Benchmark spec | Versioned YAML with datasets, splits, scenarios, battery, seeds, tracks and tolerances. |
-| Track | `lite` (CPU, verified on GitHub runners) or `full` (GPU, verified by independent reproduction). |
+| Track | `lite` (CPU, verified on GitHub runners), `full` (GPU, verified by independent reproduction) or `clean_label` (clean-label attacks only, GPU, verified like `full`). |
 | Site | A compute environment, described by a SiteProfile kept outside the repository. |
 | Status | `self-reported`, `reproduced`, `disputed`, `not-applicable` or `failed`. Computed, never set by hand. |
 
@@ -1078,7 +1078,7 @@ class Scenario(BaseModel, frozen=True):
 
 class Cell(BaseModel, frozen=True):
     benchmark_version: str
-    track: Literal["lite", "full", "replication"]
+    track: Literal["lite", "full", "clean_label", "replication"]
     scenario: Scenario
     attack: str
     attack_version: str
@@ -1146,12 +1146,13 @@ class Tolerance(BaseModel):
 class TrackSpec(BaseModel):
     scenarios: list[str]
     seeds: list[int]
+    exclude: list[str] = []            # methods of the battery this track leaves out
 
 class BenchmarkSpec(BaseModel):
     benchmark: str = "sbb"
     version: str
     scenarios: dict[str, Scenario]
-    tracks: dict[Literal["lite", "full"], TrackSpec]
+    tracks: dict[Literal["lite", "full", "clean_label"], TrackSpec]
     battery: Battery
     tolerance: Tolerance = Tolerance()
 
@@ -1159,6 +1160,7 @@ class Planner:
     def __init__(self, spec: BenchmarkSpec) -> None: ...
     def cells(self, track: str | None = None, attack: str | None = None,
               defense: str | None = None) -> list[Cell]: ...      # includes N/A cells, the Game reports them
+                                                                  # clean_label keeps the attacks of clean-label cards
     def pending(self, cells: Sequence[Cell], store: "ResultStore") -> list[Cell]: ...
 
 class SiteProfile(BaseModel):
@@ -1487,7 +1489,7 @@ There are two separate guarantees.
 Statuses are computed by `VerificationPolicy` from CellResults and Verification records. Nobody sets them by hand.
 
 - **Lite track.** After a pull request is merged, the `verify-lite` workflow reruns every lite result that no verify-lite record covers (`sbb unverified`) on GitHub-hosted runners, with the reviewed code from `main`. A match within `lite_pp` makes the cell `reproduced`. This costs nothing: standard runners are free for public repositories. `lite_pp` is 10.0 in benchmark 1.0 (user decision of 2026-11-25) and 3.0, the replication tolerance, in benchmark 0.9 (user decision of 2026-10-24). The lite results come from GH200 GPUs and verify-lite reruns them on GitHub CPUs, where defenses that make discrete choices (fine-pruning's neuron ranking, ANP's masks, TMPBD's p-value) flip on small float differences. At 3.0, 31 lite results of benchmark 1.0 were disputed. At 10.0, 12 still are, where a defense's discrete choice moves a metric by up to 88 points. Producing the lite results on GitHub runners, the verifiers' kind of machine, would close the gap.
-- **Full track.** A cell becomes `reproduced` when at least one independent Verification matches within tolerance. Independent means the verifier's organization differs from the submitter's. Maintainers decide in doubtful cases.
+- **Full track.** The `clean_label` track follows the same rules. A cell becomes `reproduced` when at least one independent Verification matches within tolerance. Independent means the verifier's organization differs from the submitter's. Maintainers decide in doubtful cases.
 - **Disputes.** A cell is `disputed` while it has at least as many independent mismatches as matches.
 - **Spot checks.** Verifiers do not rerun everything. `VerificationPolicy.sample` picks k = 3 random full-track cells per submission **[DECIDE]**, seeded by the manifest hash so anyone can recompute the choice. If half the cells of a submission were wrong, three random checks would catch it 87.5% of the time. Defense cells are cheap to check because they rerun on pinned zoo checkpoints. Attack cells and in-training defense cells need retraining.
 - **Reciprocity.** Submitting a full-track method commits the submitter to verify k cells of another submission, assigned by the maintainers.
@@ -1737,7 +1739,7 @@ Tasks, in order:
 1. Independent verification of benchmark 1.0 (moved from v2 task 4, user decision of 2026-11-26). The colleague at another institution spot-checks the 10 manifests of `results/manifests/` with the release of the results (tag v2.0.0), as `docs/verifying.md` describes, and opens a pull request with the records under `verifications/`. It needs no code, so it runs next to the other tasks. The release notes of the version that publishes the records name the group **[FILL]**.
 2. Group D ports (section 12): the maintainers' temporal clean-label poisoning (moved here from group B, once published), and event variants of SIG and Narcissus. They use `TargetClassSelector` and `CleanLabel` from v1, so the core does not change. v3 build (2026-11-26): `sig` 1.0.0 and `narcissus` 1.0.0, sbb variants with their cards. The temporal clean-label poisoning waits for its publication. Narcissus needs a surrogate model to optimize its trigger, and a data-poisoning attacker gets neither a Trainer nor a model (6.5). The first build gave it a copy of the scenario's clean model (maintainer decision of 2026-11-26). A control run on N-MNIST with no poisoned sample showed why that fails: Narcissus reached 91.6, 91.6 and 100 % ASR on the three seeds, SIG 0 %. The clean model shares the victim's split, recipe, seed and initial weights, so the noise worked as a white-box adversarial perturbation, not as a backdoor. Accepted for 6.5 instead (maintainer decision of 2026-11-27), closer to the paper, whose surrogate is not the victim: a `data_poisoning` attack whose card declares `architecture: known` gets the `trainer`, and `clean_model` stays with supply-chain attacks. `narcissus` 1.1.0 trains its own surrogate from its own initialization on the clean split. `poison` runs in every cell, since the PoisonSet is not cached, so every Narcissus cell trains the surrogate again, about 2 to 3 minutes on a GPU for N-MNIST. Caching the PoisonSet with the fitted trigger state removes that cost. Its control fell to 0.0, 40.5 and 0.0 % ASR, so `narcissus` 1.2.0 (maintainer decision of 2026-11-27) applies the noise to test inputs at the strength of the poisoned samples instead of the official 3 times.
 3. Clean-label budget. The Budget stays a fraction of the train set (3.2). Default **[DECIDE]**: half of the target class outside the defender pool. v3 build (2026-11-27): `clean_label_poison_rate` in `sbb.data.splits` gives that rate from the labels, the split and the pool fraction. The pool is class-stratified, so the count does not depend on the seed. The development runs used 0.045 on N-MNIST, 2700 samples instead of 2813.
-4. A clean-label scenario in the next benchmark version, run against the whole defense battery. The site filters by label policy.
+4. A clean-label scenario in the next benchmark version, run against the whole defense battery. The site filters by label policy. v3 build (2026-11-27): a third track, `clean_label` (maintainer decision of 2026-11-27, chosen over an exclude list and over a label policy on the scenario). The Planner keeps there only the attacks whose card declares `labels: clean`, `no_attack` included, and the lite and full tracks exclude the clean-label attacks. Verification treats it as a full track.
 
 Definition of done:
 

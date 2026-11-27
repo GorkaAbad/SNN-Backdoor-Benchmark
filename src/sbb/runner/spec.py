@@ -8,7 +8,7 @@ from pydantic import BaseModel, model_validator
 
 from sbb.core.scenario import Scenario
 
-Track = Literal["lite", "full"]
+Track = Literal["lite", "full", "clean_label"]
 
 
 class Battery(BaseModel, extra="forbid"):
