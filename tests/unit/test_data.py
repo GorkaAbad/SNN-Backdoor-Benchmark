@@ -9,7 +9,7 @@ from sbb.data.module import DataModule
 from sbb.data.poison import Budget, PoisonSet
 from sbb.data.representations import FrameRepr, ReprSpec
 from sbb.data.sample import EVENT_DTYPE, EventSample, make_events
-from sbb.data.splits import Split, load_split, reserve_defender_pool
+from sbb.data.splits import Split, clean_label_poison_rate, load_split, reserve_defender_pool
 from sbb.utils.determinism import rng_for
 from sbb.utils.errors import BudgetViolation, ReproducibilityError
 from sbb.utils.storage import ArtifactCache
@@ -53,6 +53,13 @@ def test_defender_pool_is_stratified_and_seeded(synthetic: SyntheticEvents) -> N
     pool = reserve_defender_pool(labels, train, 0.05, seed=0)
     assert np.array_equal(pool, reserve_defender_pool(labels, train, 0.05, seed=0))
     assert np.bincount(labels[pool]).tolist() == [6, 6, 6, 6]
+
+
+def test_clean_label_rate_is_half_the_target_class_outside_the_pool(
+    synthetic: SyntheticEvents,
+) -> None:
+    rate = clean_label_poison_rate(synthetic.labels(), range(480), 0, 0.05)
+    assert Budget(poison_rate=rate).max_poison(480) == (120 - 6) // 2
 
 
 def _poison(synthetic: SyntheticEvents, indices: list[int], labels: list[int]) -> PoisonSet:

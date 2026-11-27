@@ -62,3 +62,17 @@ def reserve_defender_pool(
         members = train_idx[train_labels == c]
         pool.append(rng.choice(members, round(fraction * len(members)), replace=False))
     return np.sort(np.concatenate(pool))
+
+
+def clean_label_poison_rate(
+    labels: np.ndarray, train: Sequence[int], target: int, fraction: float
+) -> float:
+    """Default poison_rate of a clean-label scenario: half of the target class outside the pool.
+
+    The rate stays a fraction of the train split, like every budget. The pool is class-stratified,
+    so the count is the same for every seed.
+    """
+    train_idx = np.asarray(train)
+    pool = reserve_defender_pool(labels, train, fraction, seed=0)
+    outside = np.sum(labels[train_idx] == target) - np.sum(labels[pool] == target)
+    return int(outside // 2) / len(train_idx)
