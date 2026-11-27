@@ -67,6 +67,13 @@ def test_cells_aggregate_the_seeds() -> None:
     assert data["methods"]["static_patch"]["role"] == "attack"
 
 
+def test_cells_carry_the_label_policy_of_their_track() -> None:
+    # The page filters by label policy: clean in the clean_label track, dirty elsewhere.
+    clean = _result("no_attack", "no_defense", 0, track="clean_label", ca=0.9)
+    cells = LeaderboardBuilder([RESULTS[0], clean], []).data()["cells"]
+    assert {c["track"]: c["labels"] for c in cells} == {"lite": "dirty", "clean_label": "clean"}
+
+
 def _check(result: CellResult, verdict: str, verifier: str = LITE_VERIFIER) -> Verification:
     """A rerun of result that matches, or misses every metric by 50 points."""
     return Verification(
@@ -222,7 +229,7 @@ def test_the_page_gets_one_name_for_every_id_it_shows() -> None:
     assert names["strip"] == DEFENSES.get("strip").card.display_name == "STRIP"
     assert names["nmnist"] == DATASETS.get("nmnist").display_name == "N-MNIST"
     # Every fixed term the page groups or filters by has a name.
-    assert {"lite", "full", "adaptive", *ScenarioKind, *Stage} <= names.keys()
+    assert {"dirty", "clean", "adaptive", *ScenarioKind, *Stage} <= names.keys()
     shown = {*data["methods"], *DATASETS.names()}
     assert shown <= names.keys()
 

@@ -11,6 +11,7 @@ const state = {
   version: null,
   dataset: null,
   model: null,
+  labels: null, // the label policy, dirty or clean
   scenario: null,
   metric: "asr",
   attacks: new Set(), // the shown attacks
@@ -213,7 +214,11 @@ function syncControls() {
   state.dataset = setOptions($("dataset"), uniq(cells.map((c) => c.dataset)).sort(), state.dataset, display);
   const ofDataset = cells.filter((c) => c.dataset === state.dataset);
   state.model = setOptions($("model"), uniq(ofDataset.map((c) => c.arch)).sort(), state.model);
-  const scenarios = uniq(ofDataset.filter((c) => c.arch === state.model).map((c) => c.scenario)).sort();
+  const ofModel = ofDataset.filter((c) => c.arch === state.model);
+  const policies = ["dirty", "clean"].filter((p) => ofModel.some((c) => c.labels === p));
+  state.labels = setOptions($("labels"), policies, state.labels, display);
+  $("labels-label").hidden = policies.length < 2;
+  const scenarios = uniq(ofModel.filter((c) => c.labels === state.labels).map((c) => c.scenario)).sort();
   state.scenario = setOptions($("scenario"), scenarios, state.scenario);
   $("scenario-label").hidden = scenarios.length < 2;
   const metrics = uniq(scenarioCells().flatMap((c) => Object.keys(c.metrics)));
@@ -632,7 +637,7 @@ async function main() {
     document.querySelector("main").replaceChildren(Object.assign(document.createElement("p"), { className: "empty", textContent: `Could not load data.json: ${error}` }));
     return;
   }
-  for (const id of ["version", "dataset", "model", "scenario", "metric"]) {
+  for (const id of ["version", "dataset", "model", "labels", "scenario", "metric"]) {
     $(id).addEventListener("change", (event) => {
       state[id] = event.target.value;
       render();
@@ -663,7 +668,7 @@ async function main() {
       render();
     });
   }
-  $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. N-MNIST cells are verified on GitHub runners after merge. DVS128 Gesture and CIFAR10-DVS cells are self-reported until an independent group reproduces a spot check of their submission. `;
+  $("footer").textContent = `${DATA.cells.length} cells · ${DATA.replications.length} replication records · sbb ${DATA.sbb_version} · built ${DATA.generated}. Dirty-label N-MNIST cells are verified on GitHub runners after merge. The other cells are self-reported until an independent group reproduces a spot check of their submission. `;
   const link = (href, textContent) => Object.assign(document.createElement("a"), { href, textContent });
   $("footer").append("Download ", link("results.csv", "all results"), " (mean, std and 95% t-interval over seeds) or ", link("status.csv", "the run status of every cell"), ", as CSV.");
   render();

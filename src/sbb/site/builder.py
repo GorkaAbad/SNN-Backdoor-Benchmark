@@ -31,12 +31,12 @@ _TEMPLATES = ("index.html", "app.js", "style.css", "favicon.png")
 BROKEN_ASR = 0.5
 # The metrics that show whether a defense changed what the model predicts.
 _SUCCESS = ("ca", "asr", "ra")
-# Display names of the fixed terms the page groups and filters by: tracks, attack groups (the
-# scenario kinds and adaptive) and defense stages. Plugins name themselves in their cards and
+# Display names of the fixed terms the page groups and filters by: label policies, attack groups
+# (the scenario kinds and adaptive) and defense stages. Plugins name themselves in their cards and
 # datasets in their classes (display_name). Networks and scenarios keep their ids.
 TERMS = {
-    "lite": "Lite",
-    "full": "Full",
+    "dirty": "Dirty label",
+    "clean": "Clean label",
     "data_poisoning": "Data poisoning",
     "training_control": "Training control",
     "supply_chain": "Supply chain",
@@ -183,6 +183,7 @@ def _aggregate(
     return {
         "version": first.benchmark_version,
         "track": first.track,
+        "labels": "clean" if first.track == "clean_label" else "dirty",
         "scenario": first.scenario.name,
         "dataset": first.scenario.data.name,
         "arch": first.scenario.arch.name,
